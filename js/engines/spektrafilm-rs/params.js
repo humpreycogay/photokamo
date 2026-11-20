@@ -1,4 +1,4 @@
-// Advanced-mode controls for the spektrafilm engine (engines/spektrafilm-rs/runtime/spektrafilm.wasm).
+// Advanced-mode controls for the spektrafilm-rs engine (engines/spektrafilm-rs/runtime/spektrafilm.wasm).
 // `path` is the UI's key; `engine` (when different) is the spektrafilm RuntimeParams path.
 // Defaults are spektrafilm-rs RuntimeParams::default() (pinned commit 9dd59b0), except
 // `film`/`print`, which pick a starting stock.

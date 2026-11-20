@@ -1,6 +1,9 @@
-// The one interface the UI uses for Advanced (spectral) rendering:
+// Worker client for the spektrafilm-rs engine. Loaded only when this engine is selected
+// (see js/engines/registry.js); the UI talks to it through ./index.js.
 //
-//   renderSpectral(imageBitmap, params, { quality: 'preview' | 'full', signal, onProgress, onStatus }) → ImageBitmap
+//   render(imageBitmap, params, { quality: 'preview' | 'full', signal, onProgress, onStatus }) → ImageBitmap
+//   warm(params, { onDownload })  downloads + compiles the engine and the data these settings need
+//   dispose()                     stops the worker (frees its memory) when another engine is chosen
 //
 // Engine: spektrafilm-rs (GPL-3.0) compiled to WebAssembly (engines/spektrafilm-rs/runtime/spektrafilm.wasm), run in a
 // module Worker (worker.js) so the UI never freezes. Everything runs on this device.
@@ -31,12 +34,17 @@ let workerImage = null; // the ImageBitmap the current worker holds
 let nextId = 1;
 const imageIds = new WeakMap();
 const jobs = new Map();
+const downloadListeners = new Set();
+
+/** Listen to download progress ({ loaded, total, done }; total 0 = unknown). Returns an unsubscribe function. */
+export function onDownload(listener) { downloadListeners.add(listener); return () => downloadListeners.delete(listener); }
 
 function startWorker() {
   worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
   workerImage = null;
   worker.addEventListener('message', event => {
     const { type, jobId } = event.data;
+    if (type === 'download') { for (const listener of downloadListeners) listener(event.data); return; }
     const job = jobs.get(jobId); if (!job) return;
     if (type === 'progress') job.onProgress?.(event.data.value);
     else if (type === 'status') job.onStatus?.(event.data.text);
@@ -51,7 +59,25 @@ function startWorker() {
 
 function abortError() { return new DOMException('Render cancelled', 'AbortError'); }
 
-export async function renderSpectral(imageBitmap, params, { quality = 'preview', signal, onProgress, onStatus } = {}) {
+function stopAll(error) {
+  for (const job of jobs.values()) job.reject(error);
+  jobs.clear(); worker?.terminate(); worker = null; workerImage = null;
+}
+
+/** Stops the worker and everything in flight (another engine was chosen). */
+export function dispose() { stopAll(abortError()); }
+
+/** Downloads and compiles the engine plus the data `params` need, so the first render starts at once. */
+export function warm(params) {
+  if (!worker) startWorker();
+  const jobId = nextId++;
+  return new Promise((resolve, reject) => {
+    jobs.set(jobId, { resolve, reject });
+    worker.postMessage({ type: 'warm', jobId, params });
+  });
+}
+
+export async function render(imageBitmap, params, { quality = 'preview', signal, onProgress, onStatus } = {}) {
   if (signal?.aborted) throw abortError();
   if (!worker) startWorker();
   if (!imageIds.has(imageBitmap)) imageIds.set(imageBitmap, nextId++);
@@ -68,8 +94,7 @@ export async function renderSpectral(imageBitmap, params, { quality = 'preview',
     signal?.addEventListener('abort', () => {
       if (!jobs.has(jobId)) return;
       // Stop everything in flight: terminate and let the next call start a fresh worker.
-      for (const job of jobs.values()) job.reject(abortError());
-      jobs.clear(); worker?.terminate(); worker = null; workerImage = null;
+      stopAll(abortError());
     }, { once: true });
   });
 }

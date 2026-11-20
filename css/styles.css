@@ -308,8 +308,32 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .mode-row .mode-switch button { padding:0 6px; font-size:var(--fs-md); }
 .mode-row + .control-tabs { margin-top:12px; }
 
-/* Advanced (spectral) panel */
+/* Advanced panel */
 .advanced-panel { position:relative; display:none; flex:1; min-height:0; flex-direction:column; }
+/* Engine bar: dropdown + About + load status */
+.engine-bar { flex:none; padding:14px 20px 10px; border-bottom:1px solid var(--line); }
+.engine-label { display:block; margin-bottom:6px; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
+.engine-row { display:flex; gap:8px; }
+.engine-row select { flex:1; min-width:0; min-height:40px; padding:0 10px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); font-weight:600; }
+.engine-desc { margin:6px 0 0; font-size:var(--fs-sm); color:var(--text-muted); }
+.engine-status { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:6px; font-size:var(--fs-sm); color:var(--text-2); }
+.engine-status[data-state=idle] { display:none; }
+.engine-status[data-state=ready] { color:var(--ok); }
+.engine-status[data-state=failed] { color:var(--accent); }
+.engine-status .text-button { padding:2px 0; font-size:var(--fs-sm); font-weight:600; }
+.engine-progress { flex-basis:100%; height:4px; border-radius:2px; background:var(--control); overflow:hidden; }
+.engine-progress span { display:block; width:0; height:100%; background:var(--accent); transition:width .2s ease; }
+.advanced-panel.is-loading .adv-footer button { opacity:.5; pointer-events:none; }
+/* About this engine */
+.engine-about { max-height:calc(100dvh - 48px); overflow-y:auto; }
+.engine-facts { display:grid; grid-template-columns:auto 1fr; gap:6px 14px; margin:14px 0 0; font-size:var(--fs-md); }
+.engine-facts dt { color:var(--text-muted); }
+.engine-facts dd { margin:0; color:var(--text-2); overflow-wrap:anywhere; }
+.engine-facts code { font-size:var(--fs-sm); }
+.engine-sub { margin:18px 0 6px; font-size:var(--fs-md); font-weight:600; color:var(--text-2); }
+.engine-list { margin:0; padding-left:18px; font-size:var(--fs-md); line-height:1.5; color:var(--text-2); }
+.engine-list li + li { margin-top:4px; }
+.engine-role,.engine-licence { color:var(--text-muted); font-size:var(--fs-sm); }
 body.is-advanced .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
 body.is-advanced .control-tabs,body.is-advanced .panel-body { display:none; }
 body.is-advanced .advanced-panel { display:flex; }
@@ -524,6 +548,9 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .adv-footer { padding:8px 16px; }
   .adv-credit { padding:0 16px 16px; }
   .adv-note { margin:0 16px 6px; }
+  .engine-bar { padding:12px 16px 10px; }
+  .engine-row select { min-height:46px; border-radius:12px; background:var(--surface); font-size:15px; }
+  .engine-row .icon-button { width:46px; height:46px; }
 
   /* Render status floats on the print; hold-to-compare hidden in Advanced */
   body.is-advanced .view-pill { left:10px; right:10px; bottom:10px; justify-content:space-between; }

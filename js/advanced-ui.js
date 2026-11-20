@@ -1,17 +1,17 @@
-// Builds and syncs the Advanced (spectral) panel from js/spectral/params.js.
-import { sections, controlByPath, optionLabel, formatValue, sliderValue, isChanged, sectionSummary } from './spectral/params.js';
+// Builds and syncs the Advanced panel from the active engine's `sections`
+// (js/engines/<id>/index.js), so each engine shows its own controls.
 
 const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
 export const controlId = path => `adv-${path.replace(/[^a-z0-9]+/gi, '-')}`;
 const CHEVRON = '<svg class="adv-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
-function controlHtml(control) {
+function controlHtml(control, engine) {
   const id = controlId(control.path);
   const depends = control.dependsOn ? ` data-depends="${control.dependsOn}"` : '';
   const hint = control.hint ? `<p class="adv-hint" id="${id}-hint">${escapeHtml(control.hint)}</p>` : '';
   const described = control.hint ? ` aria-describedby="${id}-hint"` : '';
   if (control.kind === 'select') {
-    return `<div class="adv-control adv-select"${depends}><label for="${id}">${escapeHtml(control.label)}</label><select id="${id}" data-path="${control.path}"${described}>${control.options.map(option => `<option value="${escapeHtml(option)}">${escapeHtml(optionLabel(option))}</option>`).join('')}</select>${hint}</div>`;
+    return `<div class="adv-control adv-select"${depends}><label for="${id}">${escapeHtml(control.label)}</label><select id="${id}" data-path="${control.path}"${described}>${control.options.map(option => `<option value="${escapeHtml(option)}">${escapeHtml(engine.optionLabel(option))}</option>`).join('')}</select>${hint}</div>`;
   }
   if (control.kind === 'bool') {
     const header = control.role === 'effect-header';
@@ -27,15 +27,19 @@ function controlHtml(control) {
   </div>`;
 }
 
-export function buildAdvanced({ pipeline, container }) {
+/** Renders the pipeline steps and sections of `engine`; clears them when `engine` is null. */
+export function buildAdvanced({ pipeline, container }, engine) {
+  if (!engine) { pipeline.innerHTML = ''; container.innerHTML = ''; return; }
+  const { sections } = engine;
   pipeline.innerHTML = sections.map((section, index) => `<button class="pipeline-step" type="button" data-step="${section.id}" aria-pressed="false">${section.step}<span class="pipeline-dot" aria-hidden="true"></span></button>${index < sections.length - 1 ? '<span class="pipeline-arrow" aria-hidden="true">›</span>' : ''}`).join('');
   container.innerHTML = sections.map(section => `<section class="adv-section" data-section="${section.id}" aria-labelledby="adv-head-${section.id}">
     <h3 class="adv-heading"><button class="adv-head" id="adv-head-${section.id}" type="button" aria-expanded="false" aria-controls="adv-body-${section.id}" data-toggle="${section.id}">${CHEVRON}<span class="adv-head-text"><span class="adv-title">${escapeHtml(section.title)}</span><span class="adv-summary" id="adv-summary-${section.id}"></span></span><span class="adv-edited" hidden>Edited</span></button></h3>
-    <div class="adv-body" id="adv-body-${section.id}" role="group" aria-label="${escapeHtml(section.title)}">${section.controls.map(controlHtml).join('')}</div>
+    <div class="adv-body" id="adv-body-${section.id}" role="group" aria-label="${escapeHtml(section.title)}">${section.controls.map(control => controlHtml(control, engine)).join('')}</div>
   </section>`).join('');
 }
 
-export function syncAdvanced({ pipeline, container }, params, { open, current, mobile }) {
+export function syncAdvanced({ pipeline, container }, engine, params, { open, current, mobile }) {
+  const { sections, controlByPath, isChanged, sectionSummary, sliderValue, formatValue } = engine;
   for (const section of sections) {
     const root = container.querySelector(`[data-section="${section.id}"]`);
     const isOpen = mobile ? section.id === current : open.has(section.id);
@@ -44,7 +48,7 @@ export function syncAdvanced({ pipeline, container }, params, { open, current, m
     root.querySelector('.adv-head').setAttribute('aria-expanded', isOpen);
     root.querySelector('.adv-body').hidden = !isOpen;
     root.querySelector('.adv-edited').hidden = !edited;
-    root.querySelector('.adv-summary').textContent = sectionSummary[section.id](params);
+    root.querySelector('.adv-summary').textContent = sectionSummary[section.id]?.(params) ?? '';
     const step = pipeline.querySelector(`[data-step="${section.id}"]`);
     step.setAttribute('aria-pressed', mobile ? section.id === current : open.has(section.id));
     step.classList.toggle('is-edited', edited);
@@ -65,4 +69,31 @@ export function syncAdvanced({ pipeline, container }, params, { open, current, m
     }
   });
   container.querySelectorAll('[data-depends]').forEach(element => { element.hidden = !params[element.dataset.depends]; });
+  engine.ui?.sync?.(params, path => container.querySelector(`[data-path="${path}"]`), container);
+}
+
+// ---------- Engine "About" panel (from engines/<id>/credits.json) ----------
+const safeUrl = value => { try { const url = new URL(value, location.href); return ['https:', 'http:'].includes(url.protocol) ? url.href : null; } catch { return null; } };
+const link = (text, href) => { const url = safeUrl(href); return url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}<span class="visually-hidden"> (opens in a new tab)</span></a>` : escapeHtml(text); };
+
+/** HTML for the About-this-engine dialog body. `entry` is the registry entry, `credits` its credits.json. */
+export function engineAboutHtml(entry, credits) {
+  const licenceUrl = credits.licence?.file ? new URL(credits.licence.file, entry.folder).href : credits.licence?.url;
+  const people = (credits.credits || []).map(item => `<li>${link(item.name, item.url)}${item.by ? ` · ${escapeHtml(item.by)}` : ''}${item.licence ? ` <span class="engine-licence">${escapeHtml(item.licence)}</span>` : ''}${item.role ? `<br><span class="engine-role">${escapeHtml(item.role)}</span>` : ''}</li>`).join('');
+  const changes = (credits.changes || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+  return `<p class="eyebrow">About this engine</p><h2 id="engineAboutTitle">${escapeHtml(credits.name || entry.label)}</h2>
+    <p>${escapeHtml(credits.summary || entry.description)}</p>
+    <dl class="engine-facts">
+      <dt>Licence</dt><dd>${link(credits.licence?.name || entry.licence, licenceUrl)}</dd>
+      <dt>Version</dt><dd>${escapeHtml(credits.version || '—')}</dd>
+      <dt>Source</dt><dd>${credits.source?.upstream ? link('Original project', credits.source.upstream) : ''}${credits.source?.local ? ` · our copy in <code>${escapeHtml(credits.source.local)}</code>` : ''}</dd>
+      <dt>Download</dt><dd>${escapeHtml(entry.approxDownload)}, only when you use this engine</dd>
+    </dl>
+    ${people ? `<h3 class="engine-sub">Credits</h3><ul class="engine-list">${people}</ul>` : ''}
+    ${changes ? `<h3 class="engine-sub">Changed by PhotoKamo</h3><ul class="engine-list">${changes}</ul>` : ''}`;
+}
+
+/** Credit line under the controls, from the registry entry's `credit` parts. */
+export function creditHtml(entry) {
+  return (entry.credit || []).map(part => typeof part === 'string' ? escapeHtml(part) : link(part.text, part.href)).join('');
 }

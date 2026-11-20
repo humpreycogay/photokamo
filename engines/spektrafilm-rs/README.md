@@ -36,7 +36,7 @@ bash engines/spektrafilm-rs/tools/build.sh
 
 ## How PhotoKamo uses it
 
-`js/spectral/worker.js` runs two commands:
+`js/engines/spektrafilm-rs/worker.js` runs two commands (the engine is loaded only when Advanced mode needs it; see `js/engines/registry.js`):
 
 - `lut … --size 33` for previews. The LUT is applied to a 1280 px copy of the photo. Colour matches the full
   model (mean difference 0.16/255 in testing); grain, halation and blur are not shown.
@@ -51,4 +51,4 @@ Measured on a desktop CPU, single-threaded WebAssembly: 1280 px full render abou
 - spektrafilm-rs: the Rust port, GPL-3.0.
 - Spectral upsampling LUT (`hanatos2025`): Johannes Hanatos ([vkdt](https://github.com/hanatos/vkdt)).
 - WASI runtime in the browser: [@bjorn3/browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim)
-  0.4.1, MIT OR Apache-2.0 (`js/spectral/vendor/`).
+  0.4.1, MIT OR Apache-2.0 (`js/engines/spektrafilm-rs/vendor/`).

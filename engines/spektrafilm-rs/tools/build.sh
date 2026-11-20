@@ -13,7 +13,7 @@ OUT="$HERE/runtime"
 # Cargo output stays outside the repo (target/ is also gitignored).
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/photokamo-spektrafilm-rs-target}"
 
-# Film stocks the Advanced panel offers (keep in sync with js/spectral/params.js).
+# Film stocks the Advanced panel offers (keep in sync with js/engines/spektrafilm-rs/params.js).
 FILMS="fujifilm_c200 fujifilm_pro_400h fujifilm_xtra_400 fujifilm_provia_100f fujifilm_velvia_100
 kodak_ektachrome_100 kodak_kodachrome_64 kodak_ektar_100 kodak_gold_200 kodak_portra_160 kodak_portra_400
 kodak_portra_800 kodak_portra_800_push1 kodak_portra_800_push2 kodak_ultramax_400 kodak_verita_200d

@@ -1,8 +1,9 @@
 import { presets, frames, adjustmentSections, defaultAdjustments } from './presets.js';
 import { renderImage, frameCanvas } from './renderer.js';
-import { renderSpectral, engineInfo, fullRenderSize } from './spectral/engine.js';
-import { sections as advancedSections, controlByPath, defaultParams, stockSummary, isSlideFilm, targetPrint, scansFilm, hasSpatialEffects } from './spectral/params.js';
-import { buildAdvanced, syncAdvanced } from './advanced-ui.js';
+// Advanced engines are NOT imported here: registry.js is a tiny list, and an engine's code,
+// worker and data load only when Advanced mode needs it (activateEngine).
+import { engines, defaultEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
+import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -21,7 +22,11 @@ const elements = {
   capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast'),
   advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
   renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'),
-  renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar')
+  renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
+  engineSelect: $('#engineSelect'), engineDesc: $('#engineDesc'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
+  engineProgress: $('#engineProgress'), engineProgressBar: $('#engineProgressBar'), engineRetry: $('#engineRetry'),
+  engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
+  advCredit: $('#advCredit'), advNote: $('#advNote')
 };
 
 // Look state: the effective value of each adjustment is
@@ -31,9 +36,9 @@ const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
   filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
-  // Advanced (spectral) mode
-  mode: 'simple', advanced: defaultParams(), myLookId: null, imageBitmap: null,
-  advOpen: new Set(advancedSections.filter(section => section.openByDefault).map(section => section.id)), advStep: 'profiles',
+  // Advanced mode: the selected engine and each engine's own settings ({ [engineId]: params }).
+  mode: 'simple', engine: defaultEngineId, engineParams: {}, myLookId: null, imageBitmap: null,
+  advOpen: new Set(), advStep: null,
   renderQuality: 'preview', renderAbort: null,
   undo: [], redo: [], editedCanvas: null, originalCanvas: null, originalKey: '', renderToken: 0
 };
@@ -75,11 +80,12 @@ const editCount = () => Object.keys(state.edits).length;
 
 // ---------- History ----------
 const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
-function snapshot() { return { presetId: state.presetId, strength: state.strength, edits: { ...state.edits }, frame: state.frame, mode: state.mode, advanced: cloneParams(state.advanced), myLookId: state.myLookId }; }
+const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id, params]) => [id, cloneParams(params)]));
+function snapshot() { return { presetId: state.presetId, strength: state.strength, edits: { ...state.edits }, frame: state.frame, mode: state.mode, engine: state.engine, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }; }
 function restore(value) {
   state.presetId = value.presetId; state.strength = value.strength; state.edits = { ...value.edits }; state.frame = value.frame;
-  state.mode = value.mode; state.advanced = cloneParams(value.advanced); state.myLookId = value.myLookId;
-  syncControls(); scheduleRender();
+  state.mode = value.mode; state.engine = value.engine; state.engineParams = cloneEngineParams(value.engineParams); state.myLookId = value.myLookId;
+  syncControls(); scheduleRender(); // syncControls loads the engine if Advanced needs a different one
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function commit(previous = snapshot()) { if (!sameSnapshot(previous, snapshot())) { state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons(); } }
@@ -107,17 +113,10 @@ function toggleFavorite() {
   syncLooks();
 }
 
-// ---------- My looks (saved Advanced settings) ----------
-function normalizeParams(params) {
-  const base = defaultParams();
-  for (const key of Object.keys(base)) {
-    if (!params || !(key in params) || typeof params[key] !== typeof base[key]) continue;
-    const control = controlByPath[key];
-    if (control.kind === 'select' && !control.options.includes(params[key])) continue; // stock no longer offered
-    base[key] = Array.isArray(params[key]) ? [...params[key]] : params[key];
-  }
-  return base;
-}
+// ---------- My looks (saved Advanced settings, per engine) ----------
+// A look is { id, name, engine, params, thumb }. Looks saved before engines existed have no
+// `engine`: they belong to spektrafilm-rs. Params are normalized by the engine when picked.
+const lookEngine = look => (engineById(look.engine) ? look.engine : defaultEngineId);
 // Small square JPEG of the current preview, stored with a saved look as its thumbnail.
 function previewThumbnail() {
   if (!state.editedCanvas) return null;
@@ -130,7 +129,7 @@ function previewThumbnail() {
 function loadMyLooks() {
   try {
     const value = JSON.parse(localStorage.getItem(MY_LOOKS_KEY) || '[]');
-    return Array.isArray(value) ? value.filter(look => look && typeof look.id === 'string' && typeof look.name === 'string' && look.params).map(look => ({ ...look, params: normalizeParams(look.params) })) : [];
+    return Array.isArray(value) ? value.filter(look => look && typeof look.id === 'string' && typeof look.name === 'string' && look.params && typeof look.params === 'object').map(look => ({ ...look, engine: lookEngine(look) })) : [];
   } catch { return []; }
 }
 let myLooks = loadMyLooks();
@@ -150,15 +149,19 @@ function buildMyLookTiles() {
     elements.lookGrid.prepend(tile);
   }
 }
-function pickMyLook(id) {
+async function pickMyLook(id) {
   const look = myLooks.find(item => item.id === id); if (!look) return;
-  change(() => { state.mode = 'advanced'; state.advanced = normalizeParams(look.params); state.myLookId = id; });
+  let module;
+  try { module = await loadEngine(look.engine); }
+  catch (error) { console.error(error); toast(`The ${engineById(look.engine).label} engine could not be loaded. Check your connection and try again.`); return; }
+  change(() => { state.mode = 'advanced'; state.engine = look.engine; state.engineParams[look.engine] = module.normalizeParams(look.params); state.myLookId = id; });
 }
 function saveAsMyLook() {
+  const params = advParams(); if (!params) return;
   const suggested = `My look ${myLooks.length + 1}`;
   const name = prompt('Name this look', currentMyLook()?.name || suggested);
   if (name === null) return;
-  const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, params: cloneParams(state.advanced), thumb: previewThumbnail() };
+  const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, engine: state.engine, params: cloneParams(params), thumb: previewThumbnail() };
   myLooks = [...myLooks, look];
   const stored = saveMyLooks();
   buildMyLookTiles();
@@ -204,11 +207,12 @@ function syncLooks() {
   elements.favorite.hidden = advanced;
   if (advanced) {
     const mine = currentMyLook();
-    const edited = mine && JSON.stringify(mine.params) !== JSON.stringify(state.advanced);
-    elements.lookGroup.textContent = 'Advanced · Spectral';
+    const module = activeModule(); const params = advParams();
+    const edited = mine && module && JSON.stringify(module.normalizeParams(mine.params)) !== JSON.stringify(params);
+    elements.lookGroup.textContent = `Advanced · ${engineById(state.engine).label}`;
     elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Advanced film edit';
     elements.photoLookBadge.textContent = elements.lookName.textContent;
-    elements.lookDesc.textContent = stockSummary(state.advanced);
+    elements.lookDesc.textContent = module ? module.stockSummary(params) : 'Loading the film engine…';
     elements.strength.disabled = true;
     elements.strengthOutput.value = '—';
     return;
@@ -402,52 +406,185 @@ function buildFrames() {
   elements.frameGrid.addEventListener('click', event => { const card = event.target.closest('[data-frame]'); if (card) change(() => { state.frame = card.dataset.frame; }); });
 }
 
-// ---------- Advanced (spectral) panel ----------
+// ---------- Advanced engines: load on selection ----------
+// activeEngine is the loaded module of engine.id; it only counts while it is state.engine.
+const engine = { id: null, module: null, builtFor: null, status: 'idle', error: null, load: null, unsubscribe: null };
+const activeModule = () => (engine.module && engine.id === state.engine ? engine.module : null);
+/** The selected engine's settings (created from its defaults on first use); null until it is loaded. */
+function advParams() {
+  const module = activeModule(); if (!module) return null;
+  return (state.engineParams[state.engine] ||= module.defaultParams());
+}
 const advancedRoots = { pipeline: elements.advPipeline, container: elements.advSections };
+
+/** Loads state.engine (or `id`) if it isn't the active one; stops the previous engine's worker. */
+function activateEngine(id = state.engine) {
+  if (engine.module && engine.id === id) return Promise.resolve(engine.module);
+  if (engine.load?.id === id) return engine.load.promise;
+  if (engine.module) {
+    // Another engine was chosen: stop the old one (its worker can hold hundreds of MB).
+    if (state.renderAbort) cancelFullRender();
+    engine.unsubscribe?.(); engine.module.dispose?.();
+    engine.module = null; engine.id = null; engine.unsubscribe = null;
+  }
+  if (engine.builtFor !== id) { buildAdvanced(advancedRoots, null); engine.builtFor = null; }
+  setEngineStatus('loading');
+  const promise = loadEngine(id).then(module => {
+    if (state.engine !== id) return module; // a different engine was chosen meanwhile
+    engine.module = module; engine.id = id;
+    engine.unsubscribe = module.onDownload?.(showEngineDownload) || null;
+    state.engineParams[id] = module.normalizeParams(state.engineParams[id]);
+    buildEnginePanel();
+    warmEngine();
+    syncControls();
+    if (state.mode === 'advanced') scheduleRender();
+    return module;
+  }, error => {
+    if (state.engine === id) setEngineStatus('failed', error);
+    throw error;
+  }).finally(() => { if (engine.load?.promise === promise) engine.load = null; });
+  engine.load = { id, promise };
+  return promise;
+}
+/** Starts the download + compile of the active engine so the first render doesn't wait for it. */
+function warmEngine() {
+  const module = activeModule(); if (!module?.warm) { setEngineStatus('ready'); return; }
+  setEngineStatus('preparing');
+  module.warm(cloneParams(advParams())).then(
+    () => { if (activeModule() === module) setEngineStatus('ready'); },
+    error => {
+      if (activeModule() !== module) return;
+      if (error?.name === 'AbortError') setEngineStatus('idle'); // a cancelled render restarted the worker
+      else { console.error(error); setEngineStatus('failed', error); }
+    });
+}
+function buildEnginePanel() {
+  const module = activeModule(); if (!module) return;
+  buildAdvanced(advancedRoots, module);
+  engine.builtFor = state.engine;
+  state.advOpen = new Set(module.sections.filter(section => section.openByDefault).map(section => section.id));
+  state.advStep = module.firstStep || module.sections[0].id;
+  elements.advCredit.innerHTML = creditHtml(engineById(state.engine));
+  elements.advNote.textContent = module.spatialNote || '';
+}
+
+const MB = bytes => (bytes / 1048576).toFixed(1);
+function setEngineStatus(status, error = null) {
+  engine.status = status; engine.error = error;
+  if (status !== 'preparing') { elements.engineProgress.hidden = true; elements.engineProgressBar.style.width = '0%'; }
+  syncEngineBar();
+}
+function showEngineDownload({ loaded, total, done }) {
+  if (engine.status === 'ready' || engine.status === 'failed') return;
+  if (engine.status !== 'preparing') { engine.status = 'preparing'; syncEngineBar(); }
+  if (done) { elements.engineStatusText.textContent = 'Preparing the engine…'; elements.engineProgress.hidden = true; return; }
+  elements.engineStatusText.textContent = total ? `Downloading the engine… ${MB(loaded)} of ${MB(total)} MB` : `Downloading the engine… ${MB(loaded)} MB`;
+  elements.engineProgress.hidden = !total;
+  if (total) elements.engineProgressBar.style.width = `${Math.min(100, Math.round(loaded / total * 100))}%`;
+}
+function syncEngineBar() {
+  const entry = engineById(state.engine);
+  elements.engineSelect.value = state.engine;
+  elements.engineDesc.textContent = `${entry.description} · ${entry.licence}`;
+  const text = {
+    idle: '',
+    loading: `Loading ${entry.label}…`,
+    preparing: 'Preparing the engine…',
+    ready: 'Ready · runs on this device',
+    failed: `${entry.label} could not be loaded. Check your connection and try again.`
+  }[engine.status];
+  elements.engineStatus.dataset.state = engine.status;
+  if (engine.status !== 'preparing' || !elements.engineStatusText.textContent.startsWith('Downloading')) elements.engineStatusText.textContent = text;
+  elements.engineRetry.hidden = engine.status !== 'failed';
+}
+/** Engine dropdown: keeps each engine's own settings and carries over the shared ones (film, exposure, grain, halation). */
+async function switchEngine(id) {
+  if (id === state.engine || !engineById(id)) return;
+  const previous = snapshot();
+  const fromModule = activeModule(); const fromParams = advParams();
+  state.engine = id; state.myLookId = null;
+  syncControls(); // shows the loading state and starts activateEngine
+  let module;
+  try { module = await activateEngine(id); }
+  catch { commit(previous); return; }
+  if (state.engine !== id) return;
+  if (fromModule?.shared && module.shared && fromParams) {
+    const params = advParams();
+    for (const [key, fromPath] of Object.entries(fromModule.shared)) {
+      const toPath = module.shared[key]; const control = toPath && module.controlByPath[toPath];
+      const value = fromParams[fromPath];
+      if (!control || typeof value !== typeof params[toPath]) continue;
+      if (control.kind === 'select' && !control.options.includes(value)) continue;
+      if (control.kind === 'float' && (value < control.min || value > control.max)) continue;
+      params[toPath] = value;
+    }
+  }
+  commit(previous); syncControls(); scheduleRender();
+}
+async function openEngineAbout() {
+  const entry = engineById(state.engine);
+  elements.engineAboutBody.innerHTML = `<p class="eyebrow">About this engine</p><h2 id="engineAboutTitle">${entry.label}</h2><p>Loading credits…</p>`;
+  elements.engineAboutDialog.showModal();
+  try { elements.engineAboutBody.innerHTML = engineAboutHtml(entry, await loadCredits(entry.id)); }
+  catch { elements.engineAboutBody.querySelector('p:last-child').textContent = 'The credits could not be loaded. Check your connection and try again.'; }
+}
+
+// ---------- Advanced panel ----------
 function syncAdvancedPanel() {
-  syncAdvanced(advancedRoots, state.advanced, { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches });
-  // Slide film has no negative to print: it is always scanned directly.
-  const slide = isSlideFilm(state.advanced.film);
-  const scanSwitch = $('#adv-io-scan-film');
-  scanSwitch.setAttribute('aria-checked', scansFilm(state.advanced));
-  scanSwitch.disabled = slide;
-  $('#adv-print').disabled = scansFilm(state.advanced);
-  $('#adv-film-hint').textContent = slide ? 'Slide film is scanned directly, there is no print. Choose a negative film to print on paper.' : controlByPath.film.hint;
+  syncEngineBar();
+  const module = activeModule();
+  if (module && engine.builtFor === state.engine) {
+    syncAdvanced(advancedRoots, module, advParams(), { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches });
+  }
+  document.querySelector('.advanced-panel').classList.toggle('is-loading', !module);
   syncAdvancedNote();
 }
 function syncAdvancedNote() {
-  $('#advNote').hidden = !(state.mode === 'advanced' && state.renderQuality !== 'full' && hasSpatialEffects(state.advanced));
+  const module = activeModule();
+  elements.advNote.hidden = !(state.mode === 'advanced' && module && state.renderQuality !== 'full' && module.hasSpatialEffects(advParams()));
 }
 function setAdvancedValue(path, raw) {
-  const control = controlByPath[path];
-  if (control.kind === 'vec2') { const value = [...state.advanced[path]]; value[control.index] = Number(raw); state.advanced[path] = value; }
-  else state.advanced[path] = control.kind === 'float' ? Number(raw) : raw;
+  const module = activeModule(); const params = advParams(); if (!module) return;
+  const control = module.controlByPath[path];
+  let value = raw;
+  if (control.kind === 'vec2') { value = [...params[path]]; value[control.index] = Number(raw); }
+  else if (control.kind === 'float') value = Number(raw);
+  module.ui?.beforeChange?.(params, path, value);
+  params[path] = value;
 }
 function resetAdvanced(path) {
-  const fallback = controlByPath[path].default;
-  change(() => { state.advanced[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
+  const module = activeModule(); if (!module) return;
+  const fallback = module.controlByPath[path].default;
+  change(() => { advParams()[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
 }
 function buildAdvancedPanel() {
-  buildAdvanced(advancedRoots);
+  elements.engineSelect.innerHTML = engines.map(entry => `<option value="${entry.id}">${entry.label}</option>`).join('');
+  elements.engineSelect.addEventListener('change', () => switchEngine(elements.engineSelect.value));
+  elements.engineRetry.addEventListener('click', () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); });
+  elements.engineAboutButton.addEventListener('click', openEngineAbout);
+  $('#engineAboutClose').addEventListener('click', () => elements.engineAboutDialog.close());
+  elements.engineAboutDialog.addEventListener('click', event => { if (event.target === elements.engineAboutDialog) elements.engineAboutDialog.close(); });
+  const licences = $('#licenceList');
+  for (const entry of engines) {
+    const item = document.createElement('li');
+    const anchor = document.createElement('a');
+    anchor.href = new URL('LICENSE', entry.folder).href; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer';
+    anchor.innerHTML = `${entry.licence}<span class="visually-hidden"> (opens in a new tab)</span>`;
+    item.append(`${entry.label} film engine · `, anchor);
+    licences.append(item);
+  }
   const container = elements.advSections;
   container.addEventListener('click', event => {
     const head = event.target.closest('[data-toggle]');
     if (head) { const id = head.dataset.toggle; if (state.advOpen.has(id)) state.advOpen.delete(id); else state.advOpen.add(id); syncAdvancedPanel(); return; }
     const toggle = event.target.closest('[role=switch][data-path]');
-    if (toggle) { change(() => { state.advanced[toggle.dataset.path] = !state.advanced[toggle.dataset.path]; }); return; }
+    if (toggle && !toggle.disabled) { change(() => { setAdvancedValue(toggle.dataset.path, !advParams()[toggle.dataset.path]); }); return; }
     const reset = event.target.closest('[data-reset]');
     if (reset) resetAdvanced(reset.dataset.reset);
   });
   container.addEventListener('change', event => {
     const select = event.target.closest('select[data-path]'); if (!select) return;
-    change(() => {
-      if (select.dataset.path === 'film') {
-        const previousTarget = targetPrint(state.advanced.film);
-        const nextTarget = targetPrint(select.value);
-        if (nextTarget && (!previousTarget || state.advanced.print === previousTarget)) state.advanced.print = nextTarget;
-      }
-      setAdvancedValue(select.dataset.path, select.value);
-    });
+    change(() => { setAdvancedValue(select.dataset.path, select.value); });
   });
   bindHistorySlider(container, 'input[type=range][data-path]', input => { setAdvancedValue(input.dataset.path, input.value); syncAdvancedPanel(); syncLooks(); scheduleRender(); });
   container.addEventListener('dblclick', event => { const input = event.target.closest('input[type=range][data-path]'); if (input) resetAdvanced(input.dataset.path); });
@@ -458,7 +595,7 @@ function buildAdvancedPanel() {
     syncAdvancedPanel();
     if (!mobileQuery.matches) container.querySelector(`[data-section="${step.dataset.step}"]`).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
-  $('#advResetAll').addEventListener('click', () => change(() => { state.advanced = defaultParams(); }));
+  $('#advResetAll').addEventListener('click', () => { const module = activeModule(); if (module) change(() => { state.engineParams[state.engine] = module.defaultParams(); }); });
   $('#saveMyLook').addEventListener('click', saveAsMyLook);
 }
 
@@ -469,8 +606,11 @@ function setMode(mode) {
 }
 function syncMode() {
   const advanced = state.mode === 'advanced';
+  // Advanced needs its engine: load it now (download + compile start right away, before any render).
+  if (advanced) activateEngine().catch(error => console.error(error));
+  const module = activeModule();
   document.body.classList.toggle('is-advanced', advanced);
-  document.body.classList.toggle('no-paper', advanced && scansFilm(state.advanced));
+  document.body.classList.toggle('no-paper', Boolean(advanced && module && module.showsPaper && !module.showsPaper(advParams())));
   document.querySelectorAll('.mode-switch [data-mode]').forEach(button => {
     const checked = button.dataset.mode === state.mode;
     button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1;
@@ -528,7 +668,7 @@ function drawPreview() {
   ctx.drawImage(source, 0, 0, elements.canvas.width, elements.canvas.height);
 }
 
-// ---------- Advanced rendering (Web Worker via js/spectral/engine.js) ----------
+// ---------- Advanced rendering (the active engine's render(), in its own Web Worker) ----------
 let advancedTimer;
 let advancedBusy = false;
 let advancedDirty = false;
@@ -544,12 +684,15 @@ function scheduleAdvancedRender(delay = ADVANCED_DEBOUNCE) {
   advancedTimer = setTimeout(runAdvancedPreview, delay);
 }
 async function runAdvancedPreview() {
+  const module = activeModule();
+  if (!module) return; // the engine is still loading; activateEngine renders once it's ready
   if (advancedBusy) { advancedDirty = true; return; }
   advancedBusy = true; advancedDirty = false;
-  const imageId = state.imageId; const frame = state.frame;
+  const imageId = state.imageId; const frame = state.frame; const engineId = state.engine;
   try {
-    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'preview', onStatus: showPreviewStatus });
-    if (imageId === state.imageId && state.mode === 'advanced' && state.renderQuality === 'preview') { presentAdvanced(bitmap, frame); syncRenderStatus(); }
+    const bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
+    if (engine.status === 'idle' || engine.status === 'preparing') setEngineStatus('ready');
+    if (imageId === state.imageId && engineId === state.engine && state.mode === 'advanced' && state.renderQuality === 'preview') { presentAdvanced(bitmap, frame); syncRenderStatus(); }
   } catch (error) {
     if (error?.name !== 'AbortError') { console.error(error); toast('The film preview could not be rendered. Check your connection and try again.'); }
   } finally {
@@ -565,8 +708,9 @@ function showPreviewStatus(text) {
 }
 function presentAdvanced(bitmap, frame) {
   state.editedCanvas = frameCanvas(bitmap, frame);
-  const originalKey = `${frame}|${engineInfo.previewEdge}`;
-  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, engineInfo.previewEdge); state.originalKey = originalKey; }
+  const edge = activeModule()?.engineInfo.previewEdge ?? PREVIEW_EDGE;
+  const originalKey = `${frame}|${edge}`;
+  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
   elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
   applyZoom();
   drawPreview();
@@ -576,18 +720,20 @@ function setRenderProgress(value) {
   elements.renderProgressBar.style.width = `${percent}%`;
   if (state.renderQuality === 'rendering') elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
 }
+const fullRenderKey = () => JSON.stringify([state.imageId, state.engine, advParams()]);
 async function renderFullQuality() {
-  if (state.mode !== 'advanced' || !state.image) return;
+  const module = activeModule();
+  if (state.mode !== 'advanced' || !state.image || !module) return;
   clearTimeout(advancedTimer);
   const controller = new AbortController();
   state.renderAbort = controller; state.renderQuality = 'rendering';
   syncRenderStatus(); setRenderProgress(0);
-  const frame = state.frame;
+  const frame = state.frame; const key = fullRenderKey();
   try {
-    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
+    const bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
     if (state.renderAbort !== controller) return;
     state.renderAbort = null; state.renderQuality = 'full';
-    state.fullRender = { key: JSON.stringify([state.imageId, state.advanced]), bitmap };
+    state.fullRender = { key, bitmap };
     presentAdvanced(bitmap, frame); syncRenderStatus();
   } catch (error) {
     if (state.renderAbort === controller) { state.renderAbort = null; state.renderQuality = 'preview'; syncRenderStatus(); }
@@ -609,8 +755,11 @@ function syncRenderStatus() {
   elements.renderProgress.hidden = !rendering;
   syncAdvancedNote();
   if (rendering) return;
-  elements.renderText.textContent = full ? 'Full quality' : engineInfo.previewLabel;
-  elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${engineInfo.previewDetail}`;
+  const info = activeModule()?.engineInfo;
+  elements.renderFull.disabled = !info;
+  if (!info) { elements.renderText.textContent = 'Loading the film engine…'; elements.renderDetail.textContent = ''; return; }
+  elements.renderText.textContent = full ? 'Full quality' : info.previewLabel;
+  elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${info.previewDetail}`;
 }
 function applyZoom() {
   const actual = state.zoom === '100';
@@ -760,7 +909,8 @@ const canShareFiles = (() => {
 
 function exportDimensions() {
   const { naturalWidth: width, naturalHeight: height } = state.image;
-  return state.mode === 'advanced' ? fullRenderSize(width, height) : { width, height, capped: false };
+  const module = activeModule();
+  return state.mode === 'advanced' && module ? module.fullRenderSize(width, height) : { width, height, capped: false };
 }
 function exportEdge(size = state.exportSize) {
   const { width, height } = exportDimensions();
@@ -772,9 +922,10 @@ function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportE
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
 async function renderAdvancedExport(edge) {
   const frame = state.frame;
-  const key = JSON.stringify([state.imageId, state.advanced]);
+  const module = await activateEngine();
+  const key = fullRenderKey();
   const full = state.fullRender?.key === key ? state.fullRender.bitmap
-    : await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
+    : await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
   if (state.fullRender?.key !== key) state.fullRender = { key, bitmap: full };
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   if (scale === 1) return frameCanvas(full, frame);
@@ -788,7 +939,8 @@ function exportSummary() {
   const frameName = state.frame === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame).name} frame`;
   if (state.mode === 'advanced') {
     const look = currentMyLook()?.name || 'Advanced';
-    return [look, stockSummary(state.advanced), frameName].join(' · ');
+    const module = activeModule();
+    return [look, module ? module.stockSummary(advParams()) : engineById(state.engine).label, frameName].join(' · ');
   }
   const preset = currentPreset();
   const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;

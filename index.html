@@ -121,7 +121,7 @@
       <div class="mode-row">
         <div class="mode-switch" role="radiogroup" aria-label="Editor mode">
           <button type="button" role="radio" aria-checked="true" data-mode="simple">Simple</button>
-          <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced · Spectral</button>
+          <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced</button>
         </div>
         <button class="icon-button" id="advancedInfo" type="button" aria-label="How the film simulation works"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
       </div>
@@ -184,14 +184,27 @@
       </div>
 
       <section class="advanced-panel" id="advancedPanel" aria-label="Advanced film controls">
+        <div class="engine-bar">
+          <label class="engine-label" for="engineSelect">Engine</label>
+          <div class="engine-row">
+            <select id="engineSelect" aria-describedby="engineDesc engineStatus"></select>
+            <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
+          </div>
+          <p class="engine-desc" id="engineDesc"></p>
+          <div class="engine-status" id="engineStatus" role="status" data-state="idle">
+            <span class="engine-status-text" id="engineStatusText"></span>
+            <span class="engine-progress" id="engineProgress" hidden><span id="engineProgressBar"></span></span>
+            <button class="text-button" id="engineRetry" type="button" hidden>Retry</button>
+          </div>
+        </div>
         <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
-        <p class="adv-note" id="advNote" hidden>The fast preview shows colour. Grain, halation and blur appear when you render full quality.</p>
+        <p class="adv-note" id="advNote" hidden></p>
         <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
         <div class="adv-footer">
           <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
           <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
         </div>
-        <p class="adv-credit">Film modeling powered by <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm<span class="visually-hidden"> (opens in a new tab)</span></a> by Andrea Volpato, running on your device via <a href="https://github.com/turbasvin/spektrafilm-rs" target="_blank" rel="noopener noreferrer">spektrafilm-rs<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+        <p class="adv-credit" id="advCredit"></p>
       </section>
     </aside>
   </main>
@@ -260,8 +273,20 @@
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
       <p>PhotoKamo is a privacy-first photo playground. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
       <p>The Simple looks are creative approximations, not exact reproductions. Advanced mode runs a physical film model — spektrafilm by Andrea Volpato, ported to Rust as spektrafilm-rs — compiled to WebAssembly so it runs entirely in your browser. Spectral upsampling data courtesy of Johannes Hanatos.</p>
-      <p>PhotoKamo is free software under the GNU General Public License v3, as is the film engine it includes.</p>
+      <p>PhotoKamo is free software under the GNU General Public License v3. Each film engine keeps its own licence and credits (open Advanced and use ⓘ next to the engine).</p>
+      <h3 class="engine-sub">Licences</h3>
+      <ul class="engine-list" id="licenceList">
+        <li>PhotoKamo · <a href="LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+        <li>Inter, Playfair Display fonts · <a href="fonts/OFL-Inter.txt" target="_blank" rel="noopener noreferrer">SIL OFL 1.1<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+      </ul>
       <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
+    </article>
+  </dialog>
+
+  <dialog id="engineAboutDialog" aria-labelledby="engineAboutTitle">
+    <article class="dialog-card about-card engine-about">
+      <button class="dialog-close" id="engineAboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div id="engineAboutBody"></div>
     </article>
   </dialog>
 

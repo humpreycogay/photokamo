@@ -9,7 +9,7 @@
 import { WASI, File, Directory, OpenFile, ConsoleStdout, PreopenDirectory } from './vendor/browser_wasi_shim.js';
 import { engineJob, colourKey } from './params.js';
 
-const ENGINE = new URL('../../engines/spektrafilm-rs/runtime/', import.meta.url);
+const ENGINE = new URL('../../../engines/spektrafilm-rs/runtime/', import.meta.url);
 const LUT_SIZE = 33;
 const LUT_CACHE = 16;
 const SPECTRAL_LUT = 'luts/spectral_upsampling/irradiance_xy_tc.npy';
@@ -23,19 +23,60 @@ const luts = new Map(); // colourKey → Float32Array (for the current image)
 
 const post = (message, transfer = []) => self.postMessage(message, transfer);
 
+// Download progress across every engine file in flight: { url → { loaded, total } }.
+// Posted as { type: 'download', loaded, total } (total 0 = unknown, e.g. compressed responses).
+const downloads = new Map();
+let downloadPostAt = 0;
+function postDownload(force = false) {
+  const now = Date.now();
+  if (!force && now - downloadPostAt < 100) return;
+  downloadPostAt = now;
+  let loaded = 0, total = 0, known = true;
+  for (const item of downloads.values()) { loaded += item.loaded; total += item.total; if (!item.total || item.loaded > item.total) known = false; }
+  post({ type: 'download', loaded, total: known ? total : 0, done: [...downloads.values()].every(item => item.done) });
+}
+async function countBody(url, stream, total) {
+  const item = { loaded: 0, total, done: false };
+  downloads.set(url, item);
+  const reader = stream.getReader();
+  const chunks = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); item.loaded += value.byteLength; postDownload();
+  }
+  item.done = true; postDownload(true);
+  return chunks;
+}
+async function fetchChecked(url, label) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${label} (HTTP ${response.status})`);
+  return response;
+}
+const contentLength = response => Number(response.headers.get('content-length')) || 0;
+
 function fetchBytes(path) {
   if (!bytesCache.has(path)) {
-    const promise = fetch(new URL(`data/${path}`, ENGINE)).then(response => {
-      if (!response.ok) throw new Error(`Could not load ${path} (HTTP ${response.status})`);
-      return response.arrayBuffer();
-    }).then(buffer => new Uint8Array(buffer));
+    const url = new URL(`data/${path}`, ENGINE);
+    const promise = fetchChecked(url, path).then(async response => {
+      const chunks = await countBody(url.href, response.body, contentLength(response));
+      const bytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      return bytes;
+    });
     promise.catch(() => bytesCache.delete(path));
     bytesCache.set(path, promise);
   }
   return bytesCache.get(path);
 }
 function loadModule() {
-  modulePromise ||= WebAssembly.compileStreaming(fetch(new URL('spektrafilm.wasm', ENGINE))).catch(error => { modulePromise = null; throw error; });
+  // Compile while downloading; a second copy of the stream only counts bytes for progress.
+  modulePromise ||= fetchChecked(new URL('spektrafilm.wasm', ENGINE), 'the film engine').then(response => {
+    const [compileStream, countStream] = response.body.tee();
+    countBody(response.url, countStream, contentLength(response));
+    return WebAssembly.compileStreaming(new Response(compileStream, { headers: { 'Content-Type': 'application/wasm' } }));
+  }).catch(error => { modulePromise = null; throw error; });
   return modulePromise;
 }
 const isWarm = paths => modulePromise && paths.every(path => bytesCache.has(path));
@@ -160,6 +201,16 @@ self.addEventListener('message', async event => {
   if (message.type === 'image') {
     source = { imageId: message.imageId, bitmap: message.bitmap };
     preview = null; luts.clear();
+    return;
+  }
+  if (message.type === 'warm') {
+    // Download + compile the engine and the data these settings need, before the first render.
+    try {
+      await Promise.all([loadModule(), ...dataPaths(engineJob(message.params)).map(fetchBytes)]);
+      post({ type: 'done', jobId: message.jobId, bitmap: null });
+    } catch (error) {
+      post({ type: 'error', jobId: message.jobId, message: String(error?.message || error) });
+    }
     return;
   }
   if (message.type !== 'render') return;
