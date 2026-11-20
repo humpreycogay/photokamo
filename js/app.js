@@ -6,6 +6,7 @@ import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
 import { createRenderQueue } from './render-queue.js';
+import { createZip } from './zip.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -31,6 +32,9 @@ const elements = {
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
   filmstrip: $('#filmstrip'), stripList: $('#stripList'), stripCount: $('#stripCount'), stripStatus: $('#stripStatus'), stripHint: $('#stripHint'),
   applyBar: $('#applyBar'), applyButton: $('#applyButton'), applyDialog: $('#applyDialog'), applyForm: $('#applyForm'),
+  exportLabel: $('#exportLabel'), batchDialog: $('#batchDialog'), batchForm: $('#batchForm'), batchZipName: $('#batchZipName'), batchQuality: $('#batchQuality'), batchQualityGroup: $('#batchQualityGroup'),
+  batchProgress: $('#batchProgress'), batchProgressText: $('#batchProgressText'), batchProgressCount: $('#batchProgressCount'), batchBar: $('#batchBar'), batchStatus: $('#batchStatus'),
+  batchCancel: $('#batchCancel'), batchShare: $('#batchShare'), batchDownload: $('#batchDownload'),
   cropPanel: $('#cropPanel'), cropStage: $('#cropStage'), cropView: $('#cropView'), cropCanvas: $('#cropCanvas'), cropBox: $('#cropBox'), cropHint: $('#cropHint'), ratioGrid: $('#ratioGrid'), cropOutput: $('#cropOutput'),
   engineWait: $('#engineWait'), engineWaitTitle: $('#engineWaitTitle'), engineWaitSub: $('#engineWaitSub'), engineWaitProgress: $('#engineWaitProgress'), engineWaitRetry: $('#engineWaitRetry')
 };
@@ -1261,6 +1265,8 @@ function stashActive() {
   if (!current || !state.image) return;
   if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
   current.settings = snapshot(); current.undo = state.undo; current.redo = state.redo;
+  // Left before its thumb caught up with the last change: render the thumb in the background.
+  if (current.previewKey !== JSON.stringify(current.settings) && (current.preview || isEdited(current.settings))) renderQueue.add(current.id);
   releaseImage();
 }
 function releaseImage() {
@@ -1327,7 +1333,7 @@ function scheduleActiveThumb() {
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(source.width * scale)); canvas.height = Math.max(1, Math.round(source.height * scale));
     canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
-    photo.preview = canvas; drawStripThumb(photo);
+    photo.preview = canvas; photo.previewKey = JSON.stringify(snapshot()); drawStripThumb(photo);
   }, 250);
 }
 function syncStrip() {
@@ -1356,6 +1362,10 @@ function syncStrip() {
   elements.applyBar.hidden = !others;
   $('#applyButtonText').textContent = `Apply to ${others} other selected…`;
   $('#liveEdit').checked = app.liveEdit;
+  // Export N / Save N when several photos are selected (batch export)
+  const batchCount = isBatchExport() ? selected : 0;
+  elements.exportLabel.textContent = batchCount ? `Export ${batchCount}` : 'Export';
+  $('#saveButton').textContent = batchCount ? `Save ${batchCount}` : 'Save';
 }
 function selectRange(id) {
   const ids = app.photos.map(photo => photo.id);
@@ -1530,11 +1540,11 @@ async function renderPhotoThumb(id, job) {
 }
 const renderQueue = createRenderQueue({
   render: renderPhotoThumb,
-  canRun: () => !advancedBusy && !state.renderAbort,
+  canRun: () => !advancedBusy && !state.renderAbort && !batch.running,
   onChange: (id, status, result) => {
     const photo = photoById(id); if (!photo) return;
     photo.render.status = status === 'done' ? 'idle' : status;
-    if (status === 'done' && result) { photo.preview = result; drawStripThumb(photo); }
+    if (status === 'done' && result) { photo.preview = result; photo.previewKey = JSON.stringify(photo.settings); drawStripThumb(photo); }
     if (status === 'error') console.error(result);
     syncStrip();
   },
@@ -1739,6 +1749,7 @@ function schedulePrepare(delay = 250) {
   }, delay);
 }
 function openSave() {
+  if (isBatchExport()) { openBatch(); return; }
   if (!state.image) return;
   syncExportOptions();
   elements.exportStatus.textContent = '';
@@ -1771,8 +1782,167 @@ async function sharePhoto() {
   }
 }
 
+// ---------- Batch export: several selected photos (SPEC §4 I) ----------
+// Each photo renders at full quality with its own settings, one at a time: decoded from its
+// File, rendered (film engines in their Worker; Adjust edits in js/adjust-worker.js), encoded,
+// then freed. One ZIP (js/zip.js, store-only) or separate downloads; Share where supported.
+const BATCH_MODE_KEY = 'photokamo:batch-mode';
+const batch = { running: false, cancel: false, prepared: null, format: 'image/jpeg', mode: 'zip' };
+try { if (localStorage.getItem(BATCH_MODE_KEY) === 'separate') batch.mode = 'separate'; } catch { /* default ZIP */ }
+const selectedPhotos = () => app.photos.filter(photo => app.selected.has(photo.id));
+/** Batch export when several photos are selected (or one that is not in view). */
+const isBatchExport = () => { const photos = selectedPhotos(); return photos.length > 1 || (photos.length === 1 && photos[0].id !== app.activeId); };
+const zipName = count => `photokamo-${count}-photo${count === 1 ? '' : 's'}.zip`;
+const extensionFor = type => type.split('/')[1].replace('jpeg', 'jpg');
+function uniqueName(base, extension, used) {
+  let name = `${base}-photokamo.${extension}`;
+  for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base}-photokamo-${n}.${extension}`;
+  used.add(name.toLowerCase());
+  return name;
+}
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob); const link = document.createElement('a');
+  link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+/** A photo's final image (full size, its look, crop, edits and frame) as a canvas. */
+async function renderPhotoFull(photo, engineModules, onProgress) {
+  const inView = photo.id === app.activeId && state.image;
+  const settings = inView ? snapshot() : photo.settings;
+  const image = inView ? state.image : await decodeImage(photo.file);
+  const { crop, look, edits } = settings;
+  const source = isIdentityCrop(crop) ? image : cropSource(image, crop);
+  if (look.engine === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height));
+  const module = await loadEngine(look.engine);
+  engineModules.add(module);
+  const params = module.normalizeParams(look.engineParams[look.engine]);
+  const input = await createImageBitmap(source);
+  const raw = await module.render(input, cloneParams(params), { quality: 'full', onProgress });
+  input.close();
+  const full = await adjustFull(raw, Object.keys(edits).length ? adjustmentsFor(settings) : null);
+  const tint = module.paperTint && module.showsPaper(params) ? module.paperTint(params) : null;
+  const output = frameCanvas(full, frameFor(settings.frame, tint));
+  full.close?.();
+  return output;
+}
+const batchKey = photos => JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, batch.format === 'image/png' ? 0 : elements.batchQuality.value]);
+/** Renders and encodes the photos; `each(file)` gets every file as soon as it is ready. Null when cancelled. */
+async function renderBatch(photos, each = null) {
+  const key = batchKey(photos);
+  if (!each && batch.prepared?.key === key) return batch.prepared.files;
+  batch.running = true; batch.cancel = false; syncBatch();
+  const type = batch.format, quality = Number(elements.batchQuality.value) / 100, extension = extensionFor(type);
+  const used = new Set(), files = [], engineModules = new Set();
+  const progress = (index, value = 0) => {
+    elements.batchProgressCount.textContent = `${Math.min(index + 1, photos.length)} of ${photos.length}`;
+    elements.batchBar.style.width = `${Math.round((index + value) / photos.length * 100)}%`;
+  };
+  try {
+    for (const [index, photo] of photos.entries()) {
+      if (batch.cancel) break;
+      progress(index);
+      const canvas = await renderPhotoFull(photo, engineModules, value => progress(index, value));
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
+      canvas.width = canvas.height = 0; // free the full-size pixels now
+      if (!blob) throw new Error(`Encoding ${photo.name} failed`);
+      const file = new File([blob], uniqueName(photo.filename, extension, used), { type });
+      files.push(file);
+      if (each) await each(file);
+      progress(index + 1);
+    }
+  } finally {
+    batch.running = false;
+    for (const module of engineModules) if (module !== engine.module) module.dispose?.();
+    syncBatch(); renderQueue.pump();
+  }
+  if (batch.cancel) { toast(`Export stopped after ${plural(files.length, 'photo')}.`); return null; }
+  if (!each) batch.prepared = { key, files };
+  return files;
+}
+function openBatch() {
+  const photos = selectedPhotos(); if (!photos.length) return;
+  batch.prepared = null;
+  $('#batchTitle').textContent = `Export ${plural(photos.length, 'photo')}`;
+  elements.batchZipName.textContent = `${zipName(photos.length)} · one download`;
+  $('#batchThumbs').replaceChildren(...photos.slice(0, 6).map(photo => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 112;
+    drawCover(canvas.getContext('2d'), photo.preview || photo.thumb, 112, 112);
+    return canvas;
+  }));
+  elements.batchForm.elements.mode.value = batch.mode;
+  elements.batchStatus.textContent = '';
+  elements.batchProgress.hidden = true;
+  syncBatch();
+  elements.batchDialog.showModal();
+}
+function syncBatch() {
+  const count = selectedPhotos().length, running = batch.running;
+  document.querySelectorAll('[data-batch-format]').forEach(button => { button.setAttribute('aria-pressed', button.dataset.batchFormat === batch.format); button.disabled = running; });
+  elements.batchQualityGroup.hidden = batch.format === 'image/png';
+  elements.batchQuality.disabled = running;
+  $('#batchQualityOutput').value = `${elements.batchQuality.value}%`;
+  elements.batchForm.querySelectorAll('[name=mode]').forEach(input => { input.disabled = running; });
+  if (running) elements.batchProgress.hidden = false;
+  elements.batchDownload.disabled = running;
+  elements.batchDownload.textContent = `Download ${count}`;
+  elements.batchShare.hidden = !canShareFiles; elements.batchShare.disabled = running;
+  elements.batchCancel.textContent = running ? 'Stop' : 'Cancel';
+  elements.batchCancel.disabled = running && batch.cancel;
+}
+async function downloadBatch() {
+  const photos = selectedPhotos(); if (!photos.length || batch.running) return;
+  batch.mode = elements.batchForm.elements.mode.value || 'zip';
+  try { localStorage.setItem(BATCH_MODE_KEY, batch.mode); } catch { /* remembered for this visit only */ }
+  elements.batchStatus.textContent = '';
+  try {
+    if (batch.mode === 'separate') {
+      // Each file downloads as soon as it is ready; a short gap keeps browsers from dropping some.
+      const files = await renderBatch(photos, async file => { downloadBlob(file, file.name); await new Promise(resolve => setTimeout(resolve, 300)); });
+      if (!files) return;
+      elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved as separate files.`);
+    } else {
+      const files = await renderBatch(photos);
+      if (!files) return;
+      elements.batchProgressText.textContent = 'Packing the ZIP…';
+      const zip = await createZip(files);
+      downloadBlob(zip, zipName(files.length));
+      elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved in one ZIP.`);
+    }
+  } catch (error) {
+    console.error(error);
+    elements.batchStatus.textContent = error?.message?.includes('4 GB') ? error.message : 'Export failed. Check your connection for film engines, or try JPEG.';
+  } finally { elements.batchProgressText.textContent = 'Rendering full quality'; }
+}
+// Share needs a fresh tap: the first tap renders the files, then sharing is one more tap.
+async function shareBatch() {
+  const photos = selectedPhotos(); if (!photos.length || batch.running) return;
+  const ready = batch.prepared?.key === batchKey(photos) ? batch.prepared.files : null;
+  try {
+    const files = ready || await renderBatch(photos);
+    if (!files) return;
+    if (!ready && !navigator.userActivation?.isActive) { elements.batchStatus.textContent = 'Your photos are ready. Tap Share again.'; elements.batchShare.focus(); return; }
+    await navigator.share({ files });
+    elements.batchDialog.close(); toast('Shared.');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    if (error?.name === 'NotAllowedError') { elements.batchStatus.textContent = 'Your photos are ready. Tap Share again.'; return; }
+    console.error(error); elements.batchStatus.textContent = 'Sharing failed. Try Download instead.';
+  }
+}
+function buildBatch() {
+  elements.batchForm.addEventListener('submit', event => { event.preventDefault(); downloadBatch(); });
+  elements.batchShare.addEventListener('click', shareBatch);
+  $('#batchFormats').addEventListener('click', event => { const button = event.target.closest('[data-batch-format]'); if (!button || batch.running) return; batch.format = button.dataset.batchFormat; syncBatch(); });
+  elements.batchQuality.addEventListener('input', syncBatch);
+  // Cancel closes; while rendering it stops after the photo in progress.
+  const stop = () => { if (batch.running) { batch.cancel = true; elements.batchStatus.textContent = 'Stopping after this photo…'; syncBatch(); return true; } return false; };
+  elements.batchCancel.addEventListener('click', () => { if (!stop()) elements.batchDialog.close(); });
+  $('#batchClose').addEventListener('click', () => { if (!stop()) elements.batchDialog.close(); });
+  elements.batchDialog.addEventListener('cancel', event => { if (stop()) event.preventDefault(); });
+  elements.batchDialog.addEventListener('click', event => { if (event.target === elements.batchDialog && !stop()) elements.batchDialog.close(); });
+}
+
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildAdvancedPanel(); buildStrip(); buildApply(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildAdvancedPanel(); buildStrip(); buildApply(); buildBatch(); syncControls(); updateButtons();
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);

@@ -47,7 +47,7 @@
       <span class="privacy-pill editing-only"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Stays on your device</span>
       <button class="icon-button" id="aboutButton" type="button" aria-label="About PhotoKamo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
       <button class="button button-primary editing-only" id="exportButton" type="button">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg> Export
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg> <span id="exportLabel">Export</span>
       </button>
       <button class="button button-primary save-pill mobile-only editing-only" id="saveButton" type="button">Save</button>
     </div>
@@ -325,6 +325,44 @@
         <button class="button button-primary button-xl" id="confirmExport" type="submit">Download file</button>
       </div>
       <p class="export-status" id="exportStatus" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog id="batchDialog" class="sheet-dialog" aria-labelledby="batchTitle">
+    <form method="dialog" class="dialog-card apply-card batch-card" id="batchForm">
+      <span class="sheet-handle" aria-hidden="true"></span>
+      <div class="export-head">
+        <div><p class="eyebrow">Final render</p><h2 id="batchTitle">Export photos</h2></div>
+        <button class="dialog-close" id="batchClose" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="apply-thumbs" id="batchThumbs" aria-hidden="true"></div>
+      <fieldset class="batch-modes" id="batchModes">
+        <legend>Download as</legend>
+        <label class="batch-mode"><input type="radio" name="mode" value="zip"><span><strong>One ZIP file</strong><small id="batchZipName"></small></span></label>
+        <label class="batch-mode"><input type="radio" name="mode" value="separate"><span><strong>Separate files</strong><small>Your browser may ask to allow several downloads</small></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Format</legend>
+        <div class="segmented" id="batchFormats">
+          <button type="button" data-batch-format="image/jpeg" aria-pressed="true">JPEG</button>
+          <button type="button" data-batch-format="image/png" aria-pressed="false">PNG</button>
+          <button type="button" data-batch-format="image/webp" aria-pressed="false">WebP</button>
+        </div>
+      </fieldset>
+      <div class="quality-group" id="batchQualityGroup">
+        <label class="quality-label" for="batchQuality"><span>Quality</span><output id="batchQualityOutput" for="batchQuality">92%</output></label>
+        <input id="batchQuality" type="range" min="60" max="100" value="92">
+      </div>
+      <div class="batch-progress" id="batchProgress" hidden>
+        <div class="batch-progress-head" aria-live="polite"><span id="batchProgressText">Rendering full quality</span><span id="batchProgressCount"></span></div>
+        <div class="batch-bar"><span id="batchBar"></span></div>
+      </div>
+      <p class="export-status" id="batchStatus" role="status"></p>
+      <div class="apply-actions">
+        <button class="button button-ghost" id="batchCancel" type="button">Cancel</button>
+        <button class="button button-ghost" id="batchShare" type="button" hidden>Share</button>
+        <button class="button button-primary" id="batchDownload" type="submit">Download</button>
+      </div>
     </form>
   </dialog>
 
