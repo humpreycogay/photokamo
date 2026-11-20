@@ -9,7 +9,7 @@
     { "name": "negs", "by": "noahhaasis and contributors", "role": "Engine, WebGPU and CPU backends, controls", "url": "https://github.com/noahhaasis/negs", "licence": "GPL-3.0" },
     { "name": "spektrafilm", "by": "Andrea Volpato", "role": "Film model, film and paper profiles, LUTs", "url": "https://github.com/andreavolpato/spektrafilm", "licence": "Profiles: CC BY-SA 4.0" },
     { "name": "spektrafilm-rs", "by": "turbasvin", "role": "Rust port negs started from", "url": "https://github.com/turbasvin/spektrafilm-rs", "licence": "GPL-3.0" },
-    { "name": "Fotufilm film profiles", "by": "MUAStudio Inc.", "role": "29 profiles adapted by negs", "url": "https://fotufilm.com", "licence": "CC BY-SA 4.0" },
+    { "name": "Fotufilm film profiles", "by": "MUAStudio Inc.", "role": "29 profiles adapted by negs from fotufilm-engine 96623ba (Agfachrome, CineStill, Kodachrome, Aerochrome, LomoChrome and more); named under each film when chosen", "url": "https://github.com/DhaliwalX/fotufilm-engine", "licence": "CC BY-SA 4.0" },
     { "name": "Spectral upsampling LUTs", "by": "Johannes Hanatos and others", "role": "RGB to spectrum conversion", "url": "https://github.com/hanatos/vkdt" },
     { "name": "rawler", "by": "dnglab contributors", "role": "Image decoding (patched by negs)", "url": "https://github.com/dnglab/dnglab", "licence": "LGPL-2.1" }
   ],

@@ -53,7 +53,7 @@ export function buildSections(catalog) {
   const filters = ['none', ...(catalog.color_filters || []).map(f => f.key)];
   return [
     { id: 'stock', step: 'Stock', title: 'Film & paper', openByDefault: true, controls: [
-      choice('Film', 'film', films),
+      choice('Film', 'film', films, { hint: ' ' }), // hint text set per stock (profile source) in index.js
       choice('Paper', 'paper', papers),
       toggle('Scan film (skip printing)', 'io.scan_film', { hint: 'Slide films are scanned directly; you can also scan a negative instead of printing it.' }),
       choice('Color filter', 'camera.color_filter', filters, { hint: COLOR_FILTER_EFFECTS.none })

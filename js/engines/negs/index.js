@@ -108,6 +108,11 @@ export const ui = {
     if (stock.target_print && stockById[stock.target_print]?.paper) params.paper = stock.target_print;
   },
   sync(params, find, root) {
+    // Where this stock's profile comes from (CC BY-SA 4.0 attribution).
+    const stock = stockById[params.film];
+    root.querySelector(`#${find('film').id}-hint`).textContent = stock?.fotufilm
+      ? 'Profile adapted by negs from the Fotufilm film profiles by MUAStudio Inc. (fotufilm.com), CC BY-SA 4.0.'
+      : 'Profile from spektrafilm by Andrea Volpato, CC BY-SA 4.0.';
     const scanning = scans(params);
     find('paper').disabled = scanning;
     // Print controls do nothing while scanning: hide them behind the note, as negs does.
