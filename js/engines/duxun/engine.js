@@ -31,7 +31,12 @@ function startWorker() {
     const { type, jobId } = event.data;
     const job = jobs.get(jobId); if (!job) return;
     if (type === 'progress') job.onProgress?.(event.data.value);
-    else if (type === 'done') { jobs.delete(jobId); job.onProgress?.(1); job.resolve(event.data.bitmap); }
+    else if (type === 'done') {
+      jobs.delete(jobId);
+      const backend = event.data.info?.backend;
+      if (backend) engineInfo.previewDetail = `${backend === 'webgl' ? 'GPU' : 'CPU'} · full pipeline · 1280 px`;
+      job.onProgress?.(1); job.resolve(event.data.bitmap);
+    }
     else if (type === 'error') { jobs.delete(jobId); job.reject(new Error(event.data.message)); }
   });
   worker.addEventListener('error', event => stopAll(new Error(event.message || 'The film engine failed to start')));

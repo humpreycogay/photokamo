@@ -2,7 +2,7 @@ import { presets, frames, adjustmentSections, defaultAdjustments } from './prese
 import { renderImage, frameCanvas } from './renderer.js';
 // Advanced engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when Advanced mode needs it (activateEngine).
-import { engines, defaultEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
+import { engines, defaultEngineId, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
 
 const $ = selector => document.querySelector(selector);
@@ -116,7 +116,7 @@ function toggleFavorite() {
 // ---------- My looks (saved Advanced settings, per engine) ----------
 // A look is { id, name, engine, params, thumb }. Looks saved before engines existed have no
 // `engine`: they belong to spektrafilm-rs. Params are normalized by the engine when picked.
-const lookEngine = look => (engineById(look.engine) ? look.engine : defaultEngineId);
+const lookEngine = look => (engineById(look.engine) ? look.engine : legacyEngineId);
 // Small square JPEG of the current preview, stored with a saved look as its thumbnail.
 function previewThumbnail() {
   if (!state.editedCanvas) return null;

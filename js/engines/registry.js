@@ -37,7 +37,7 @@ export const engines = [
   {
     id: 'duxun',
     label: 'DuXun',
-    description: 'Fast film look from a Resolve plugin · 54 film presets, grain, halation, bloom',
+    description: 'Live film look from a Resolve plugin (GPU) · 54 film presets, grain, halation, bloom',
     licence: 'GPL-2.0-or-later',
     approxDownload: '≈ 60 KB',
     credit: [
@@ -49,7 +49,11 @@ export const engines = [
   }
 ];
 
-export const defaultEngineId = engines[0].id;
+// Negs is the default where the browser has WebGPU (live full-model previews). Without it negs
+// falls back to slow CPU previews, so those browsers start on Spektrafilm instead.
+export const defaultEngineId = typeof navigator !== 'undefined' && 'gpu' in navigator ? 'negs' : 'spektrafilm-rs';
+/** Engine of looks saved before the Engine dropdown existed (they have no engine id). */
+export const legacyEngineId = 'spektrafilm-rs';
 export const engineById = id => engines.find(engine => engine.id === id) || null;
 
 const modules = new Map(); // id → Promise<module>

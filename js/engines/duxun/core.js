@@ -509,7 +509,12 @@ function sampleGlow(gb, x, y, out) {
  * Renders `src` (RGBA8, sRGB-encoded) into a new RGBA8 array with params `p` (PhotoKamo param
  * paths = the plugin's parameter names). `timelineScale` = photo width / 1920.
  */
-export function render(src, width, height, p) {
+/**
+ * Every per-render constant of the plugin's renderAction (presets, profile gains, curve LUT,
+ * print/halation/grain factors) for params `p` at `width` × `height`. Shared by the JavaScript
+ * renderer below and the WebGL2 one (gpu.js), so both render the same thing.
+ */
+export function prepare(p, width, height) {
   const S = Math.max(1e-6, width / 1920); // timeline pixels → photo pixels
   const filmIdx = p.filmPreset;
   const effectMode = p.effectMode;
@@ -583,8 +588,6 @@ export function render(src, width, height, p) {
   const halScale = fH * 0.20;
   const inT = p.inputTransform, outT = p.outputTransform;
   const glowScale = (p.previewQuality === 0 ? 8 : p.previewQuality === 2 ? 4 : 6) * S;
-  const halGlow = doHalation ? buildGlowBuffer(src, width, height, halThreshold, 5 + 38 * halRadius, 0, 0, 0, inT, Math.max(2 * S, glowScale)) : null;
-  const bloomGlow = doBloom ? buildGlowBuffer(src, width, height, p.bloomThreshold, 5 + 46 * bloomRadius, 1, p.bloomRegion, p.bloomSoftness, inT, Math.max(2 * S, glowScale)) : null;
 
   // Print response constants
   const [stockR, stockG, stockB, stockContrast] = printStockChannelBias(p.printStock, fPrintCustom);
@@ -596,19 +599,57 @@ export function render(src, width, height, p) {
   const exA = clampf(fExpand, 0, 2), exBlack = clampf(p.expandBlack, 0, 1) * 0.08 * exA, exScale = 1 / ((1 + clampf(p.expandWhite, 0, 1) * 0.22 * exA) - exBlack), exC = 1 + 0.26 * exA;
   const chA = clampf(fColorHead, 0, 2);
   const chR = Math.pow(2, (-p.colorHeadCyan * 0.35 + 0.10) * chA), chG = Math.pow(2, (-p.colorHeadMagenta * 0.35 - 0.02) * chA), chB = Math.pow(2, (-p.colorHeadYellow * 0.35 - 0.08) * chA);
-  const glow = [0, 0, 0];
   const vRadius = lerpf(0.22, 1.12, clampf(p.vignetteRadius, 0, 1)), vFeather = lerpf(0.10, 0.95, clampf(p.vignetteFeather, 0, 1));
-  const out = new Uint8ClampedArray(width * height * 4);
-  const srcLuma = fAcutance ? (x, y) => { x = Math.min(width - 1, Math.max(0, x)); y = Math.min(height - 1, Math.max(0, y)); const q = (y * width + x) * 4; return lumaOf(src[q] / 255, src[q + 1] / 255, src[q + 2] / 255); } : null;
   const grainSeed = gp.grainTextureSeed, clumpK = clampf(gp.grainClump, 0, 1), silver = clampf(gp.grainSilverRetention, 0, 1);
   const modeGain = p.filmGrainMode === GRAIN_MODE_DETAIL ? 0.78 : p.filmGrainMode === GRAIN_MODE_DYE_CLOUD ? 1.12 : 1;
   let colorMixBase = clampf(fFilmGrainColor + fChroma * 0.32, 0, 1) * (1 - silver * 0.76);
   if (p.filmGrainMode === GRAIN_MODE_DYE_CLOUD) colorMixBase = clampf(colorMixBase + 0.22, 0, 1);
   const fineSize = clampf(fFilmGrainSize * (1.22 - 0.68 * fResolution) * (1 + clumpK * 0.28), 0.02, 1);
-  const neScaleFor = a => 0.025 + 0.11 * clampf(a, 0, 2);
   const neGrainSize = 0.45 + 5.5 * clampf(fineSize, 0, 1);
   const halMixK = 0.030 + 0.120 * clampf(halImpact, 0, 1);
 
+  // Glow buffers (buildGlowBuffer) use these.
+  const glowCell = Math.max(2 * S, glowScale);
+  return {
+    S, filmIdx, effectMode, colorModeEnabled, textureModeEnabled, grainHalationOnly, useExpand, usePrint,
+    useColorHead, useFilmGrain, useHalation, useBloom, useFilmDamage, useVignette, gp, hg, bg, dg, fD, fH,
+    fGr, fSat, fV, fProfile, fPrintContrast, fPrintCustom, fPrint, fExpand, fPushPull, fAcutance, fColorHead,
+    fFilmGrainSize, fFilmGrainColor, mix, fShadows, fMids, fHighs, fResolution, fChroma, halThreshold,
+    halRadius, halWarmth, halLocal, halGlobal, halHue, halBlueComp, halImpact, halDefringe, fBloom,
+    bloomRadius, showBloomMask, fDamage, fDust, fScratch, fColorDensity, fVibrance, fPrinterR, fPrinterG,
+    fPrinterB, fSplit, fSplitWarmth, matrix, curveStrength, lut, curveContrast, doDensity, doSat, doHalation,
+    doGrain, doVignette, doExpand, doColorHead, doBloom, doDamage, densityFactor, grainScale, halScale, inT,
+    outT, glowScale, stockR, stockG, stockB, stockContrast, printA, printC, lightR, lightG, lightB, doLights,
+    ppC, ppD, exA, exBlack, exScale, exC, chA, chR, chG, chB, vRadius, vFeather, grainSeed, clumpK, silver,
+    modeGain, colorMixBase, fineSize, neGrainSize, halMixK, glowCell
+  };
+}
+
+/**
+ * Renders `src` (RGBA8, sRGB-encoded) into a new RGBA8 array with params `p` (PhotoKamo param
+ * paths = the plugin's parameter names), as the plugin's CPU path (renderRows) does.
+ */
+export function render(src, width, height, p) {
+  const k = prepare(p, width, height);
+  const {
+    S, filmIdx, effectMode, colorModeEnabled, textureModeEnabled, grainHalationOnly, useExpand, usePrint,
+    useColorHead, useFilmGrain, useHalation, useBloom, useFilmDamage, useVignette, gp, hg, bg, dg, fD, fH,
+    fGr, fSat, fV, fProfile, fPrintContrast, fPrintCustom, fPrint, fExpand, fPushPull, fAcutance, fColorHead,
+    fFilmGrainSize, fFilmGrainColor, mix, fShadows, fMids, fHighs, fResolution, fChroma, halThreshold,
+    halRadius, halWarmth, halLocal, halGlobal, halHue, halBlueComp, halImpact, halDefringe, fBloom,
+    bloomRadius, showBloomMask, fDamage, fDust, fScratch, fColorDensity, fVibrance, fPrinterR, fPrinterG,
+    fPrinterB, fSplit, fSplitWarmth, matrix, curveStrength, lut, curveContrast, doDensity, doSat, doHalation,
+    doGrain, doVignette, doExpand, doColorHead, doBloom, doDamage, densityFactor, grainScale, halScale, inT,
+    outT, glowScale, stockR, stockG, stockB, stockContrast, printA, printC, lightR, lightG, lightB, doLights,
+    ppC, ppD, exA, exBlack, exScale, exC, chA, chR, chG, chB, vRadius, vFeather, grainSeed, clumpK, silver,
+    modeGain, colorMixBase, fineSize, neGrainSize, halMixK
+  } = k;
+  const halGlow = doHalation ? buildGlowBuffer(src, width, height, halThreshold, 5 + 38 * halRadius, 0, 0, 0, inT, k.glowCell) : null;
+  const bloomGlow = doBloom ? buildGlowBuffer(src, width, height, p.bloomThreshold, 5 + 46 * bloomRadius, 1, p.bloomRegion, p.bloomSoftness, inT, k.glowCell) : null;
+  const glow = [0, 0, 0];
+  const out = new Uint8ClampedArray(width * height * 4);
+  const srcLuma = fAcutance ? (x, y) => { x = Math.min(width - 1, Math.max(0, x)); y = Math.min(height - 1, Math.max(0, y)); const q = (y * width + x) * 4; return lumaOf(src[q] / 255, src[q + 1] / 255, src[q + 2] / 255); } : null;
+  const neScaleFor = a => 0.025 + 0.11 * clampf(a, 0, 2);
   for (let y = 0; y < height; y++) {
     const ny = (y + 0.5) / height;
     const ty = Math.floor(y / S); // timeline-pixel row (grain, damage)

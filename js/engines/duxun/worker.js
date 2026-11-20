@@ -1,6 +1,14 @@
-// Module worker running the DuXun engine (core.js, the JavaScript port of the plugin's CPU
-// renderer). The photo stays in this worker; nothing is fetched.
+// Module worker running the DuXun engine: on the GPU (gpu.js, WebGL2) when the browser can, else
+// core.js, the JavaScript port of the plugin's CPU renderer. Both render the same thing (same
+// constants, verified). The photo stays in this worker; nothing is fetched.
 import { render as renderPixels } from './core.js';
+import { createGpuRenderer } from './gpu.js';
+
+let gpu; // undefined until tried; null when WebGL2 isn't usable here
+function gpuRenderer() {
+  if (gpu === undefined) { try { gpu = createGpuRenderer(); } catch { gpu = null; } }
+  return gpu;
+}
 
 let source = null;   // { imageId, bitmap }
 const scaled = new Map(); // `${imageId}:${width}` → { width, height, rgba }
@@ -26,18 +34,24 @@ function pixelsAt(maxEdge, maxPixels) {
 self.addEventListener('message', event => {
   const message = event.data;
   if (message.type === 'image') { source = { imageId: message.imageId, bitmap: message.bitmap }; scaled.clear(); return; }
-  if (message.type === 'warm') { post({ type: 'done', jobId: message.jobId, bitmap: null }); return; }
+  if (message.type === 'warm') { post({ type: 'done', jobId: message.jobId, bitmap: null, info: { backend: gpuRenderer() ? 'webgl' : 'cpu' } }); return; }
   if (message.type !== 'render') return;
   try {
     if (!source || source.imageId !== message.imageId) throw new Error('Image not loaded in the film engine');
     const full = message.quality === 'full';
     const image = pixelsAt(full ? Infinity : message.maxEdge, message.maxPixels);
     post({ type: 'progress', jobId: message.jobId, value: 0.1 });
-    const out = renderPixels(image.rgba, image.width, image.height, message.params);
-    const canvas = new OffscreenCanvas(image.width, image.height);
-    canvas.getContext('2d').putImageData(new ImageData(out, image.width, image.height), 0, 0);
-    const bitmap = canvas.transferToImageBitmap();
-    post({ type: 'done', jobId: message.jobId, bitmap }, [bitmap]);
+    let bitmap = null, backend = 'webgl';
+    try { bitmap = gpuRenderer()?.render(image.rgba, image.width, image.height, message.params) ?? null; }
+    catch (error) { console.warn('DuXun GPU render failed; using the CPU renderer.', error); gpu = null; }
+    if (!bitmap) { // no WebGL2, or larger than the GPU's texture limit
+      backend = 'cpu';
+      const out = renderPixels(image.rgba, image.width, image.height, message.params);
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      canvas.getContext('2d').putImageData(new ImageData(out, image.width, image.height), 0, 0);
+      bitmap = canvas.transferToImageBitmap();
+    }
+    post({ type: 'done', jobId: message.jobId, bitmap, info: { backend } }, [bitmap]);
   } catch (error) {
     post({ type: 'error', jobId: message.jobId, message: String(error?.message || error) });
   }

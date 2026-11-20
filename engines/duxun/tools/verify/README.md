@@ -12,6 +12,11 @@ against the **original C++**, compiled from `engines/duxun/src/ofx/DuXunFilm/DuX
    prints the 8-bit difference per configuration; `node compare.mjs <root> grain` compares grain
    strength.
 
+The WebGL2 renderer (`js/engines/duxun/gpu.js`) was checked against `core.js` in Chrome on the same
+image: without grain identical up to 8-bit rounding (mean difference ≤ 0.03 levels, max 1); grain
+strength within 0.3 % (3.746 vs 3.742 Portra 400, 10.184 vs 10.174 Tri-X, 11.671 vs 11.666 CineStill
+800T, 30.963 vs 30.932 Delta 3200 dye clouds).
+
 Result for DuXun `91357a3` (2026-11-20):
 
 - Every configuration without grain (presets, halation, B&W print, vignette, print stocks, colour

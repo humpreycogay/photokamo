@@ -27,7 +27,11 @@ Everything else is copied byte-for-byte (LF line endings, as upstream).
 **No changes to `src/`.** The browser can't run an OpenFX plugin, so PhotoKamo **ports** the
 plugin's CPU renderer to JavaScript: `js/engines/duxun/core.js` (presets, preset → slider defaults,
 profile defaults, and the pixel pipeline of `renderAction`/`renderRows`, function by function).
-Controls (`js/engines/duxun/params.js`) use the plugin's parameter names, ranges, defaults and
+`js/engines/duxun/gpu.js` runs the same pipeline in WebGL2 (glow buffers, blur passes and the
+per-pixel shader, with the constants from `core.js` `prepare()`); the worker uses it when the browser
+supports WebGL2 and falls back to `core.js` otherwise. Its noise uses an integer hash instead of
+`fract(sin(…) * 43758.5)`, which GPUs compute poorly for large arguments: same distribution, and
+grain strength matches. Controls (`js/engines/duxun/params.js`) use the plugin's parameter names, ranges, defaults and
 groups, with the Chinese labels translated.
 
 Differences, all for still photos in a browser:

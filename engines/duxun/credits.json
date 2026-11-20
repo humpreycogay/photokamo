@@ -11,7 +11,7 @@
     { "name": "t3mujinpack", "by": "t3mujinpack contributors", "role": "Film preset data", "url": "https://github.com/t3mujinpack/t3mujinpack", "licence": "MIT" }
   ],
   "changes": [
-    "The plugin's CPU renderer is ported to JavaScript; the original source is kept unchanged",
+    "The plugin's CPU renderer is ported to JavaScript and to WebGL2 (GPU); the original source is kept unchanged",
     "Film breath, gate weave and overscan (video motion effects) are left out",
     "Rendered as if on a 1920 px timeline, so previews and exports match",
     "Labels translated from Chinese"
