@@ -43,6 +43,11 @@
       <button class="button button-quiet" id="revertButton" type="button">Revert to original</button>
     </div>
 
+    <div class="mode-switch mode-switch-compact mobile-only editing-only" role="radiogroup" aria-label="Editor mode">
+      <button type="button" role="radio" aria-checked="true" data-mode="simple">Simple</button>
+      <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced</button>
+    </div>
+
     <div class="topbar-actions">
       <span class="privacy-pill editing-only"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Stays on your device</span>
       <button class="icon-button" id="aboutButton" type="button" aria-label="About PhotoKamo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
@@ -84,17 +89,24 @@
           <canvas id="previewCanvas" aria-label="Edited photo preview"></canvas>
           <span class="original-badge" id="originalBadge" hidden>Original</span>
           <div class="processing" id="processing" hidden><span></span> Developing…</div>
+          <div class="render-progress" id="renderProgress" hidden><span id="renderProgressBar"></span></div>
         </div>
       </div>
 
       <div class="view-pill" id="viewPill" hidden>
+        <div class="render-status" id="renderStatus">
+          <span class="render-state" id="renderState" role="status"><span class="render-dot" aria-hidden="true"></span><span id="renderText">Fast preview</span><span class="render-detail" id="renderDetail"></span></span>
+          <button class="view-pill-button render-action" id="renderFullButton" type="button">Render full quality</button>
+          <button class="view-pill-button render-action render-cancel" id="renderCancelButton" type="button" hidden>Cancel</button>
+        </div>
+        <span class="view-pill-divider render-divider" aria-hidden="true"></span>
         <button class="view-pill-button hold-button" id="holdButton" type="button" aria-describedby="holdHint">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" stroke-linecap="round"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
           Hold to compare
           <kbd aria-hidden="true">\</kbd>
         </button>
         <span class="visually-hidden" id="holdHint">Press and hold, or hold the backslash key, to see the original photo.</span>
-        <span class="view-pill-divider" aria-hidden="true"></span>
+        <span class="view-pill-divider zoom-divider" aria-hidden="true"></span>
         <div class="view-zoom" role="group" aria-label="Zoom">
           <button class="view-pill-button" type="button" data-zoom="fit" aria-pressed="true">Fit</button>
           <button class="view-pill-button" type="button" data-zoom="100" aria-pressed="false">100%</button>
@@ -106,6 +118,13 @@
     </section>
 
     <aside class="controls editing-only" aria-label="Editing controls">
+      <div class="mode-row">
+        <div class="mode-switch" role="radiogroup" aria-label="Editor mode">
+          <button type="button" role="radio" aria-checked="true" data-mode="simple">Simple</button>
+          <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced · Spectral</button>
+        </div>
+        <button class="icon-button" id="advancedInfo" type="button" aria-label="How the film simulation works"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
+      </div>
       <div class="control-tabs" role="tablist" aria-label="Editor panels">
         <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>Looks</button>
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
@@ -163,6 +182,16 @@
           <div class="frame-grid" id="frameGrid"></div>
         </section>
       </div>
+
+      <section class="advanced-panel" id="advancedPanel" aria-label="Advanced film controls">
+        <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
+        <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
+        <div class="adv-footer">
+          <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
+          <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
+        </div>
+        <p class="adv-credit">Film modeling powered by <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm<span class="visually-hidden"> (opens in a new tab)</span></a> by Andrea Volpato.</p>
+      </section>
     </aside>
   </main>
 

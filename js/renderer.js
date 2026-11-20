@@ -104,6 +104,16 @@ function addSprockets(ctx, layout, imageWidth, imageHeight) {
   ctx.fillText('PHOTO KAMO  24A', layout.x, layout.y * .82);
 }
 
+// Works on the main thread (HTMLCanvasElement) and in a Worker (OffscreenCanvas).
+export function createCanvas(width, height) {
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    return canvas;
+  }
+  return new OffscreenCanvas(width, height);
+}
+
 export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400) {
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
@@ -111,17 +121,20 @@ export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400) 
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
 
-  const photo = document.createElement('canvas');
-  photo.width = width; photo.height = height;
+  const photo = createCanvas(width, height);
   const photoCtx = photo.getContext('2d', { willReadFrequently: true });
   photoCtx.imageSmoothingEnabled = true;
   photoCtx.imageSmoothingQuality = 'high';
   photoCtx.drawImage(image, 0, 0, width, height);
   if (hasAdjustments(adjustments)) processPixels(photoCtx, width, height, adjustments);
+  return frameCanvas(photo, frame);
+}
 
+// Puts a finished photo (canvas or ImageBitmap) into a presentation frame.
+export function frameCanvas(photo, frame = 'none') {
+  const { width, height } = photo;
   const layout = frameLayout(width, height, frame);
-  const output = document.createElement('canvas');
-  output.width = layout.width; output.height = layout.height;
+  const output = createCanvas(layout.width, layout.height);
   const ctx = output.getContext('2d');
   ctx.fillStyle = layout.background;
   ctx.fillRect(0, 0, output.width, output.height);

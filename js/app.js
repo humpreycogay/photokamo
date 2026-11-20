@@ -1,5 +1,9 @@
 import { presets, frames, adjustmentSections, defaultAdjustments } from './presets.js';
-import { renderImage } from './renderer.js';
+import { renderImage, frameCanvas } from './renderer.js';
+import { renderSpectral, engineInfo } from './spectral/engine.js';
+import { sections as advancedSections, controlByPath, defaultParams, sliderValue, optionLabel } from './spectral/params.js';
+import { stubAdjustments } from './spectral/stub.js';
+import { buildAdvanced, syncAdvanced } from './advanced-ui.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -15,7 +19,10 @@ const elements = {
   fullSizeDetail: $('#fullSizeDetail'), shareSizeDetail: $('#shareSizeDetail'), photoLookBadge: $('#photoLookBadge'),
   maName: $('#maName'), maValue: $('#maValue'), maReset: $('#maReset'), maSlider: $('#maSlider'), maZero: $('#maZero'), maGroups: $('#maGroups'), maTools: $('#maTools'),
   cameraDialog: $('#cameraDialog'), cameraPreview: $('#cameraPreview'), cameraStatus: $('#cameraStatus'),
-  capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast')
+  capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast'),
+  advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
+  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'),
+  renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar')
 };
 
 // Look state: the effective value of each adjustment is
@@ -25,6 +32,10 @@ const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
   filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
+  // Advanced (spectral) mode
+  mode: 'simple', advanced: defaultParams(), myLookId: null, imageBitmap: null,
+  advOpen: new Set(advancedSections.filter(section => section.openByDefault).map(section => section.id)), advStep: 'profiles',
+  renderQuality: 'preview', renderAbort: null,
   undo: [], redo: [], editedCanvas: null, originalCanvas: null, originalKey: '', renderToken: 0
 };
 let toastTimer;
@@ -36,6 +47,8 @@ const presetPreviewSource = 'images/model.jpg';
 const PREVIEW_EDGE = 1000;
 const ZOOM_MAX_EDGE = 4096;
 const FAVORITES_KEY = 'photokamo:favorites';
+const MY_LOOKS_KEY = 'photokamo:my-looks';
+const ADVANCED_DEBOUNCE = 150;
 const SHARE_WIDTH = 1080;
 const mobileQuery = matchMedia('(max-width: 900px)');
 
@@ -62,8 +75,13 @@ function effectiveAdjustments() { return Object.fromEntries(Object.keys(defaultA
 const editCount = () => Object.keys(state.edits).length;
 
 // ---------- History ----------
-function snapshot() { return { presetId: state.presetId, strength: state.strength, edits: { ...state.edits }, frame: state.frame }; }
-function restore(value) { state.presetId = value.presetId; state.strength = value.strength; state.edits = { ...value.edits }; state.frame = value.frame; syncControls(); scheduleRender(); }
+const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
+function snapshot() { return { presetId: state.presetId, strength: state.strength, edits: { ...state.edits }, frame: state.frame, mode: state.mode, advanced: cloneParams(state.advanced), myLookId: state.myLookId }; }
+function restore(value) {
+  state.presetId = value.presetId; state.strength = value.strength; state.edits = { ...value.edits }; state.frame = value.frame;
+  state.mode = value.mode; state.advanced = cloneParams(value.advanced); state.myLookId = value.myLookId;
+  syncControls(); scheduleRender();
+}
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function commit(previous = snapshot()) { if (!sameSnapshot(previous, snapshot())) { state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons(); } }
 function undo() { if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
@@ -71,7 +89,11 @@ function redo() { if (!state.redo.length) return; state.undo.push(snapshot()); r
 function updateButtons() { elements.undo.disabled = !state.undo.length; elements.redo.disabled = !state.redo.length; }
 function toast(message) { clearTimeout(toastTimer); elements.toast.textContent = message; elements.toast.classList.add('show'); toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600); }
 function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
-function pickLook(id) { change(() => { state.presetId = id; state.edits = {}; }); }
+function pickLook(id) {
+  const wasAdvanced = state.mode === 'advanced';
+  change(() => { state.presetId = id; state.edits = {}; state.mode = 'simple'; state.myLookId = null; });
+  if (wasAdvanced) toast('Switched to Simple mode.');
+}
 
 // ---------- Favorites ----------
 function loadFavorites() { try { const value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]'); return Array.isArray(value) ? value.filter(id => presets.some(p => p.id === id)) : []; } catch { return []; } }
@@ -86,10 +108,56 @@ function toggleFavorite() {
   syncLooks();
 }
 
+// ---------- My looks (saved Advanced settings) ----------
+function normalizeParams(params) { const base = defaultParams(); for (const key of Object.keys(base)) if (params && key in params && typeof params[key] === typeof base[key]) base[key] = Array.isArray(params[key]) ? [...params[key]] : params[key]; return base; }
+function loadMyLooks() {
+  try {
+    const value = JSON.parse(localStorage.getItem(MY_LOOKS_KEY) || '[]');
+    return Array.isArray(value) ? value.filter(look => look && typeof look.id === 'string' && typeof look.name === 'string' && look.params).map(look => ({ ...look, params: normalizeParams(look.params) })) : [];
+  } catch { return []; }
+}
+let myLooks = loadMyLooks();
+function saveMyLooks() { try { localStorage.setItem(MY_LOOKS_KEY, JSON.stringify(myLooks)); return true; } catch { return false; } }
+const currentMyLook = () => myLooks.find(look => look.id === state.myLookId) || null;
+function buildMyLookTiles() {
+  elements.lookGrid.querySelectorAll('[data-mine]').forEach(tile => tile.remove());
+  for (const look of myLooks) {
+    const tile = document.createElement('button');
+    tile.className = 'look-tile'; tile.type = 'button'; tile.dataset.mine = look.id; tile.setAttribute('aria-pressed', 'false');
+    tile.innerHTML = '<span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name"></span>';
+    tile.querySelector('.look-tile-name').textContent = look.name;
+    elements.lookGrid.prepend(tile);
+    loadSampleImage().then(image => {
+      const canvas = tile.querySelector('canvas');
+      drawCover(canvas.getContext('2d'), renderImage(image, stubAdjustments(look.params), 'none', 260), canvas.width, canvas.height, .3);
+      canvas.closest('.look-thumb').classList.add('has-preview');
+    }).catch(() => {});
+  }
+}
+function pickMyLook(id) {
+  const look = myLooks.find(item => item.id === id); if (!look) return;
+  change(() => { state.mode = 'advanced'; state.advanced = normalizeParams(look.params); state.myLookId = id; });
+}
+function saveAsMyLook() {
+  const suggested = `My look ${myLooks.length + 1}`;
+  const name = prompt('Name this look', currentMyLook()?.name || suggested);
+  if (name === null) return;
+  const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, params: cloneParams(state.advanced) };
+  myLooks = [...myLooks, look];
+  const stored = saveMyLooks();
+  buildMyLookTiles();
+  change(() => { state.myLookId = look.id; });
+  toast(stored ? `Saved “${look.name}”. Find it under Mine in Looks.` : `Saved “${look.name}” for this visit only (browser storage is unavailable).`);
+}
+
 // ---------- Looks panel ----------
 function buildLooks() {
   elements.lookGrid.innerHTML = presets.map(preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`).join('');
-  elements.lookGrid.addEventListener('click', event => { const tile = event.target.closest('[data-preset]'); if (tile) pickLook(tile.dataset.preset); });
+  elements.lookGrid.addEventListener('click', event => {
+    const tile = event.target.closest('[data-preset],[data-mine]'); if (!tile) return;
+    if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else pickLook(tile.dataset.preset);
+  });
+  buildMyLookTiles();
   elements.lookFilters.addEventListener('click', event => {
     const chip = event.target.closest('[data-filter]'); if (!chip) return;
     state.filter = chip.dataset.filter; syncLooks();
@@ -99,18 +167,36 @@ function buildLooks() {
 function filterMatches(preset) {
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(preset.id);
+  if (state.filter === 'Mine') return false;
   return CATEGORY[preset.group] === state.filter;
 }
 function syncLooks() {
   const preset = currentPreset();
-  const filters = ['All', 'Camera', 'Film', 'Creative', ...(favorites.length ? ['Favorites'] : [])];
+  const filters = ['All', 'Camera', 'Film', 'Creative', ...(myLooks.length ? ['Mine'] : []), ...(favorites.length ? ['Favorites'] : [])];
+  const advanced = state.mode === 'advanced';
   if (!filters.includes(state.filter)) state.filter = 'All';
   elements.lookFilters.innerHTML = filters.map(filter => `<button class="chip" type="button" data-filter="${filter}" aria-pressed="${filter === state.filter}">${filter}</button>`).join('');
   elements.lookGrid.querySelectorAll('[data-preset]').forEach(tile => {
     const item = presets.find(p => p.id === tile.dataset.preset);
     tile.hidden = !filterMatches(item);
-    tile.setAttribute('aria-pressed', item.id === state.presetId);
+    tile.setAttribute('aria-pressed', !advanced && item.id === state.presetId);
   });
+  elements.lookGrid.querySelectorAll('[data-mine]').forEach(tile => {
+    tile.hidden = !['All', 'Mine'].includes(state.filter);
+    tile.setAttribute('aria-pressed', advanced && tile.dataset.mine === state.myLookId);
+  });
+  elements.favorite.hidden = advanced;
+  if (advanced) {
+    const mine = currentMyLook();
+    const edited = mine && JSON.stringify(mine.params) !== JSON.stringify(state.advanced);
+    elements.lookGroup.textContent = 'Advanced · Spectral';
+    elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Advanced film edit';
+    elements.photoLookBadge.textContent = elements.lookName.textContent;
+    elements.lookDesc.textContent = `${optionLabel(state.advanced.film)} → ${state.advanced['io.scan_film'] ? 'negative scan' : optionLabel(state.advanced.print)}`;
+    elements.strength.disabled = true;
+    elements.strengthOutput.value = '—';
+    return;
+  }
   elements.lookGroup.textContent = groupLabel(preset);
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
   elements.photoLookBadge.textContent = elements.lookName.textContent;
@@ -205,15 +291,15 @@ function formatValue(key, value) {
 function buildAdjustments() {
   elements.adjustmentControls.innerHTML = adjustmentSections.map(section => `<section class="adjustment-section"><h3>${section.name}</h3>${section.controls.map(([id, label, min, max, step]) => `<div class="slider-row" data-row="${id}"><label class="slider-label" for="adjust-${id}"><span>${label}</span><output id="output-${id}" for="adjust-${id}">0</output></label><input id="adjust-${id}" data-adjustment="${id}" type="range" min="${min}" max="${max}" step="${step}" value="0"></div>`).join('')}</section>`).join('');
   const panel = elements.adjustmentControls;
-  bindHistorySlider(panel, '[data-adjustment]', input => input.dataset.adjustment);
+  bindHistorySlider(panel, '[data-adjustment]', input => setAdjustment(input.dataset.adjustment, Number(input.value)));
   panel.addEventListener('dblclick', event => { const input = event.target.closest('[data-adjustment]'); if (input) resetAdjustment(input.dataset.adjustment); });
 }
 
 // One history entry per drag / keyboard session on any adjustment slider.
-function bindHistorySlider(container, selector, keyOf) {
+function bindHistorySlider(container, selector, apply) {
   container.addEventListener('pointerdown', event => { if (event.target.matches(selector)) sliderStart = snapshot(); });
   container.addEventListener('focusin', event => { if (event.target.matches(selector) && !sliderStart) sliderStart = snapshot(); });
-  container.addEventListener('input', event => { const input = event.target.closest(selector); if (input) setAdjustment(keyOf(input), Number(input.value)); });
+  container.addEventListener('input', event => { const input = event.target.closest(selector); if (input) apply(input); });
   container.addEventListener('change', event => { if (!event.target.matches(selector)) return; commit(sliderStart || snapshot()); sliderStart = snapshot(); });
   container.addEventListener('focusout', event => { if (event.target.matches(selector)) sliderStart = null; });
 }
@@ -243,7 +329,7 @@ function buildMobileAdjust() {
     event.preventDefault(); next.click(); next.focus();
   });
   elements.maTools.addEventListener('click', event => { const tool = event.target.closest('[data-tool]'); if (tool) { state.mobileTool = tool.dataset.tool; syncMobileAdjust(); } });
-  bindHistorySlider(elements.maSlider.parentElement, '#maSlider', () => state.mobileTool);
+  bindHistorySlider(elements.maSlider.parentElement, '#maSlider', input => setAdjustment(state.mobileTool, Number(input.value)));
   elements.maReset.addEventListener('click', () => resetAdjustment(state.mobileTool));
   // Double-tap (two quick taps without dragging) resets the active slider.
   let lastTap = 0, downAt = 0, downX = 0;
@@ -300,7 +386,63 @@ function buildFrames() {
   elements.frameGrid.addEventListener('click', event => { const card = event.target.closest('[data-frame]'); if (card) change(() => { state.frame = card.dataset.frame; }); });
 }
 
+// ---------- Advanced (spectral) panel ----------
+const advancedRoots = { pipeline: elements.advPipeline, container: elements.advSections };
+function syncAdvancedPanel() { syncAdvanced(advancedRoots, state.advanced, { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches }); }
+function setAdvancedValue(path, raw) {
+  const control = controlByPath[path];
+  if (control.kind === 'vec2') { const value = [...state.advanced[path]]; value[control.index] = Number(raw); state.advanced[path] = value; }
+  else state.advanced[path] = control.kind === 'float' ? Number(raw) : raw;
+}
+function resetAdvanced(path) {
+  const fallback = controlByPath[path].default;
+  change(() => { state.advanced[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
+}
+function buildAdvancedPanel() {
+  buildAdvanced(advancedRoots);
+  const container = elements.advSections;
+  container.addEventListener('click', event => {
+    const head = event.target.closest('[data-toggle]');
+    if (head) { const id = head.dataset.toggle; if (state.advOpen.has(id)) state.advOpen.delete(id); else state.advOpen.add(id); syncAdvancedPanel(); return; }
+    const toggle = event.target.closest('[role=switch][data-path]');
+    if (toggle) { change(() => { state.advanced[toggle.dataset.path] = !state.advanced[toggle.dataset.path]; }); return; }
+    const reset = event.target.closest('[data-reset]');
+    if (reset) resetAdvanced(reset.dataset.reset);
+  });
+  container.addEventListener('change', event => { const select = event.target.closest('select[data-path]'); if (select) change(() => setAdvancedValue(select.dataset.path, select.value)); });
+  bindHistorySlider(container, 'input[type=range][data-path]', input => { setAdvancedValue(input.dataset.path, input.value); syncAdvancedPanel(); syncLooks(); scheduleRender(); });
+  container.addEventListener('dblclick', event => { const input = event.target.closest('input[type=range][data-path]'); if (input) resetAdvanced(input.dataset.path); });
+  elements.advPipeline.addEventListener('click', event => {
+    const step = event.target.closest('[data-step]'); if (!step) return;
+    state.advStep = step.dataset.step;
+    if (!mobileQuery.matches) state.advOpen = new Set([step.dataset.step]);
+    syncAdvancedPanel();
+    if (!mobileQuery.matches) container.querySelector(`[data-section="${step.dataset.step}"]`).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+  $('#advResetAll').addEventListener('click', () => change(() => { state.advanced = defaultParams(); }));
+  $('#saveMyLook').addEventListener('click', saveAsMyLook);
+}
+
+// ---------- Mode: Simple / Advanced ----------
+function setMode(mode) {
+  if (mode === state.mode) return;
+  change(() => { state.mode = mode; });
+}
+function syncMode() {
+  const advanced = state.mode === 'advanced';
+  document.body.classList.toggle('is-advanced', advanced);
+  document.body.classList.toggle('no-paper', advanced && Boolean(state.advanced['io.scan_film']));
+  document.querySelectorAll('.mode-switch [data-mode]').forEach(button => {
+    const checked = button.dataset.mode === state.mode;
+    button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1;
+  });
+  if (advanced && state.zoom !== 'fit') { state.zoom = 'fit'; applyZoom(); }
+  syncRenderStatus();
+}
+
 function syncControls() {
+  syncMode();
+  syncAdvancedPanel();
   syncAdjustments();
   document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === state.frame));
   syncLooks();
@@ -313,6 +455,9 @@ function renderEdge() {
 }
 function scheduleRender() {
   if (!state.image) return;
+  if (state.mode === 'advanced') { scheduleAdvancedRender(); return; }
+  if (state.renderAbort) cancelFullRender();
+  clearTimeout(advancedTimer);
   const token = ++state.renderToken;
   requestAnimationFrame(() => { if (token !== state.renderToken) return; renderPreview(token); });
 }
@@ -341,7 +486,84 @@ function drawPreview() {
   if (!source) return;
   const ctx = elements.canvas.getContext('2d');
   ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-  ctx.drawImage(source, 0, 0);
+  ctx.drawImage(source, 0, 0, elements.canvas.width, elements.canvas.height);
+}
+
+// ---------- Advanced rendering (Web Worker via js/spectral/engine.js) ----------
+let advancedTimer;
+let advancedBusy = false;
+let advancedDirty = false;
+async function ensureBitmap() {
+  if (!state.imageBitmap) state.imageBitmap = await createImageBitmap(state.image);
+  return state.imageBitmap;
+}
+function scheduleAdvancedRender(delay = ADVANCED_DEBOUNCE) {
+  state.renderToken++; // drop any pending Simple render
+  if (state.renderAbort) cancelFullRender();
+  if (state.renderQuality === 'full') { state.renderQuality = 'preview'; syncRenderStatus(); }
+  clearTimeout(advancedTimer);
+  advancedTimer = setTimeout(runAdvancedPreview, delay);
+}
+async function runAdvancedPreview() {
+  if (advancedBusy) { advancedDirty = true; return; }
+  advancedBusy = true; advancedDirty = false;
+  const imageId = state.imageId; const frame = state.frame;
+  try {
+    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'preview' });
+    if (imageId === state.imageId && state.mode === 'advanced' && state.renderQuality === 'preview') presentAdvanced(bitmap, frame);
+  } catch (error) {
+    if (error?.name !== 'AbortError') { console.error(error); toast('The film preview could not be rendered.'); }
+  } finally {
+    advancedBusy = false;
+    if (advancedDirty && state.mode === 'advanced' && state.image) runAdvancedPreview();
+  }
+}
+function presentAdvanced(bitmap, frame) {
+  state.editedCanvas = frameCanvas(bitmap, frame);
+  const originalKey = `${frame}|${engineInfo.previewEdge}`;
+  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, engineInfo.previewEdge); state.originalKey = originalKey; }
+  elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
+  applyZoom();
+  drawPreview();
+}
+function setRenderProgress(value) {
+  const percent = Math.round(value * 100);
+  elements.renderProgressBar.style.width = `${percent}%`;
+  if (state.renderQuality === 'rendering') elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
+}
+async function renderFullQuality() {
+  if (state.mode !== 'advanced' || !state.image) return;
+  clearTimeout(advancedTimer);
+  const controller = new AbortController();
+  state.renderAbort = controller; state.renderQuality = 'rendering';
+  syncRenderStatus(); setRenderProgress(0);
+  const frame = state.frame;
+  try {
+    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress });
+    if (state.renderAbort !== controller) return;
+    state.renderAbort = null; state.renderQuality = 'full';
+    presentAdvanced(bitmap, frame); syncRenderStatus();
+  } catch (error) {
+    if (state.renderAbort === controller) { state.renderAbort = null; state.renderQuality = 'preview'; syncRenderStatus(); }
+    if (error?.name !== 'AbortError') { console.error(error); toast('The full-quality render failed.'); }
+  }
+}
+function cancelFullRender() {
+  const controller = state.renderAbort;
+  state.renderAbort = null; state.renderQuality = 'preview';
+  controller?.abort();
+  syncRenderStatus();
+}
+function syncRenderStatus() {
+  const rendering = state.renderQuality === 'rendering';
+  const full = state.renderQuality === 'full';
+  $('#renderStatus').dataset.state = state.renderQuality;
+  elements.renderFull.hidden = rendering || full;
+  elements.renderCancel.hidden = !rendering;
+  elements.renderProgress.hidden = !rendering;
+  if (rendering) return;
+  elements.renderText.textContent = full ? 'Full quality' : engineInfo.previewLabel;
+  elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${engineInfo.previewDetail}`;
 }
 function applyZoom() {
   const actual = state.zoom === '100';
@@ -375,6 +597,8 @@ async function loadFile(file) {
     state.image = image; state.filename = file.name.replace(/\.[^.]+$/, '') || 'photo'; state.undo = []; state.redo = [];
     state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
     exportCanvas = { key: '', canvas: null }; preparedExport = null;
+    if (state.renderAbort) cancelFullRender();
+    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview';
     document.body.classList.add('has-image');
     elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
     elements.fileName.textContent = file.name;
@@ -495,7 +719,23 @@ function exportEdge(size = state.exportSize) {
 }
 function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportEdge(), state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
+async function renderAdvancedExport(edge) {
+  const frame = state.frame;
+  const full = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full' });
+  const scale = Math.min(1, edge / Math.max(full.width, full.height));
+  if (scale === 1) return frameCanvas(full, frame);
+  const scaled = document.createElement('canvas');
+  scaled.width = Math.round(full.width * scale); scaled.height = Math.round(full.height * scale);
+  const ctx = scaled.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(full, 0, 0, scaled.width, scaled.height);
+  return frameCanvas(scaled, frame);
+}
 function exportSummary() {
+  const frameName = state.frame === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame).name} frame`;
+  if (state.mode === 'advanced') {
+    const look = currentMyLook()?.name || 'Advanced';
+    return [look, `${optionLabel(state.advanced.film)} → ${state.advanced['io.scan_film'] ? 'negative scan' : optionLabel(state.advanced.print)}`, frameName].join(' · ');
+  }
   const preset = currentPreset();
   const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;
   const count = editCount();
@@ -526,7 +766,7 @@ function prepareExport() {
     await new Promise(resolve => setTimeout(resolve, 30));
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: state.mode === 'advanced' ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -585,6 +825,9 @@ async function sharePhoto() {
 function closePhoto() {
   if (state.undo.length && !confirm('Close this photo? Your edits will be lost.')) return;
   setHolding(false);
+  if (state.renderAbort) cancelFullRender();
+  clearTimeout(advancedTimer);
+  state.imageBitmap?.close?.(); state.imageBitmap = null;
   state.image = null; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
   exportCanvas = { key: '', canvas: null }; preparedExport = null;
   document.body.classList.remove('has-image');
@@ -593,11 +836,24 @@ function closePhoto() {
 }
 
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildAdvancedPanel(); syncControls(); updateButtons();
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
-mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); });
+mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); });
+document.querySelectorAll('.mode-switch').forEach(group => {
+  group.addEventListener('click', event => { const button = event.target.closest('[data-mode]'); if (button) setMode(button.dataset.mode); });
+  group.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const next = state.mode === 'simple' ? 'advanced' : 'simple';
+    setMode(next);
+    group.querySelector(`[data-mode="${next}"]`).focus();
+  });
+});
+$('#advancedInfo').addEventListener('click', () => elements.aboutDialog.showModal());
+elements.renderFull.addEventListener('click', renderFullQuality);
+elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
 
 elements.fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
