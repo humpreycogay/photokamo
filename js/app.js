@@ -3,8 +3,9 @@ import { renderImage, frameCanvas, applyAdjustments, drawTexts, textFonts, textF
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
-import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
+import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
+import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
 
@@ -24,7 +25,9 @@ const elements = {
   cameraDialog: $('#cameraDialog'), cameraPreview: $('#cameraPreview'), cameraStatus: $('#cameraStatus'),
   capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast'),
   advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
-  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'), sheetRender: $('#sheetRenderButton'), sheetRenderLabel: $('#sheetRenderButton .sheet-render-label'), sheetRenderLive: $('#sheetRenderLive'), sheetGrabber: $('#sheetGrabber'), engineCaption: $('#engineButtonCaption'),
+  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'), sheetRender: $('#sheetRenderButton'), sheetRenderLabel: $('#sheetRenderButton .sheet-render-label'), sheetRenderLive: $('#sheetRenderLive'), sheetGrabber: $('#sheetGrabber'), engineCaption: $('#engineButtonCaption'), sheetView: $('#sheetViewToggle'),
+  stageHint: $('#advStageHint'), stageHintText: $('#advStageHintText'), advDial: $('#advDial'), dialChips: $('#dialChips'), dialLabel: $('#dialLabel'), dialValue: $('#dialValue'),
+  dialReset: $('#dialReset'), dialResetText: $('#dialResetText'), dialRuler: $('#dialRuler'), dialScale: $('#dialScale'), dialDefault: $('#dialDefault'), dialInput: $('#dialInput'), dialEmpty: $('#dialEmpty'), dialBody: $('#dialBody'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
   engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineRetry: $('#engineRetry'),
@@ -69,8 +72,11 @@ const SHARE_WIDTH = 1080;
 /** Width of the "For sharing" export: the chosen platform's size, else 1080 px. */
 const shareWidth = () => (PLATFORMS[state.crop.platform]?.w || SHARE_WIDTH);
 const mobileQuery = matchMedia('(max-width: 900px)');
-/** Phones held upright: film engine controls in the compact sheet (docs/handover-mobile-film-panel). */
-const sheetQuery = matchMedia('(max-width: 600px)');
+/** Phones (upright ≤600px, or sideways): film engine controls in the compact sheet (docs/handover-mobile-film-panel). */
+const sheetQuery = matchMedia('(max-width: 600px), (max-width: 900px) and (orientation: landscape) and (max-height: 500px)');
+/** Film sheet view: 'list' (rows) or 'dial' (focus view); UI state, remembered on this device. */
+const VIEW_KEY = 'photokamo:film-view';
+const dial = { view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'dial' ? 'dial' : 'list'; } catch { return 'list'; } })(), paths: {}, px: 1, chipsKey: '', drag: null, frame: 0 };
 
 const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Film stocks': 'Film', 'Creative styles': 'Creative' };
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
@@ -1092,10 +1098,20 @@ function syncAdvancedPanel() {
   }
   document.querySelector('.advanced-panel').classList.toggle('is-loading', !module);
   syncAdvancedNote();
+  syncDial();
 }
 function syncAdvancedNote() {
   const module = activeModule();
   elements.advNote.hidden = !(module && state.renderQuality !== 'full' && module.hasSpatialEffects(advParams()));
+  // Phone sheet: one line under the current stage, naming its switched-on effects that only the full render shows.
+  const section = module?.sections.find(item => item.id === state.advStep);
+  const effects = section && state.renderQuality === 'preview' ? activeHqEffects(section, advParams(), module) : [];
+  elements.stageHint.hidden = !effects.length;
+  if (effects.length) {
+    const names = effects.map((label, index) => (index && !/^[A-Z]{2}/.test(label) ? label[0].toLowerCase() + label.slice(1) : label));
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+    elements.stageHintText.textContent = `${list} ${names.length > 1 ? 'appear' : 'appears'} after Render HQ.`;
+  }
 }
 function setAdvancedValue(path, raw) {
   const module = activeModule(); const params = advParams(); if (!module) return;
@@ -2242,6 +2258,170 @@ elements.sheetGrabber.addEventListener('click', () => {
   try { localStorage.setItem(SHEET_KEY, sheetExpanded ? 'expanded' : 'collapsed'); } catch { /* remembered for this visit only */ }
 });
 syncSheet();
+
+// ---------- Film sheet rows: option picker, typed values, double-tap reset ----------
+const optionPicker = createOptionPicker({ sheet: $('#optionPicker'), title: $('#optionPickerTitle'), list: $('#optionPickerList') });
+function pickOption(anchor, path) {
+  const module = activeModule(); if (!module) return;
+  const control = module.controlByPath[path];
+  optionPicker.open({ anchor, label: control.label, value: advParams()[path],
+    options: control.options.map(value => ({ value, label: module.optionLabel(value, path), group: module.optionGroup?.(value, path) || '' })),
+    onChoose: value => change(() => { setAdvancedValue(path, value); }) });
+}
+const stepDecimals = step => { const text = String(step); return text.includes('.') ? text.length - text.indexOf('.') - 1 : 0; };
+/** Clamps to the control's range and snaps to its step. */
+function snapToStep(control, raw) {
+  const value = Math.min(control.max, Math.max(control.min, raw));
+  return Number((Math.round((value - control.min) / control.step) * control.step + control.min).toFixed(stepDecimals(control.step)));
+}
+/** Value chip → inline numeric input. Enter / leaving the field commits (one undo step), Esc cancels. */
+function editChipValue(chip) {
+  const module = activeModule(); if (!module) return;
+  const path = chip.dataset.chip; const control = module.controlByPath[path];
+  const input = document.createElement('input');
+  input.className = 'adv-chip-input'; input.type = 'text'; input.inputMode = 'decimal'; input.enterKeyHint = 'done'; input.autocomplete = 'off';
+  input.setAttribute('aria-label', `${control.label}, from ${control.min} to ${control.max}`);
+  input.value = String(module.sliderValue(control, advParams()[path]));
+  chip.hidden = true; chip.after(input); input.focus(); input.select();
+  let done = false;
+  const finish = (save, refocus) => {
+    if (done) return; done = true;
+    const number = parseFloat(input.value.replace(',', '.').replace(/[^\d.+-]/g, ''));
+    input.remove(); chip.hidden = false;
+    if (save && Number.isFinite(number)) change(() => { setAdvancedValue(path, snapToStep(control, number)); });
+    if (refocus) chip.focus();
+  };
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); finish(true, true); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false, true); }
+  });
+  input.addEventListener('blur', () => finish(true, false));
+}
+// The on-screen keyboard shrinks the visual viewport: keep the field being typed in visible.
+visualViewport?.addEventListener('resize', () => { const input = document.querySelector('.adv-chip-input'); if (input) input.scrollIntoView({ block: 'center' }); });
+elements.advSections.addEventListener('click', event => {
+  const chip = event.target.closest('[data-chip]'); if (chip) { editChipValue(chip); return; }
+  const row = event.target.closest('[data-pick]'); if (row && !row.disabled) pickOption(row, row.dataset.pick);
+});
+// Touch double-tap on a slider or its label resets it (mobile browsers don't fire dblclick on range inputs).
+let lastTap = null; let tapStart = null;
+elements.advSections.addEventListener('pointerdown', event => { tapStart = { x: event.clientX, y: event.clientY, time: event.timeStamp }; });
+elements.advSections.addEventListener('pointerup', event => {
+  if (!sheetQuery.matches || event.pointerType === 'mouse' || !tapStart) return;
+  const target = event.target.closest('.adv-slider input[type=range], .adv-slider label');
+  const isTap = Math.hypot(event.clientX - tapStart.x, event.clientY - tapStart.y) < 10 && event.timeStamp - tapStart.time < 300;
+  if (!target || !isTap) { lastTap = null; return; }
+  const path = target.dataset.path || document.getElementById(target.htmlFor)?.dataset.path;
+  if (lastTap?.path === path && event.timeStamp - lastTap.time < 350) { lastTap = null; resetAdvanced(path); return; }
+  lastTap = { path, time: event.timeStamp };
+});
+
+// ---------- Film sheet: dial view (focus view, SPEC §5) ----------
+// Same params and stage as the list; the dial edits one slider of the stage at a time.
+const isSliderControl = control => control.kind === 'float' || control.kind === 'vec2';
+/** Controls of the current stage that the list shows now (switch groups and engine rules hide some). */
+function dialControls(module) {
+  const section = module.sections.find(item => item.id === state.advStep); if (!section) return [];
+  return section.controls.filter(control => {
+    if (!control.path || control.hidden || !['float', 'vec2', 'bool', 'select'].includes(control.kind)) return false;
+    const element = elements.advSections.querySelector(`[data-path="${control.path}"]`);
+    return element && !element.closest('.adv-control')?.hidden;
+  });
+}
+function syncDial() {
+  const module = activeModule();
+  const on = Boolean(module) && engine.builtFor === state.engine && sheetQuery.matches && isFilm() && dial.view === 'dial';
+  document.body.classList.toggle('film-dial', on);
+  elements.advDial.hidden = !on;
+  elements.sheetView.setAttribute('aria-pressed', dial.view === 'dial');
+  if (!on) return;
+  const params = advParams(); const controls = dialControls(module);
+  const sliders = controls.filter(isSliderControl);
+  if (!sliders.some(control => control.path === dial.paths[state.advStep])) dial.paths[state.advStep] = sliders[0]?.path;
+  const path = dial.paths[state.advStep];
+  const key = `${state.engine}|${state.advStep}|${controls.map(control => control.path).join(',')}`;
+  if (key !== dial.chipsKey) {
+    dial.chipsKey = key;
+    const esc = value => String(value).replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
+    elements.dialChips.innerHTML = controls.map(control => {
+      const role = control.kind === 'bool' ? ' role="switch"' : control.kind === 'select' ? ' aria-haspopup="listbox" aria-expanded="false"' : '';
+      return `<button class="dial-chip" type="button" data-dial="${control.path}"${role}><span class="dial-chip-name">${esc(control.label)}</span><span class="dial-chip-value"></span><span class="dial-chip-dot" aria-hidden="true"></span><span class="visually-hidden dial-chip-edited">, edited</span></button>`;
+    }).join('');
+  }
+  elements.dialChips.querySelectorAll('[data-dial]').forEach(chip => {
+    const control = module.controlByPath[chip.dataset.dial]; const value = params[control.path];
+    chip.querySelector('.dial-chip-value').textContent = control.kind === 'bool' ? (value ? 'On' : 'Off') : control.kind === 'select' ? module.optionLabel(value, control.path) : module.formatValue(control, value);
+    const edited = module.isChanged(params, control.path);
+    chip.classList.toggle('is-edited', edited); chip.querySelector('.dial-chip-edited').hidden = !edited;
+    chip.disabled = Boolean(elements.advSections.querySelector(`[data-path="${control.path}"]`)?.disabled);
+    if (control.kind === 'bool') chip.setAttribute('aria-checked', Boolean(value));
+    else if (isSliderControl(control)) chip.setAttribute('aria-pressed', control.path === path);
+  });
+  elements.dialBody.hidden = !path;
+  elements.dialEmpty.hidden = Boolean(path) || !controls.length;
+  if (!path) return;
+  const control = module.controlByPath[path];
+  const value = module.sliderValue(control, params[path]);
+  const fallback = module.sliderValue(control, module.defaultFor ? module.defaultFor(params, path) : control.default);
+  const text = module.formatValue(control, params[path]);
+  elements.dialLabel.textContent = control.label; elements.dialValue.textContent = text;
+  elements.dialValue.classList.toggle('is-edited', module.isChanged(params, path));
+  elements.dialReset.hidden = !module.isChanged(params, path); elements.dialResetText.textContent = `Reset ${control.label}`;
+  const input = elements.dialInput;
+  if (input.min !== String(control.min) || input.max !== String(control.max)) { input.min = control.min; input.max = control.max; }
+  input.step = control.step;
+  if (document.activeElement !== input || Number(input.value) !== value) input.value = value;
+  input.setAttribute('aria-valuetext', text);
+  // Ruler: ≥1px per step, the whole range at least ~320px; minor ticks ≥8px apart, a major tick every 5.
+  const steps = Math.max(1, Math.round((control.max - control.min) / control.step));
+  const px = dial.px = Math.min(12, Math.max(1, 320 / steps));
+  const minor = Math.ceil(8 / px) * px;
+  const scale = elements.dialScale;
+  scale.style.width = `${steps * px + 2}px`;
+  scale.style.setProperty('--minor', `${minor}px`); scale.style.setProperty('--major', `${minor * 5}px`);
+  elements.dialDefault.style.left = `${(fallback - control.min) / control.step * px}px`;
+  scale.style.transform = `translateX(${elements.dialRuler.clientWidth / 2 - (value - control.min) / control.step * px - 1}px)`;
+}
+/** One panel sync per frame while dragging the ruler. */
+function requestDialSync() {
+  if (dial.frame) return;
+  dial.frame = requestAnimationFrame(() => { dial.frame = 0; syncAdvancedPanel(); syncLooks(); });
+}
+elements.sheetView.addEventListener('click', () => {
+  dial.view = dial.view === 'dial' ? 'list' : 'dial';
+  try { localStorage.setItem(VIEW_KEY, dial.view); } catch { /* remembered for this visit only */ }
+  syncAdvancedPanel();
+});
+elements.dialChips.addEventListener('click', event => {
+  const chip = event.target.closest('[data-dial]'); const module = activeModule();
+  if (!chip || chip.disabled || !module) return;
+  const path = chip.dataset.dial; const control = module.controlByPath[path];
+  if (control.kind === 'bool') change(() => { setAdvancedValue(path, !advParams()[path]); });
+  else if (control.kind === 'select') pickOption(chip, path);
+  else { dial.paths[state.advStep] = path; syncDial(); }
+});
+elements.dialReset.addEventListener('click', () => { const path = dial.paths[state.advStep]; if (path) resetAdvanced(path); });
+bindHistorySlider(elements.advDial, '#dialInput', input => {
+  const path = dial.paths[state.advStep]; if (!path) return;
+  setAdvancedValue(path, input.value); syncAdvancedPanel(); syncLooks(); scheduleRender();
+});
+// Drag the ruler under the fixed needle: dragging left raises the value, one step per `dial.px` pixels.
+elements.dialRuler.addEventListener('pointerdown', event => {
+  const module = activeModule(); const path = dial.paths[state.advStep]; if (!module || !path) return;
+  const control = module.controlByPath[path];
+  dial.drag = { path, control, x: event.clientX, start: module.sliderValue(control, advParams()[path]), previous: snapshot() };
+  elements.dialRuler.setPointerCapture(event.pointerId);
+});
+elements.dialRuler.addEventListener('pointermove', event => {
+  const drag = dial.drag; const module = activeModule(); if (!drag || !module) return;
+  const value = snapToStep(drag.control, drag.start + Math.round((drag.x - event.clientX) / dial.px) * drag.control.step);
+  if (value === module.sliderValue(drag.control, advParams()[drag.path])) return;
+  setAdvancedValue(drag.path, value); requestDialSync(); scheduleRender();
+});
+const endDialDrag = () => { if (!dial.drag) return; commit(dial.drag.previous); dial.drag = null; syncAdvancedPanel(); syncLooks(); };
+elements.dialRuler.addEventListener('pointerup', endDialDrag);
+elements.dialRuler.addEventListener('pointercancel', endDialDrag);
+addEventListener('resize', () => { if (dial.view === 'dial') syncDial(); });
 
 elements.fileInput.addEventListener('change', event => addFiles(event.target.files));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());

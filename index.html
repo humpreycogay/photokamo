@@ -159,6 +159,7 @@
       <div class="panel-body">
         <section class="tab-panel looks-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
           <button class="sheet-grabber" id="sheetGrabber" type="button" aria-label="Expand controls"><span aria-hidden="true"></span></button>
+          <button class="sheet-view" id="sheetViewToggle" type="button" aria-pressed="false" aria-label="Dial view"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 16h16M6 16v-3M10 16v-5M14 16v-3M18 16v-3"/><path d="M12 4v8"/></svg></button>
           <div class="engine-bar">
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
@@ -173,6 +174,7 @@
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
             </div>
             <div class="engine-menu" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>
+            <div class="option-sheet" id="optionPicker" popover><span class="sheet-handle" aria-hidden="true"></span><h2 class="option-title" id="optionPickerTitle"></h2><div class="option-list" id="optionPickerList" role="listbox" tabindex="-1" aria-labelledby="optionPickerTitle"></div></div>
             <div class="engine-status" id="engineStatus" role="status" data-state="idle">
               <span class="engine-status-text" id="engineStatusText"></span>
               <button class="text-button" id="engineRetry" type="button" hidden>Retry</button>
@@ -212,7 +214,21 @@
             <h2 class="visually-hidden" id="advancedTitle">Film engine controls</h2>
             <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
             <p class="adv-note" id="advNote" hidden></p>
+            <div class="adv-dial" id="advDial" hidden>
+              <div class="dial-chips" id="dialChips" role="group" aria-label="Settings in this stage"></div>
+              <div class="dial-body" id="dialBody">
+                <div class="dial-head">
+                  <span class="dial-label" id="dialLabel"></span>
+                  <span class="dial-value" id="dialValue" aria-hidden="true"></span>
+                  <button class="adv-reset dial-reset" id="dialReset" type="button" hidden><svg class="adv-reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg><span class="visually-hidden" id="dialResetText">Reset</span></button>
+                </div>
+                <div class="dial-ruler" id="dialRuler" aria-hidden="true"><div class="dial-scale" id="dialScale"><span class="dial-default" id="dialDefault"></span></div><span class="dial-needle"></span></div>
+                <input class="visually-hidden" id="dialInput" type="range" aria-labelledby="dialLabel">
+              </div>
+              <p class="dial-empty" id="dialEmpty" hidden>This stage has no sliders. Its switches and choices are in the chips above.</p>
+            </div>
             <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
+            <p class="adv-stage-hint" id="advStageHint" hidden><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span id="advStageHintText"></span></p>
             <div class="adv-footer">
               <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
               <button class="button button-quiet" id="deleteMyLook" type="button" hidden>Delete look</button>
