@@ -24,7 +24,7 @@ const elements = {
   cameraDialog: $('#cameraDialog'), cameraPreview: $('#cameraPreview'), cameraStatus: $('#cameraStatus'),
   capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast'),
   advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
-  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'), sheetRender: $('#sheetRenderButton'), sheetGrabber: $('#sheetGrabber'),
+  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'), sheetRender: $('#sheetRenderButton'), sheetRenderLabel: $('#sheetRenderButton .sheet-render-label'), sheetRenderLive: $('#sheetRenderLive'), sheetGrabber: $('#sheetGrabber'), engineCaption: $('#engineButtonCaption'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
   engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineRetry: $('#engineRetry'),
@@ -69,6 +69,8 @@ const SHARE_WIDTH = 1080;
 /** Width of the "For sharing" export: the chosen platform's size, else 1080 px. */
 const shareWidth = () => (PLATFORMS[state.crop.platform]?.w || SHARE_WIDTH);
 const mobileQuery = matchMedia('(max-width: 900px)');
+/** Phones held upright: film engine controls in the compact sheet (docs/handover-mobile-film-panel). */
+const sheetQuery = matchMedia('(max-width: 600px)');
 
 const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Film stocks': 'Film', 'Creative styles': 'Creative' };
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
@@ -269,6 +271,7 @@ function syncLooks() {
     elements.lookGroup.textContent = engineById(state.engine).label;
     elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Film edit';
     elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
+    elements.engineCaption.textContent = mine ? elements.lookName.textContent : 'Film engine'; // phone sheet: over the engine name
     elements.lookDesc.textContent = module ? module.stockSummary(params) : 'Loading the film engine…';
     elements.strength.disabled = true;
     elements.strengthOutput.value = '—';
@@ -1013,6 +1016,9 @@ function syncEngineBar() {
   syncEngineWait();
   enginePicker.setValue(state.engine);
   elements.engineAboutButton.hidden = !isFilm();
+  if (isFilm()) elements.engineAboutButton.setAttribute('aria-label', `About ${engineById(state.engine).label} and its licence`);
+  // Phone sheet: the caption ("Film engine" or the My Look) names the button instead of the "Engine" label.
+  elements.engineButton.setAttribute('aria-labelledby', `${sheetQuery.matches && isFilm() ? 'engineButtonCaption' : 'engineLabel'} engineButtonName engineButtonStatus`);
   const status = isFilm() ? engine.status : 'idle';
   enginePicker.setStatus({ loading: 'Loading…', preparing: 'Loading…', failed: 'Couldn’t load' }[status] || '', status === 'failed' ? 'error' : '');
   elements.engineStatus.dataset.state = status;
@@ -1082,7 +1088,7 @@ function syncAdvancedPanel() {
   syncEngineBar();
   const module = activeModule();
   if (module && engine.builtFor === state.engine) {
-    syncAdvanced(advancedRoots, module, advParams(), { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches });
+    syncAdvanced(advancedRoots, module, advParams(), { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches, sheet: sheetQuery.matches });
   }
   document.querySelector('.advanced-panel').classList.toggle('is-loading', !module);
   syncAdvancedNote();
@@ -1317,7 +1323,11 @@ function presentAdvanced(bitmap, frame) {
 function setRenderProgress(value) {
   const percent = Math.round(value * 100);
   elements.renderProgressBar.style.width = `${percent}%`;
-  if (state.renderQuality === 'rendering') { elements.renderText.textContent = `Developing full-quality scan… ${percent}%`; elements.sheetRender.textContent = `Cancel · ${percent}%`; }
+  if (state.renderQuality === 'rendering') {
+    elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
+    elements.sheetRender.style.setProperty('--progress', percent);
+    elements.sheetRender.setAttribute('aria-label', `Rendering full quality, ${percent}%. Cancel`);
+  }
 }
 // The full render holds the engine output with Adjust edits applied.
 const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams(), state.edits]);
@@ -1357,14 +1367,26 @@ function syncRenderStatus() {
   elements.renderProgress.hidden = !rendering;
   syncAdvancedNote();
   const info = activeModule()?.engineInfo;
-  // Phones ≤600px: the chips leave the photo; this button in the film sheet renders / cancels.
-  elements.sheetRender.textContent = rendering ? 'Cancel' : full ? 'Full quality' : 'Render HQ';
-  elements.sheetRender.disabled = full || (!rendering && !info);
+  syncSheetRender(info);
   if (rendering) return;
   elements.renderFull.disabled = !info;
   if (!info) { elements.renderText.textContent = 'Loading the film engine…'; elements.renderDetail.textContent = ''; return; }
   elements.renderText.textContent = full ? 'Full quality' : info.previewLabel;
   elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${info.previewDetail}`;
+}
+// Phone sheet RenderButton: idle (fast preview showing) → rendering (tap cancels) → done. Any edit returns to idle
+// through scheduleAdvancedRender. "Full quality ready" is announced once, when a render finishes.
+let sheetRenderState = 'idle';
+function syncSheetRender(info) {
+  const next = { preview: 'idle', rendering: 'rendering', full: 'done' }[state.renderQuality];
+  const button = elements.sheetRender;
+  button.dataset.state = next;
+  elements.sheetRenderLabel.textContent = { idle: 'Render HQ', rendering: 'Rendering…', done: 'Full quality' }[next];
+  if (next !== 'rendering') button.style.removeProperty('--progress');
+  button.setAttribute('aria-label', { idle: 'Render full quality', rendering: 'Rendering full quality. Cancel', done: 'Full quality shown' }[next]);
+  button.setAttribute('aria-disabled', next === 'done' || (next === 'idle' && !info));
+  if (sheetQuery.matches && isFilm() && next !== sheetRenderState) elements.sheetRenderLive.textContent = next === 'done' ? 'Full quality ready' : '';
+  sheetRenderState = next;
 }
 function applyZoom() {
   const actual = state.zoom === '100';
@@ -2190,7 +2212,22 @@ $('#saveButton').addEventListener('click', openSave);
 mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); });
 elements.renderFull.addEventListener('click', renderFullQuality);
 elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
-elements.sheetRender.addEventListener('click', () => { if (state.renderQuality === 'rendering') elements.renderCancel.click(); else renderFullQuality(); });
+elements.sheetRender.addEventListener('click', () => {
+  if (elements.sheetRender.getAttribute('aria-disabled') === 'true') return;
+  if (state.renderQuality === 'rendering') elements.renderCancel.click(); else renderFullQuality();
+});
+sheetQuery.addEventListener('change', () => { syncAdvancedPanel(); syncRenderStatus(); });
+// Phone sheet stage tabs: ←/→ Home/End move and select (automatic activation).
+elements.advPipeline.addEventListener('keydown', event => {
+  if (!sheetQuery.matches || !event.target.matches('[role=tab]')) return;
+  const tabs = [...elements.advPipeline.querySelectorAll('[role=tab]')];
+  const index = tabs.indexOf(event.target);
+  const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  const tab = tabs[(next + tabs.length) % tabs.length];
+  tab.click(); tab.focus();
+});
 
 // Film sheet (phones ≤600px): preview collapsed (larger photo) or expanded (more controls). UI state, not undo.
 // Remembered on this device; the first time, short screens (<700px) start expanded.

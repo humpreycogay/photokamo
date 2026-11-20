@@ -163,12 +163,13 @@
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
               <button class="engine-button" id="engineButton" type="button" popovertarget="engineList" aria-haspopup="listbox" aria-expanded="false" aria-controls="engineList" aria-labelledby="engineLabel engineButtonName engineButtonStatus">
-                <span class="engine-button-text"><span class="engine-button-name" id="engineButtonName">Basic</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span>
+                <span class="engine-button-text"><span class="engine-button-caption" id="engineButtonCaption">Film engine</span><span class="engine-button-name" id="engineButtonName">Basic</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span>
                 <svg class="icon-sm engine-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </button>
               <button class="button button-secondary engine-apply mobile-only" id="mobileApplyButton" type="button" hidden>Apply</button>
               <span class="engine-look-name mobile-only" id="engineLookName" aria-hidden="true"></span>
-              <button class="sheet-render" id="sheetRenderButton" type="button">Render HQ</button>
+              <button class="sheet-render" id="sheetRenderButton" type="button" data-state="idle"><span class="sheet-render-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-sparkle" d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path class="icon-check" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="sheet-render-label">Render HQ</span></button>
+              <span class="visually-hidden" id="sheetRenderLive" role="status"></span>
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
             </div>
             <div class="engine-menu" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>

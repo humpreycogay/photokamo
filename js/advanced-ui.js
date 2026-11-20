@@ -46,15 +46,20 @@ function controlHtml(control, engine) {
 export function buildAdvanced({ pipeline, container }, engine) {
   if (!engine) { pipeline.innerHTML = ''; container.innerHTML = ''; return; }
   const { sections } = engine;
-  pipeline.innerHTML = sections.map((section, index) => `<button class="pipeline-step" type="button" data-step="${section.id}" aria-pressed="false">${section.step}<span class="pipeline-dot" aria-hidden="true"></span></button>${index < sections.length - 1 ? '<span class="pipeline-arrow" aria-hidden="true">›</span>' : ''}`).join('');
-  container.innerHTML = sections.map(section => `<section class="adv-section" data-section="${section.id}" aria-labelledby="adv-head-${section.id}">
+  // The track becomes a tablist (step numbers, segmented) in the phone sheet; on desktop it has no box (display:contents).
+  pipeline.innerHTML = `<div class="pipeline-track${sections.length > 5 ? ' is-dense' : ''}" style="--n:${sections.length}">${sections.map((section, index) => `<button class="pipeline-step" id="adv-step-${section.id}" type="button" data-step="${section.id}" aria-pressed="false"><span class="pipeline-num" aria-hidden="true">${index + 1}</span><span class="pipeline-label">${escapeHtml(section.step)}</span><span class="pipeline-dot" aria-hidden="true"></span><span class="visually-hidden pipeline-edited" hidden>, edited</span></button>${index < sections.length - 1 ? '<span class="pipeline-arrow" aria-hidden="true">›</span>' : ''}`).join('')}</div>`;
+  container.innerHTML = sections.map(section => `<section class="adv-section" id="adv-section-${section.id}" data-section="${section.id}" aria-labelledby="adv-head-${section.id}">
     <h3 class="adv-heading"><button class="adv-head" id="adv-head-${section.id}" type="button" aria-expanded="false" aria-controls="adv-body-${section.id}" data-toggle="${section.id}">${CHEVRON}<span class="adv-head-text"><span class="adv-title">${escapeHtml(section.title)}</span><span class="adv-summary" id="adv-summary-${section.id}"></span></span><span class="adv-edited" hidden>Edited</span></button></h3>
     <div class="adv-body" id="adv-body-${section.id}" role="group" aria-label="${escapeHtml(section.title)}">${section.controls.map(control => controlHtml(control, engine)).join('')}</div>
   </section>`).join('');
 }
 
-export function syncAdvanced({ pipeline, container }, engine, params, { open, current, mobile }) {
+export function syncAdvanced({ pipeline, container }, engine, params, { open, current, mobile, sheet = false }) {
   const { sections, controlByPath, isChanged, sectionSummary, sliderValue, formatValue } = engine;
+  // Phone sheet (≤600px): the steps are tabs and each section is their tabpanel.
+  const track = pipeline.querySelector('.pipeline-track');
+  if (sheet) { track.setAttribute('role', 'tablist'); track.setAttribute('aria-label', 'Film pipeline stages'); }
+  else { track.removeAttribute('role'); track.removeAttribute('aria-label'); }
   for (const section of sections) {
     const root = container.querySelector(`[data-section="${section.id}"]`);
     const isOpen = mobile ? section.id === current : open.has(section.id);
@@ -65,8 +70,18 @@ export function syncAdvanced({ pipeline, container }, engine, params, { open, cu
     root.querySelector('.adv-edited').hidden = !edited;
     root.querySelector('.adv-summary').textContent = sectionSummary[section.id]?.(params) ?? '';
     const step = pipeline.querySelector(`[data-step="${section.id}"]`);
-    step.setAttribute('aria-pressed', mobile ? section.id === current : open.has(section.id));
     step.classList.toggle('is-edited', edited);
+    step.querySelector('.pipeline-edited').hidden = !edited;
+    if (sheet) {
+      step.setAttribute('role', 'tab'); step.removeAttribute('aria-pressed');
+      step.setAttribute('aria-selected', section.id === current); step.tabIndex = section.id === current ? 0 : -1;
+      step.setAttribute('aria-controls', root.id);
+      root.setAttribute('role', 'tabpanel'); root.setAttribute('aria-labelledby', step.id);
+    } else {
+      ['role', 'aria-selected', 'aria-controls', 'tabindex'].forEach(name => step.removeAttribute(name));
+      step.setAttribute('aria-pressed', mobile ? section.id === current : open.has(section.id));
+      root.removeAttribute('role'); root.setAttribute('aria-labelledby', `adv-head-${section.id}`);
+    }
   }
   container.querySelectorAll('[data-path]').forEach(element => {
     const control = controlByPath[element.dataset.path];
