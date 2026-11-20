@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11110f">
+  <meta name="description" content="PhotoKamo is a private, browser-based camera and film look playground.">
+  <title>PhotoKamo — Camera & film looks</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#editor">Skip to editor</a>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="PhotoKamo home">
+      <span class="brand-mark" aria-hidden="true"><i></i></span>
+      <span>Photo<span>Kamo</span></span>
+    </a>
+    <div class="topbar-actions">
+      <span class="privacy-pill"><span aria-hidden="true">●</span> Local processing</span>
+      <button class="icon-button" id="aboutButton" type="button" aria-label="About PhotoKamo">?</button>
+      <button class="button button-primary" id="exportButton" type="button" disabled>
+        <span aria-hidden="true">↓</span> Export
+      </button>
+    </div>
+  </header>
+
+  <main id="editor" class="app-shell">
+    <section class="workspace" aria-label="Photo preview">
+      <div class="workspace-toolbar">
+        <div class="file-actions">
+          <label class="button button-secondary" for="fileInput"><span aria-hidden="true">＋</span> Open photo</label>
+          <button class="button button-ghost" id="cameraButton" type="button"><span aria-hidden="true">◉</span> Camera</button>
+          <input id="fileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          <input id="cameraInput" class="visually-hidden" type="file" accept="image/*" capture="environment">
+        </div>
+        <div class="history-actions" aria-label="Edit history">
+          <button class="icon-button" id="undoButton" type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>↶</button>
+          <button class="icon-button" id="redoButton" type="button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
+          <button class="button button-ghost button-small" id="resetButton" type="button" disabled>Reset</button>
+        </div>
+      </div>
+
+      <div class="stage" id="dropZone">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-art" aria-hidden="true">
+            <span class="empty-sun"></span><span class="empty-hill one"></span><span class="empty-hill two"></span>
+          </div>
+          <p class="eyebrow">Your private darkroom</p>
+          <h1>Give your photos<br><em>some character.</em></h1>
+          <p>Drop a photo here or choose one from your device. It never leaves your browser.</p>
+          <label class="button button-primary button-large" for="fileInput">Choose a photo</label>
+          <small>JPEG, PNG, WebP or GIF · up to 40 MB</small>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap" hidden>
+          <canvas id="previewCanvas" aria-label="Edited photo preview"></canvas>
+          <div class="compare-line" id="compareLine" hidden aria-hidden="true"><span>↔</span></div>
+          <div class="processing" id="processing" hidden><span></span> Developing…</div>
+        </div>
+        <div class="drop-overlay" aria-hidden="true">Drop to open</div>
+      </div>
+
+      <div class="compare-bar" id="compareBar" hidden>
+        <button class="compare-toggle" id="compareToggle" type="button" aria-pressed="false"><span>◐</span> Compare</button>
+        <label for="compareSlider">Before / after position</label>
+        <input id="compareSlider" type="range" min="0" max="100" value="50">
+        <span class="zoom-label" id="imageInfo"></span>
+      </div>
+    </section>
+
+    <aside class="controls" aria-label="Editing controls">
+      <div class="control-tabs" role="tablist" aria-label="Editor panels">
+        <button role="tab" aria-selected="true" aria-controls="looksPanel" id="looksTab">Looks</button>
+        <button role="tab" aria-selected="false" aria-controls="adjustPanel" id="adjustTab">Adjust</button>
+        <button role="tab" aria-selected="false" aria-controls="framePanel" id="frameTab">Frames</button>
+      </div>
+
+      <div class="panel-scroll">
+        <section class="tab-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Color recipes</p><h2>Find your look</h2></div>
+            <button class="text-button" id="surpriseButton" type="button">Surprise me</button>
+          </div>
+          <div id="presetGroups"></div>
+          <article class="look-details" id="lookDetails"></article>
+        </section>
+
+        <section class="tab-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
+          <div class="panel-heading"><div><p class="eyebrow">Fine tune</p><h2>Adjustments</h2></div><button class="text-button" id="resetAdjustments" type="button">Reset all</button></div>
+          <div id="adjustmentControls"></div>
+        </section>
+
+        <section class="tab-panel" id="framePanel" role="tabpanel" aria-labelledby="frameTab" hidden>
+          <div class="panel-heading"><div><p class="eyebrow">Presentation</p><h2>Film frames</h2></div></div>
+          <p class="panel-intro">Frames are independent from your color look and are included in export.</p>
+          <div class="frame-grid" id="frameGrid"></div>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="cameraDialog" class="camera-dialog">
+    <section class="camera-card" aria-labelledby="cameraTitle">
+      <div class="camera-heading">
+        <div><p class="eyebrow">Live camera</p><h2 id="cameraTitle">Take a photo</h2></div>
+        <button class="dialog-close camera-close" id="cameraClose" type="button" aria-label="Close camera">×</button>
+      </div>
+      <div class="camera-viewport">
+        <video id="cameraPreview" autoplay muted playsinline aria-label="Live camera preview"></video>
+        <div class="camera-status" id="cameraStatus" role="status">Starting camera…</div>
+      </div>
+      <div class="camera-actions">
+        <button class="button button-ghost" id="switchCamera" type="button" disabled><span aria-hidden="true">↻</span> Switch</button>
+        <button class="shutter-button" id="capturePhoto" type="button" aria-label="Take photo" disabled><span></span></button>
+        <label class="button button-ghost" for="cameraInput">Device fallback</label>
+      </div>
+      <p class="camera-help">Camera access requires permission and a secure connection (HTTPS or localhost).</p>
+    </section>
+  </dialog>
+
+  <dialog id="exportDialog">
+    <form method="dialog" class="dialog-card" id="exportForm">
+      <button class="dialog-close" id="exportClose" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">Final render</p><h2>Export photo</h2>
+      <p>Rendered locally at the best available resolution.</p>
+      <div class="export-options">
+        <label>Format<select id="exportFormat"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option></select></label>
+        <label id="qualityLabel">Quality <output id="qualityOutput">92%</output><input id="exportQuality" type="range" min="60" max="100" value="92"></label>
+      </div>
+      <button class="button button-primary button-wide" id="confirmExport" value="default">Download image</button>
+    </form>
+  </dialog>
+
+  <dialog id="aboutDialog">
+    <article class="dialog-card about-card">
+      <button class="dialog-close" id="aboutClose" aria-label="Close">×</button>
+      <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
+      <p>PhotoKamo is a privacy-first photo playground. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
+      <p>All camera and film looks are creative approximations—not exact reproductions. The Spektrafilm-inspired family acknowledges the research and open-source work of Andrea Volpato.</p>
+      <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Visit the Spektrafilm project ↗</a>
+    </article>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

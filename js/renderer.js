@@ -1,0 +1,138 @@
+const clamp = value => Math.max(0, Math.min(255, value));
+const hasAdjustments = adjustments => Object.values(adjustments).some(value => value !== 0);
+
+function frameLayout(width, height, frame) {
+  if (frame === 'classic') {
+    const margin = Math.round(Math.min(width, height) * .035);
+    return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background: '#171715' };
+  }
+  if (frame === 'instant') {
+    const side = Math.round(Math.min(width, height) * .065);
+    const bottom = Math.round(Math.min(width, height) * .19);
+    return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background: '#f7f3e8' };
+  }
+  if (frame === 'sprocket') {
+    const side = Math.round(Math.min(width, height) * .075);
+    const vertical = Math.round(Math.min(width, height) * .12);
+    return { width: width + side * 2, height: height + vertical * 2, x: side, y: vertical, background: '#171715' };
+  }
+  return { width, height, x: 0, y: 0, background: '#000' };
+}
+
+function seededNoise(index) {
+  let n = Math.imul(index + 1729, 374761393);
+  n = (n ^ (n >>> 13)) * 1274126177;
+  return ((n ^ (n >>> 16)) & 1023) / 511.5 - 1;
+}
+
+function processPixels(ctx, width, height, a) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const exposure = 2 ** a.exposure;
+  const contrast = Math.max(0, (100 + a.contrast) / 100) ** 1.35;
+  const saturation = Math.max(0, 1 + a.saturation / 100);
+  const temp = a.temperature * .42;
+  const tint = a.tint * .24;
+  const brightness = a.brightness * 1.15;
+  const fade = a.fade / 100;
+  const grain = a.grain * .34;
+  const vignette = a.vignette / 100;
+  const clarity = a.sharpness / 100;
+  const cx = width / 2, cy = height / 2;
+  const maxDistance = Math.sqrt(cx * cx + cy * cy);
+
+  for (let i = 0, pixel = 0; i < data.length; i += 4, pixel++) {
+    let r = data[i] * exposure;
+    let g = data[i + 1] * exposure;
+    let b = data[i + 2] * exposure;
+    let lum = .2126 * r + .7152 * g + .0722 * b;
+
+    const shadowWeight = 1 - Math.min(1, lum / 150);
+    const highlightWeight = Math.max(0, (lum - 105) / 150);
+    const tone = a.shadows * shadowWeight * .65 + a.highlights * highlightWeight * .65;
+    r += brightness + tone + temp; g += brightness + tone + tint; b += brightness + tone - temp;
+
+    r = (r - 128) * contrast + 128;
+    g = (g - 128) * contrast + 128;
+    b = (b - 128) * contrast + 128;
+    lum = .2126 * r + .7152 * g + .0722 * b;
+
+    const colorfulness = Math.max(r, g, b) - Math.min(r, g, b);
+    const vibrance = 1 + (a.vibrance / 100) * (1 - Math.min(1, colorfulness / 180));
+    const sat = saturation * vibrance;
+    r = lum + (r - lum) * sat; g = lum + (g - lum) * sat; b = lum + (b - lum) * sat;
+
+    if (fade) {
+      const fadedLum = 22 + lum * .91;
+      r = r * (1 - fade * .58) + fadedLum * fade * .58;
+      g = g * (1 - fade * .58) + fadedLum * fade * .58;
+      b = b * (1 - fade * .58) + fadedLum * fade * .58;
+    }
+
+    if (clarity) {
+      const localContrast = (lum - 128) * clarity * .13;
+      r += localContrast; g += localContrast; b += localContrast;
+    }
+    if (grain) {
+      const noise = seededNoise(pixel) * grain * (.55 + Math.min(1, lum / 255) * .45);
+      r += noise; g += noise; b += noise;
+    }
+    if (vignette) {
+      const x = pixel % width, y = Math.floor(pixel / width);
+      const distance = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / maxDistance;
+      const factor = 1 - Math.max(0, distance - .3) ** 1.7 * vignette * 1.15;
+      r *= factor; g *= factor; b *= factor;
+    }
+    data[i] = clamp(r); data[i + 1] = clamp(g); data[i + 2] = clamp(b);
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function addSprockets(ctx, layout, imageWidth, imageHeight) {
+  const holeWidth = Math.max(5, Math.round(layout.x * .42));
+  const holeHeight = Math.max(9, Math.round(layout.y * .28));
+  const gap = holeWidth * .8;
+  ctx.fillStyle = '#e9e5d9';
+  ctx.beginPath();
+  for (let x = layout.x / 2 - holeWidth / 2; x < layout.width; x += holeWidth + gap) {
+    ctx.roundRect(x, layout.y * .23, holeWidth, holeHeight, 2);
+    ctx.roundRect(x, layout.y + imageHeight + layout.y * .49, holeWidth, holeHeight, 2);
+  }
+  ctx.fill();
+  ctx.fillStyle = '#d58c3c';
+  ctx.font = `${Math.max(7, layout.y * .12)}px ui-monospace, monospace`;
+  ctx.fillText('PHOTO KAMO  24A', layout.x, layout.y * .82);
+}
+
+export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400) {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+
+  const photo = document.createElement('canvas');
+  photo.width = width; photo.height = height;
+  const photoCtx = photo.getContext('2d', { willReadFrequently: true });
+  photoCtx.imageSmoothingEnabled = true;
+  photoCtx.imageSmoothingQuality = 'high';
+  photoCtx.drawImage(image, 0, 0, width, height);
+  if (hasAdjustments(adjustments)) processPixels(photoCtx, width, height, adjustments);
+
+  const layout = frameLayout(width, height, frame);
+  const output = document.createElement('canvas');
+  output.width = layout.width; output.height = layout.height;
+  const ctx = output.getContext('2d');
+  ctx.fillStyle = layout.background;
+  ctx.fillRect(0, 0, output.width, output.height);
+  ctx.drawImage(photo, layout.x, layout.y);
+
+  if (frame === 'instant') {
+    ctx.fillStyle = '#898277';
+    ctx.font = `${Math.max(10, Math.round(layout.y * .22))}px ui-monospace, monospace`;
+    ctx.fillText('PHOTOKAMO', layout.x, layout.y + height + (output.height - layout.y - height) * .58);
+  } else if (frame === 'sprocket') {
+    addSprockets(ctx, layout, width, height);
+  }
+  return output;
+}

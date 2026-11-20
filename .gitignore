@@ -1,0 +1,51 @@
+# Planning and private working notes
+plan.md
+plans/
+*.plan.md
+*.notes.md
+
+# Environment variables and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Credentials, private keys, and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+secrets.json
+secrets.*
+
+# Logs, temporary files, and local data
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.sqlite
+*.sqlite3
+*.db
+
+# Dependency and generated output directories
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.code-workspace
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
