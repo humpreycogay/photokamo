@@ -1,7 +1,17 @@
 const clamp = value => Math.max(0, Math.min(255, value));
 const hasAdjustments = adjustments => Object.values(adjustments).some(value => value !== 0);
 
+// `frame` is a frame id or { id, width, bottom, paper } (Paper print: % of the short edge + colour).
+const frameId = frame => (typeof frame === 'string' ? frame : frame?.id || 'none');
+
 function frameLayout(width, height, frame) {
+  if (frameId(frame) === 'paper') {
+    const short = Math.min(width, height);
+    const side = Math.round(short * (frame.width ?? 5) / 100);
+    const bottom = side + Math.round(short * (frame.bottom ?? 0) / 100);
+    return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background: frame.paper || '#f4efe4' };
+  }
+  frame = frameId(frame);
   if (frame === 'classic') {
     const margin = Math.round(Math.min(width, height) * .035);
     return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background: '#171715' };
@@ -152,6 +162,7 @@ export function frameCanvas(photo, frame = 'none') {
   ctx.fillRect(0, 0, output.width, output.height);
   ctx.drawImage(photo, layout.x, layout.y);
 
+  frame = frameId(frame);
   if (frame === 'instant') {
     ctx.fillStyle = '#898277';
     ctx.font = `${Math.max(10, Math.round(layout.y * .22))}px ui-monospace, monospace`;

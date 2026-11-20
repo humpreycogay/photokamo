@@ -52,7 +52,23 @@ export const adjustmentSections = [
 
 export const frames = [
   { id: 'none', name: 'None', description: 'Clean edge' },
+  { id: 'paper', name: 'Paper print', description: 'White print border' },
   { id: 'classic', name: 'Classic', description: '35mm black' },
   { id: 'instant', name: 'Instant', description: 'Wide paper' },
   { id: 'sprocket', name: 'Film strip', description: 'Sprocket edge' }
 ];
+
+// Paper print border (Frames): sizes are % of the photo's short edge.
+export const borderSizes = [
+  { id: 'none', name: 'None', width: 0 },
+  { id: 'thin', name: 'Thin', width: 2.5 },
+  { id: 'classic', name: 'Classic', width: 5 },
+  { id: 'gallery', name: 'Gallery', width: 9 }
+];
+export const paperColors = [
+  { id: 'bright', name: 'Bright white', hex: '#fbfbf9' },
+  { id: 'warm', name: 'Warm', hex: '#f4efe4' },
+  { id: 'aged', name: 'Aged', hex: '#e6dcc6' },
+  { id: 'black', name: 'Black', hex: '#161614' }
+];
+export const defaultBorder = Object.freeze({ size: 'classic', width: 5, bottom: 4, color: 'warm', matchPaper: false });

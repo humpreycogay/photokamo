@@ -37,6 +37,8 @@ export function normalizeParams(params) {
 
 /** Whether the photo is shown on print paper (false: a scanned negative or slide). */
 export const showsPaper = params => !scansFilm(params);
+/** Border paper that matches the print paper (Frames › Paper print); every paper here is a colour paper. */
+export const paperTint = params => (scansFilm(params) ? null : 'warm');
 
 /** Text explaining what only the full render shows. */
 export const spatialNote = 'The fast preview shows colour. Grain, halation and blur appear when you render full quality.';

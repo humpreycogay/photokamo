@@ -1,4 +1,4 @@
-import { presets, frames, adjustmentSections, defaultAdjustments } from './presets.js';
+import { presets, frames, borderSizes, paperColors, defaultBorder, adjustmentSections, defaultAdjustments } from './presets.js';
 import { renderImage, frameCanvas, applyAdjustments } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -27,14 +27,15 @@ const elements = {
   engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineProgress: $('#engineProgress'), engineProgressBar: $('#engineProgressBar'), engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
-  advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView')
+  advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
+  engineWait: $('#engineWait'), engineWaitTitle: $('#engineWaitTitle'), engineWaitSub: $('#engineWaitSub'), engineWaitProgress: $('#engineWaitProgress'), engineWaitRetry: $('#engineWaitRetry')
 };
 
 // Look state: the effective value of each adjustment is
 //   original + (look - original) * strength + edit
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
-  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
+  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } },
   filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
@@ -86,8 +87,10 @@ const editCount = () => Object.keys(state.edits).length;
 // ---------- History ----------
 const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
 const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id, params]) => [id, cloneParams(params)]));
+// Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
+const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder } } : { id: frame.id, border: { ...defaultBorder, ...frame.border } });
 // A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
-function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, frame: state.frame }; }
+function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, frame: cloneFrame(state.frame) }; }
 // Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
 function migrateSnapshot(value) {
   if (value.look) return value;
@@ -99,7 +102,7 @@ function restore(value) {
   const { look, edits, frame } = migrateSnapshot(value);
   state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
   state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
-  state.edits = { ...edits }; state.frame = frame;
+  state.edits = { ...edits }; state.frame = cloneFrame(frame);
   syncControls(); scheduleRender(); // syncControls loads the engine if the restored one isn't active
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -415,13 +418,68 @@ function syncAdjustments() {
 
 // ---------- Frames ----------
 function buildFrames() {
-  elements.frameGrid.innerHTML = frames.map(frame => `<button class="frame-card" type="button" data-frame="${frame.id}" aria-pressed="${frame.id === state.frame}"><span class="frame-sample"><i></i></span><strong>${frame.name}</strong><small>${frame.description}</small></button>`).join('');
-  elements.frameGrid.addEventListener('click', event => { const card = event.target.closest('[data-frame]'); if (card) change(() => { state.frame = card.dataset.frame; }); });
+  elements.frameGrid.innerHTML = frames.map(frame => `<button class="frame-card" type="button" data-frame="${frame.id}" aria-pressed="false"><span class="frame-sample"><i></i></span><strong>${frame.name}</strong><small>${frame.description}</small></button>`).join('');
+  elements.frameGrid.addEventListener('click', event => { const card = event.target.closest('[data-frame]'); if (card) change(() => { state.frame.id = card.dataset.frame; }); });
+  // Paper print border: size presets set the width; sliders, paper colour, match-the-print-paper.
+  $('#borderSizes').innerHTML = borderSizes.map(size => `<button type="button" role="radio" data-border-size="${size.id}" aria-checked="false">${size.name}</button>`).join('');
+  $('#paperSwatches').innerHTML = paperColors.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.id}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('');
+  bindRadioGroup($('#borderSizes'), '[data-border-size]', button => change(() => { const border = state.frame.border; border.size = button.dataset.borderSize; border.width = borderSizes.find(size => size.id === border.size).width; }));
+  bindRadioGroup($('#paperSwatches'), '[data-paper]', button => change(() => { state.frame.border.color = button.dataset.paper; state.frame.border.matchPaper = false; }));
+  bindHistorySlider(elements.borderPanel, '[data-border]', input => {
+    const border = state.frame.border; border[input.dataset.border] = Number(input.value);
+    if (input.dataset.border === 'width') border.size = borderSizes.find(size => size.width === border.width)?.id || 'custom';
+    syncFrames(); scheduleRender();
+  });
+  $('#matchPaper').addEventListener('change', event => change(() => { state.frame.border.matchPaper = event.target.checked; }));
+}
+/** Radiogroup of buttons: click picks, arrow keys move and pick (roving tabindex). */
+function bindRadioGroup(group, selector, pick) {
+  group.addEventListener('click', event => { const button = event.target.closest(selector); if (button && button.getAttribute('aria-checked') !== 'true') pick(button); });
+  group.addEventListener('keydown', event => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key]; if (!step) return;
+    const buttons = [...group.querySelectorAll(selector)];
+    const current = Math.max(0, buttons.indexOf(document.activeElement));
+    const next = buttons[(current + step + buttons.length) % buttons.length];
+    event.preventDefault(); next.focus(); pick(next);
+  });
+}
+/** The print paper's tint when "Match paper tint" can apply (film engine printing on paper), else null. */
+function matchedPaper() {
+  const module = activeModule(); const params = advParams();
+  return module?.paperTint && params && module.showsPaper(params) ? module.paperTint(params) : null;
+}
+/** The frame as the renderer takes it: an id, or Paper print with its sizes and resolved colour. */
+function renderFrame() {
+  const { id, border } = state.frame;
+  if (id !== 'paper') return id;
+  const color = (border.matchPaper && matchedPaper()) || border.color;
+  return { id, width: border.width, bottom: border.bottom, paper: (paperColors.find(item => item.id === color) || paperColors[1]).hex };
+}
+function syncFrames() {
+  const { id, border } = state.frame;
+  document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === id));
+  elements.borderPanel.hidden = id !== 'paper';
+  const setRadios = (group, attribute, value) => {
+    const buttons = [...group.querySelectorAll(`[${attribute}]`)];
+    buttons.forEach(button => { const checked = button.getAttribute(attribute) === value; button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1; });
+    if (!buttons.some(button => button.tabIndex === 0)) buttons[0].tabIndex = 0;
+  };
+  setRadios($('#borderSizes'), 'data-border-size', border.size);
+  for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
+    const input = elements.borderPanel.querySelector(`[data-border="${key}"]`);
+    if (document.activeElement !== input) input.value = border[key];
+    $(output).value = `${border[key] ? prefix : ''}${border[key]}%`;
+  }
+  const tint = matchedPaper();
+  const match = $('#matchPaper');
+  match.disabled = !tint; match.checked = Boolean(tint && border.matchPaper);
+  $('#matchPaperHint').textContent = tint ? '' : 'Available with a film engine that prints on paper.';
+  setRadios($('#paperSwatches'), 'data-paper', match.checked ? tint : border.color);
 }
 
 // ---------- Advanced engines: load on selection ----------
 // activeEngine is the loaded module of engine.id; it only counts while it is state.engine.
-const engine = { id: null, module: null, builtFor: null, status: 'idle', error: null, load: null, unsubscribe: null };
+const engine = { id: null, module: null, builtFor: null, status: 'idle', error: null, load: null, unsubscribe: null, download: null };
 const activeModule = () => (engine.module && engine.id === state.engine ? engine.module : null);
 /** The selected engine's settings (created from its defaults on first use); null until it is loaded. */
 function advParams() {
@@ -503,19 +561,42 @@ for (const entry of engines) enginePicker.setMeta(entry.id, { size: entry.approx
 function setEngineStatus(status, error = null) {
   if (status === 'ready' && engine.status !== 'ready') syncSavedBadges();
   engine.status = status; engine.error = error;
-  if (status !== 'preparing') { elements.engineProgress.hidden = true; elements.engineProgressBar.style.width = '0%'; }
+  if (status !== 'preparing') { elements.engineProgress.hidden = true; elements.engineProgressBar.style.width = '0%'; engine.download = null; }
   syncEngineBar();
 }
 function showEngineDownload({ loaded, total, done }) {
   if (engine.status === 'ready' || engine.status === 'failed') return;
   if (engine.status !== 'preparing') { engine.status = 'preparing'; syncEngineBar(); }
+  engine.download = done ? null : { percent: total ? Math.min(100, Math.round(loaded / total * 100)) : null, mb: MB(loaded) };
+  syncEngineWait();
   if (done) { elements.engineStatusText.textContent = 'Preparing the engine…'; elements.engineProgress.hidden = true; enginePicker.setStatus('Preparing…'); return; }
   elements.engineStatusText.textContent = total ? `Downloading the engine… ${MB(loaded)} of ${MB(total)} MB` : `Downloading the engine… ${MB(loaded)} MB`;
   enginePicker.setStatus(total ? `Downloading… ${Math.min(100, Math.round(loaded / total * 100))}%` : `Downloading… ${MB(loaded)} MB`);
   elements.engineProgress.hidden = !total;
   if (total) elements.engineProgressBar.style.width = `${Math.min(100, Math.round(loaded / total * 100))}%`;
 }
+// While the chosen film engine loads, downloads or failed, its renders can't run yet: the photo
+// is dimmed with a status pill, and Adjust / Frames say that changes apply once it is ready.
+function syncEngineWait() {
+  const entry = isFilm() ? engineById(state.engine) : null;
+  const waiting = Boolean(entry) && (!activeModule() || ['loading', 'preparing', 'failed'].includes(engine.status));
+  const failed = waiting && engine.status === 'failed';
+  document.body.classList.toggle('engine-waiting', waiting);
+  elements.engineWait.hidden = !waiting;
+  elements.engineWait.dataset.state = failed ? 'failed' : 'working';
+  elements.engineWaitRetry.hidden = !failed;
+  if (!waiting) { document.querySelectorAll('[data-engine-wait]').forEach(note => { note.hidden = true; }); return; }
+  const download = engine.status === 'preparing' ? engine.download : null;
+  const title = failed ? `${entry.label} couldn't load` : download ? `Downloading ${entry.label}…` : engine.status === 'preparing' ? `Preparing ${entry.label}…` : `Loading ${entry.label}…`;
+  const sub = failed ? 'Your changes are saved. Check your connection and retry.' : 'Your changes will show when it’s ready.';
+  if (elements.engineWaitTitle.textContent !== title) elements.engineWaitTitle.textContent = title;
+  if (elements.engineWaitSub.textContent !== sub) elements.engineWaitSub.textContent = sub;
+  elements.engineWaitProgress.textContent = !download ? '' : download.percent == null ? ` ${download.mb} MB` : ` ${download.percent}%`;
+  const note = failed ? `${entry.label} couldn't load. Your changes are saved; retry from the photo.` : `${entry.label} isn't ready yet. Changes are saved and will apply when it finishes loading.`;
+  document.querySelectorAll('[data-engine-wait]').forEach(element => { element.hidden = false; element.textContent = note; });
+}
 function syncEngineBar() {
+  syncEngineWait();
   enginePicker.setValue(state.engine);
   elements.engineAboutButton.hidden = !isFilm();
   if (!isFilm()) {
@@ -642,7 +723,9 @@ function buildAdvancedPanel() {
   };
   elements.engineButton.addEventListener('pointerenter', prefetchEngines, { once: true });
   elements.engineButton.addEventListener('focus', prefetchEngines, { once: true });
-  elements.engineRetry.addEventListener('click', () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); });
+  const retryEngine = () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); };
+  elements.engineRetry.addEventListener('click', retryEngine);
+  elements.engineWaitRetry.addEventListener('click', retryEngine);
   elements.engineAboutButton.addEventListener('click', openEngineAbout);
   $('#engineAboutClose').addEventListener('click', () => elements.engineAboutDialog.close());
   elements.engineAboutDialog.addEventListener('click', event => { if (event.target === elements.engineAboutDialog) elements.engineAboutDialog.close(); });
@@ -697,7 +780,7 @@ function syncControls() {
   syncEngineView();
   syncAdvancedPanel();
   syncAdjustments();
-  document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === state.frame));
+  syncFrames();
   syncLooks();
 }
 
@@ -720,9 +803,10 @@ function renderPreview(token) {
     if (token !== state.renderToken) return;
     try {
       const edge = renderEdge();
-      state.editedCanvas = renderImage(state.image, effectiveAdjustments(), state.frame, edge);
-      const originalKey = `${state.frame}|${edge}`;
-      if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, state.frame, edge); state.originalKey = originalKey; }
+      const frame = renderFrame();
+      state.editedCanvas = renderImage(state.image, effectiveAdjustments(), frame, edge);
+      const originalKey = JSON.stringify([frame, edge]);
+      if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
       elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
       applyZoom();
       drawPreview();
@@ -799,7 +883,7 @@ async function runAdvancedPreview() {
     if (engine.status === 'idle' || engine.status === 'preparing') setEngineStatus('ready');
     if (imageId === state.imageId && engineId === state.engine && state.renderQuality === 'preview') {
       const edits = engineEdits();
-      presentAdvanced(edits ? applyAdjustments(bitmap, edits) : bitmap, state.frame);
+      presentAdvanced(edits ? applyAdjustments(bitmap, edits) : bitmap, renderFrame());
       syncRenderStatus();
     }
   } catch (error) {
@@ -818,7 +902,7 @@ function showPreviewStatus(text) {
 function presentAdvanced(bitmap, frame) {
   state.editedCanvas = frameCanvas(bitmap, frame);
   const edge = activeModule()?.engineInfo.previewEdge ?? PREVIEW_EDGE;
-  const originalKey = `${frame}|${edge}`;
+  const originalKey = JSON.stringify([frame, edge]);
   if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
   elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
   applyZoom();
@@ -838,7 +922,7 @@ async function renderFullQuality() {
   const controller = new AbortController();
   state.renderAbort = controller; state.renderQuality = 'rendering';
   syncRenderStatus(); setRenderProgress(0);
-  const frame = state.frame; const key = fullRenderKey(); const edits = engineEdits();
+  const frame = renderFrame(); const key = fullRenderKey(); const edits = engineEdits();
   try {
     const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
     if (state.renderAbort !== controller) return;
@@ -1033,7 +1117,7 @@ function exportEdge(size = state.exportSize) {
 function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportEdge(), state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
 async function renderAdvancedExport(edge) {
-  const frame = state.frame;
+  const frame = renderFrame();
   const module = await activateEngine();
   const key = fullRenderKey(); const edits = engineEdits();
   let full = state.fullRender?.key === key ? state.fullRender.bitmap : null;
@@ -1051,7 +1135,7 @@ async function renderAdvancedExport(edge) {
   return frameCanvas(scaled, frame);
 }
 function exportSummary() {
-  const frameName = state.frame === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame).name} frame`;
+  const frameName = state.frame.id === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame.id).name} frame`;
   const count = editCount();
   if (isFilm()) {
     const look = currentMyLook()?.name || engineById(state.engine).label;
@@ -1060,8 +1144,7 @@ function exportSummary() {
   }
   const preset = currentPreset();
   const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;
-  const frame = frames.find(item => item.id === state.frame);
-  return [look, count ? `${count} adjustment${count === 1 ? '' : 's'}` : null, state.frame === 'none' ? 'no frame' : `${frame.name} frame`].filter(Boolean).join(' · ');
+  return [look, count ? `${count} adjustment${count === 1 ? '' : 's'}` : null, frameName].filter(Boolean).join(' · ');
 }
 function syncExportOptions() {
   document.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', button.dataset.format === state.exportFormat));
@@ -1088,7 +1171,7 @@ function prepareExport() {
     await new Promise(resolve => setTimeout(resolve, 30));
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), renderFrame(), edge) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -1233,7 +1316,7 @@ window.addEventListener('blur', () => setHolding(false));
 document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => setZoom(button.dataset.zoom)));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.frame = 'none'; }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', () => {
   const options = presets.filter(p => p.id !== state.presetId && p.id !== 'original' && filterMatches(p));

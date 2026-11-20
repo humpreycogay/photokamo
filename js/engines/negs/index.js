@@ -92,6 +92,8 @@ export { engineInfo, fullRenderSize, dispose, onDownload };
 export const hasSpatialEffects = () => false;
 export const spatialNote = '';
 export const showsPaper = params => !scans(params);
+/** Border paper that matches the print paper (Frames › Paper print): 'bright' for B&W papers, else 'warm'. */
+export const paperTint = params => (scans(params) ? null : stockById[params.paper]?.bw ? 'bright' : 'warm');
 export const firstStep = 'stock';
 export const shared = {
   film: 'film', paper: 'paper', scanFilm: 'io.scan_film',

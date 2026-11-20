@@ -108,6 +108,11 @@
         </div>
       </div>
 
+      <div class="engine-wait" id="engineWait" hidden>
+        <span class="engine-wait-spinner" aria-hidden="true"></span>
+        <span class="engine-wait-text" role="status"><span class="engine-wait-title"><span id="engineWaitTitle"></span><span id="engineWaitProgress" aria-hidden="true"></span></span><span class="engine-wait-sub" id="engineWaitSub"></span></span>
+        <button class="text-button" id="engineWaitRetry" type="button" hidden>Retry</button>
+      </div>
       <span class="photo-look-badge" id="photoLookBadge" aria-hidden="true"></span>
       <div class="drop-overlay" aria-hidden="true">Drop to open</div>
     </section>
@@ -182,6 +187,7 @@
 
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
           <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
+          <p class="engine-wait-note" data-engine-wait hidden></p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">
             <div class="ma-head">
@@ -197,8 +203,20 @@
 
         <section class="tab-panel scroll-panel" id="framePanel" role="tabpanel" aria-labelledby="frameTab" hidden>
           <div class="panel-heading"><h2>Frames</h2></div>
+          <p class="engine-wait-note" data-engine-wait hidden></p>
           <p class="panel-intro">Frames are independent from your color look and are included in export.</p>
           <div class="frame-grid" id="frameGrid"></div>
+          <section class="border-panel" id="borderPanel" aria-labelledby="borderTitle" hidden>
+            <h3 id="borderTitle">Print border</h3>
+            <p class="border-intro">The paper around the photo. Exported with it.</p>
+            <div class="segmented border-sizes" id="borderSizes" role="radiogroup" aria-label="Border size"></div>
+            <div class="slider-row"><label class="slider-label" for="borderWidth"><span>Width</span><output id="borderWidthOutput" for="borderWidth">5%</output></label><input id="borderWidth" data-border="width" type="range" min="0" max="15" step="0.5"></div>
+            <div class="slider-row"><label class="slider-label" for="borderBottom"><span>Extra at bottom</span><output id="borderBottomOutput" for="borderBottom">+4%</output></label><input id="borderBottom" data-border="bottom" type="range" min="0" max="15" step="0.5"></div>
+            <p class="border-label" id="paperColorLabel">Paper</p>
+            <div class="paper-swatches" id="paperSwatches" role="radiogroup" aria-labelledby="paperColorLabel"></div>
+            <label class="check-row"><input type="checkbox" id="matchPaper" aria-describedby="matchPaperHint"> Match paper tint to the chosen print paper</label>
+            <p class="border-hint" id="matchPaperHint"></p>
+          </section>
         </section>
       </div>
     </aside>
