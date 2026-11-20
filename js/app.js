@@ -22,6 +22,7 @@ let sliderStart = null;
 let cameraStream = null;
 let cameraFacingMode = 'environment';
 let cameraRequestId = 0;
+const presetPreviewSource = 'images/model.jpg';
 
 function snapshot() { return { presetId: state.presetId, adjustments: { ...state.adjustments }, frame: state.frame }; }
 function restore(value) { state.presetId = value.presetId; state.adjustments = { ...value.adjustments }; state.frame = value.frame; syncControls(); scheduleRender(); }
@@ -34,12 +35,47 @@ function toast(message) { clearTimeout(toastTimer); elements.toast.textContent =
 
 function buildPresets() {
   const groups = [...new Set(presets.map(preset => preset.group))];
-  elements.presetGroups.innerHTML = groups.map(group => `<section class="preset-section"><div class="section-title"><h3>${group}</h3><span>Swipe →</span></div><div class="preset-strip" role="list">${presets.filter(p => p.group === group).map(preset => `<button class="preset-card" type="button" role="listitem" data-preset="${preset.id}" aria-pressed="${preset.id === state.presetId}"><span class="preset-thumb" aria-hidden="true"></span><strong>${preset.name}</strong><small>${preset.engine.replace('-inspired','')}</small></button>`).join('')}</div></section>`).join('');
+  elements.presetGroups.innerHTML = groups.map(group => `<section class="preset-section"><div class="section-title"><h3>${group}</h3><span>Swipe →</span></div><div class="preset-strip" role="list">${presets.filter(p => p.group === group).map(preset => `<button class="preset-card" type="button" role="listitem" data-preset="${preset.id}" aria-pressed="${preset.id === state.presetId}"><span class="preset-thumb" aria-hidden="true"><canvas width="200" height="136"></canvas></span><strong>${preset.name}</strong><small>${preset.engine.replace('-inspired','')}</small></button>`).join('')}</div></section>`).join('');
   elements.presetGroups.addEventListener('click', event => {
     const card = event.target.closest('[data-preset]'); if (!card) return;
     const previous = snapshot(); const preset = presets.find(item => item.id === card.dataset.preset);
     state.presetId = preset.id; state.adjustments = { ...preset.values }; commit(previous); syncControls(); scheduleRender();
   });
+  renderPresetPreviews();
+}
+
+function drawCover(ctx, source, width, height) {
+  const scale = Math.max(width / source.width, height / source.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = (source.width - sourceWidth) / 2;
+  const sourceY = (source.height - sourceHeight) / 2;
+  ctx.drawImage(source, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+}
+
+function renderPresetPreviews() {
+  const image = new Image();
+  image.decoding = 'async';
+  image.addEventListener('load', () => {
+    let index = 0;
+    const renderNext = () => {
+      const preset = presets[index++];
+      if (!preset) return;
+      const canvas = elements.presetGroups.querySelector(`[data-preset="${preset.id}"] canvas`);
+      try {
+        const preview = renderImage(image, preset.values, 'none', 220);
+        const ctx = canvas.getContext('2d');
+        drawCover(ctx, preview, canvas.width, canvas.height);
+        canvas.closest('.preset-thumb').classList.add('has-preview');
+      } catch (error) {
+        console.warn(`Could not render the ${preset.name} preview.`, error);
+      }
+      setTimeout(renderNext, 0);
+    };
+    renderNext();
+  }, { once: true });
+  image.addEventListener('error', () => console.warn(`Preset preview image could not be loaded from ${presetPreviewSource}.`), { once: true });
+  image.src = presetPreviewSource;
 }
 
 function buildAdjustments() {
