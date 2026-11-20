@@ -35,7 +35,7 @@ function toast(message) { clearTimeout(toastTimer); elements.toast.textContent =
 
 function buildPresets() {
   const groups = [...new Set(presets.map(preset => preset.group))];
-  elements.presetGroups.innerHTML = groups.map(group => `<section class="preset-section"><div class="section-title"><h3>${group}</h3><span>Swipe →</span></div><div class="preset-strip" role="list">${presets.filter(p => p.group === group).map(preset => `<button class="preset-card" type="button" role="listitem" data-preset="${preset.id}" aria-pressed="${preset.id === state.presetId}"><span class="preset-thumb" aria-hidden="true"><canvas width="200" height="136"></canvas></span><strong>${preset.name}</strong><small>${preset.engine.replace('-inspired','')}</small></button>`).join('')}</div></section>`).join('');
+  elements.presetGroups.innerHTML = groups.map(group => `<section class="preset-section"><div class="section-title"><h3>${group}</h3><span>${presets.filter(p => p.group === group).length} looks</span></div><div class="preset-strip">${presets.filter(p => p.group === group).map(preset => `<button class="preset-card" type="button" data-preset="${preset.id}" aria-pressed="${preset.id === state.presetId}"><span class="preset-thumb" aria-hidden="true"><canvas width="200" height="136"></canvas></span><strong>${preset.name}</strong><small>${preset.engine.replace('-inspired','')}</small></button>`).join('')}</div></section>`).join('');
   elements.presetGroups.addEventListener('click', event => {
     const card = event.target.closest('[data-preset]'); if (!card) return;
     const previous = snapshot(); const preset = presets.find(item => item.id === card.dataset.preset);
@@ -100,7 +100,7 @@ function updateSliderOutput(input) { const value = Number(input.value); const pr
 function updatePresetSelection() {
   document.querySelectorAll('[data-preset]').forEach(card => card.setAttribute('aria-pressed', card.dataset.preset === state.presetId));
   const preset = presets.find(item => item.id === state.presetId);
-  elements.lookDetails.innerHTML = preset ? `<h3>${preset.name}</h3><p>${preset.description}</p><span class="engine-badge">${preset.engine}${preset.engine.includes('inspired') ? ' approximation' : ''}</span>${preset.engine === 'Spektrafilm-inspired' ? '<a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Source / credits ↗</a>' : ''}` : '<h3>Custom edit</h3><p>Your own variation of a PhotoKamo recipe.</p><span class="engine-badge">Custom</span>';
+  elements.lookDetails.innerHTML = preset ? `<h3>${preset.name}</h3><p>${preset.description}</p><span class="engine-badge">${preset.engine}${preset.engine.includes('inspired') ? ' approximation' : ''}</span>${preset.engine === 'Spektrafilm-inspired' ? '<a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Source / credits <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg></a>' : ''}` : '<h3>Custom edit</h3><p>Your own variation of a PhotoKamo recipe.</p><span class="engine-badge">Custom</span>';
 }
 function syncControls() {
   document.querySelectorAll('[data-adjustment]').forEach(input => { input.value = state.adjustments[input.dataset.adjustment]; updateSliderOutput(input); });
