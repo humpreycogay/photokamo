@@ -88,6 +88,19 @@
         </div>
       </div>
 
+      <div class="crop-stage" id="cropStage" hidden>
+        <div class="crop-view" id="cropView">
+          <canvas id="cropCanvas" aria-hidden="true"></canvas>
+          <div class="crop-box" id="cropBox" tabindex="0" role="group" aria-label="Crop area" aria-describedby="cropHint">
+            <span class="crop-thirds" aria-hidden="true"></span>
+            <span class="crop-handle" data-handle="nw" aria-hidden="true"></span><span class="crop-handle" data-handle="n" aria-hidden="true"></span><span class="crop-handle" data-handle="ne" aria-hidden="true"></span>
+            <span class="crop-handle" data-handle="e" aria-hidden="true"></span><span class="crop-handle" data-handle="se" aria-hidden="true"></span><span class="crop-handle" data-handle="s" aria-hidden="true"></span>
+            <span class="crop-handle" data-handle="sw" aria-hidden="true"></span><span class="crop-handle" data-handle="w" aria-hidden="true"></span>
+          </div>
+        </div>
+        <p class="crop-hint" id="cropHint">Drag to move · scroll or pinch to zoom · drag corners to resize<span class="visually-hidden">. Arrow keys move the crop, plus and minus zoom.</span></p>
+      </div>
+
       <div class="view-pill" id="viewPill" hidden>
         <div class="render-status" id="renderStatus">
           <span class="render-state" id="renderState" role="status"><span class="render-dot" aria-hidden="true"></span><span id="renderText">Fast preview</span><span class="render-detail" id="renderDetail"></span></span>
@@ -121,6 +134,7 @@
       <div class="control-tabs" role="tablist" aria-label="Editor panels">
         <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>Looks</button>
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="cropPanel" id="cropTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>Crop</button>
         <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10"/></svg>Frames</button>
       </div>
 
@@ -197,6 +211,23 @@
             <p class="ma-hint" id="maHint">Double-tap the slider to reset</p>
             <div class="ma-groups" id="maGroups" role="tablist" aria-label="Adjustment groups"></div>
             <div class="ma-tools" id="maTools" role="tabpanel"></div>
+          </div>
+        </section>
+
+        <section class="tab-panel scroll-panel crop-panel" id="cropPanel" role="tabpanel" aria-labelledby="cropTab" hidden>
+          <div class="panel-heading"><h2 id="ratioTitle">Aspect ratio</h2><button class="button button-ghost" id="cropSwap" type="button"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="11" height="11" rx="1"/><path d="M9 4h8a3 3 0 0 1 3 3v8"/><path d="M17 1l3 3-3 3"/></svg> Swap W×H</button></div>
+          <div class="ratio-grid" id="ratioGrid" role="radiogroup" aria-labelledby="ratioTitle"></div>
+          <p class="crop-output" id="cropOutput"></p>
+          <div class="slider-row"><label class="slider-label" for="cropZoom"><span>Zoom</span><output id="cropZoomOutput" for="cropZoom">1×</output></label><input id="cropZoom" data-crop="zoom" type="range" min="1" max="3" step="0.01"></div>
+          <div class="slider-row"><label class="slider-label" for="cropStraighten"><span>Straighten</span><output id="cropStraightenOutput" for="cropStraighten">0°</output></label><input id="cropStraighten" data-crop="straighten" type="range" min="-45" max="45" step="0.5"></div>
+          <div class="crop-actions">
+            <button class="button button-secondary" id="cropRotate" type="button"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg> Rotate</button>
+            <button class="button button-secondary" id="cropFlip" type="button" aria-pressed="false"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M8 7l-5 5 5 5V7z"/><path d="M16 7l5 5-5 5V7z"/></svg> Flip</button>
+            <button class="button button-secondary" id="cropCenter" type="button">Center</button>
+          </div>
+          <div class="crop-footer">
+            <button class="button button-ghost" id="cropReset" type="button">Reset crop</button>
+            <button class="button button-primary" id="cropDone" type="button">Done</button>
           </div>
         </section>
 

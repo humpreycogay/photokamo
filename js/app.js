@@ -1,5 +1,5 @@
 import { presets, frames, borderSizes, paperColors, defaultBorder, adjustmentSections, defaultAdjustments } from './presets.js';
-import { renderImage, frameCanvas, applyAdjustments } from './renderer.js';
+import { renderImage, frameCanvas, applyAdjustments, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
@@ -28,6 +28,7 @@ const elements = {
   engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
+  cropPanel: $('#cropPanel'), cropStage: $('#cropStage'), cropView: $('#cropView'), cropCanvas: $('#cropCanvas'), cropBox: $('#cropBox'), cropHint: $('#cropHint'), ratioGrid: $('#ratioGrid'), cropOutput: $('#cropOutput'),
   engineWait: $('#engineWait'), engineWaitTitle: $('#engineWaitTitle'), engineWaitSub: $('#engineWaitSub'), engineWaitProgress: $('#engineWaitProgress'), engineWaitRetry: $('#engineWaitRetry')
 };
 
@@ -35,7 +36,7 @@ const elements = {
 //   original + (look - original) * strength + edit
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
-  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } },
+  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop },
   filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
@@ -90,7 +91,7 @@ const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id
 // Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
 const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder } } : { id: frame.id, border: { ...defaultBorder, ...frame.border } });
 // A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
-function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, frame: cloneFrame(state.frame) }; }
+function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, frame: cloneFrame(state.frame) }; }
 // Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
 function migrateSnapshot(value) {
   if (value.look) return value;
@@ -99,10 +100,10 @@ function migrateSnapshot(value) {
   return { look: { engine: engineId, presetId, strength, engineParams, myLookId }, edits, frame };
 }
 function restore(value) {
-  const { look, edits, frame } = migrateSnapshot(value);
+  const { look, edits, frame, crop } = migrateSnapshot(value);
   state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
   state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
-  state.edits = { ...edits }; state.frame = cloneFrame(frame);
+  state.edits = { ...edits }; state.frame = cloneFrame(frame); state.crop = { ...defaultCrop, ...crop };
   syncControls(); scheduleRender(); // syncControls loads the engine if the restored one isn't active
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -432,6 +433,12 @@ function buildFrames() {
   });
   $('#matchPaper').addEventListener('change', event => change(() => { state.frame.border.matchPaper = event.target.checked; }));
 }
+/** Marks the radio whose `attribute` equals `value` as checked; it (or the first) is the one Tab reaches. */
+function syncRadios(group, attribute, value) {
+  const buttons = [...group.querySelectorAll(`[${attribute}]`)];
+  buttons.forEach(button => { const checked = button.getAttribute(attribute) === value; button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1; });
+  if (!buttons.some(button => button.tabIndex === 0)) buttons[0].tabIndex = 0;
+}
 /** Radiogroup of buttons: click picks, arrow keys move and pick (roving tabindex). */
 function bindRadioGroup(group, selector, pick) {
   group.addEventListener('click', event => { const button = event.target.closest(selector); if (button && button.getAttribute('aria-checked') !== 'true') pick(button); });
@@ -459,12 +466,7 @@ function syncFrames() {
   const { id, border } = state.frame;
   document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === id));
   elements.borderPanel.hidden = id !== 'paper';
-  const setRadios = (group, attribute, value) => {
-    const buttons = [...group.querySelectorAll(`[${attribute}]`)];
-    buttons.forEach(button => { const checked = button.getAttribute(attribute) === value; button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1; });
-    if (!buttons.some(button => button.tabIndex === 0)) buttons[0].tabIndex = 0;
-  };
-  setRadios($('#borderSizes'), 'data-border-size', border.size);
+  syncRadios($('#borderSizes'), 'data-border-size', border.size);
   for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
     const input = elements.borderPanel.querySelector(`[data-border="${key}"]`);
     if (document.activeElement !== input) input.value = border[key];
@@ -474,7 +476,216 @@ function syncFrames() {
   const match = $('#matchPaper');
   match.disabled = !tint; match.checked = Boolean(tint && border.matchPaper);
   $('#matchPaperHint').textContent = tint ? '' : 'Available with a film engine that prints on paper.';
-  setRadios($('#paperSwatches'), 'data-paper', match.checked ? tint : border.color);
+  syncRadios($('#paperSwatches'), 'data-paper', match.checked ? tint : border.color);
+}
+
+// ---------- Crop ----------
+// state.crop (see defaultCrop in renderer.js) is applied first: every look, engine, compare and
+// export starts from the cropped source. While the Crop tab is open the stage shows the whole
+// photo (no look, no frame) with the crop box; edits commit once per gesture (pointer-up,
+// wheel/keyboard pause, slider change).
+const RATIOS = [['orig', 'Orig.', 'Original'], ['free', 'Free', 'Free'], ['1:1', '1:1'], ['4:5', '4:5'], ['2:3', '2:3'], ['5:7', '5:7'], ['9:16', '9:16'], ['3:4', '3:4'], ['16:9', '16:9'], ['3:2', '3:2']];
+const MIN_CROP_PX = 64, CROP_ZOOM_MAX = 3, CROP_PREVIEW_EDGE = 1600;
+const cloneCrop = crop => ({ ...defaultCrop, ...crop });
+const cropKey = () => JSON.stringify([state.imageId, state.crop]);
+const cropGeo = (crop = state.crop) => cropGeometry(state.image.naturalWidth, state.image.naturalHeight, crop);
+const cropUi = { k: 1, vw: 0, vh: 0, key: '', thumb: null, thumbId: -1, start: null, timer: 0, drag: null, pointers: new Map(), previousTab: 'looksTab' };
+
+/** Width / height of the chosen ratio in px of the oriented photo; null for Free. */
+function ratioValue(crop, W, H) {
+  if (crop.ratio === 'free') return null;
+  if (crop.ratio === 'orig') return W / H;
+  const [a, b] = crop.ratio.split(':').map(Number);
+  return crop.swapped ? b / a : a / b;
+}
+/** Keeps the straightened box inside the photo (no empty corners): zooms in if it is too big, then moves it in. */
+function clampCrop(crop) {
+  const { naturalWidth: width, naturalHeight: height } = state.image;
+  let g = cropGeometry(width, height, crop);
+  let { ex, ey } = cropExtents(g.width, g.height, crop.straighten);
+  const fit = Math.min(g.W / (2 * ex), g.H / (2 * ey));
+  if (fit < 1) {
+    crop.zoom /= fit * .9999;
+    g = cropGeometry(width, height, crop); ({ ex, ey } = cropExtents(g.width, g.height, crop.straighten));
+  }
+  crop.x = Math.min(1 - ex / g.W, Math.max(ex / g.W, crop.x));
+  crop.y = Math.min(1 - ey / g.H, Math.max(ey / g.H, crop.y));
+  return crop;
+}
+const cropFits = crop => {
+  const g = cropGeo(crop); const { ex, ey } = cropExtents(g.width, g.height, crop.straighten);
+  return g.width >= MIN_CROP_PX - .5 && g.height >= MIN_CROP_PX - .5 && g.cx - ex >= -.5 && g.cy - ey >= -.5 && g.cx + ex <= g.W + .5 && g.cy + ey <= g.H + .5;
+};
+/** The largest box of the chosen ratio around the current centre (Free keeps its box). */
+function fitRatio(crop) {
+  const { W, H } = cropGeo(crop);
+  const ratio = ratioValue(crop, W, H);
+  if (ratio) { const width = Math.min(W, H * ratio); crop.w = width / W; crop.h = width / ratio / H; crop.zoom = 1; }
+  return clampCrop(crop);
+}
+const setCropZoom = (crop, zoom) => { crop.zoom = Math.min(CROP_ZOOM_MAX, Math.max(1, zoom)); return clampCrop(crop); };
+
+// Cropped source at a given long edge; preview sizes are cached until the crop or photo changes.
+const croppedCache = { key: '', sizes: new Map() };
+function croppedSource(maxEdge = Infinity) {
+  if (isIdentityCrop(state.crop)) return state.image;
+  const key = cropKey();
+  if (croppedCache.key !== key) { croppedCache.key = key; croppedCache.sizes.clear(); }
+  if (maxEdge > ZOOM_MAX_EDGE) return cropSource(state.image, state.crop, maxEdge);
+  if (!croppedCache.sizes.has(maxEdge)) croppedCache.sizes.set(maxEdge, cropSource(state.image, state.crop, maxEdge));
+  return croppedCache.sizes.get(maxEdge);
+}
+const croppedSize = () => { const g = cropGeo(); return { width: Math.max(1, Math.round(g.width)), height: Math.max(1, Math.round(g.height)) }; };
+
+// One history entry per gesture: the first change takes the snapshot, the end commits it.
+function beginCropGesture() { clearTimeout(cropUi.timer); if (!cropUi.start) cropUi.start = snapshot(); }
+function endCropGesture(delay = 0) {
+  clearTimeout(cropUi.timer);
+  cropUi.timer = setTimeout(() => { const start = cropUi.start; cropUi.start = null; if (start) { commit(start); scheduleRender(); } }, delay);
+}
+function updateCrop(crop) { state.crop = crop; syncCrop(); }
+
+function buildCrop() {
+  elements.ratioGrid.innerHTML = RATIOS.map(([id, label, name]) => {
+    const [a, b] = id.includes(':') ? id.split(':').map(Number) : id === 'free' ? [1, 1] : [4, 5];
+    const scale = 22 / Math.max(a, b);
+    return `<button class="ratio-tile" type="button" role="radio" data-ratio="${id}" aria-checked="false"${name ? ` aria-label="${name}"` : ''}><span class="ratio-shape" style="width:${Math.round(a * scale)}px;height:${Math.round(b * scale)}px" aria-hidden="true"></span><span aria-hidden="${Boolean(name)}">${label}</span></button>`;
+  }).join('');
+  bindRadioGroup(elements.ratioGrid, '[data-ratio]', button => change(() => { state.crop = fitRatio({ ...state.crop, ratio: button.dataset.ratio, swapped: false }); }));
+  $('#cropSwap').addEventListener('click', () => change(() => { state.crop = fitRatio({ ...state.crop, swapped: !state.crop.swapped }); }));
+  $('#cropRotate').addEventListener('click', () => change(() => {
+    const crop = cloneCrop(state.crop);
+    crop.rotate = (crop.rotate + 90) % 360; [crop.x, crop.y] = crop.flip ? [crop.y, 1 - crop.x] : [1 - crop.y, crop.x]; [crop.w, crop.h] = [crop.h, crop.w];
+    state.crop = crop.ratio === 'free' ? clampCrop(crop) : fitRatio(crop);
+  }));
+  $('#cropFlip').addEventListener('click', () => change(() => { const crop = cloneCrop(state.crop); crop.flip = !crop.flip; crop.x = 1 - crop.x; crop.straighten = -crop.straighten || 0; state.crop = clampCrop(crop); }));
+  $('#cropCenter').addEventListener('click', () => change(() => { state.crop = clampCrop({ ...state.crop, x: .5, y: .5 }); }));
+  $('#cropReset').addEventListener('click', () => change(() => { state.crop = { ...defaultCrop }; }));
+  $('#cropDone').addEventListener('click', () => { const tab = $(`#${cropUi.previousTab}`); setTab(tab); tab.focus(); });
+  bindHistorySlider(elements.cropPanel, '[data-crop]', input => {
+    const crop = cloneCrop(state.crop);
+    if (input.dataset.crop === 'zoom') setCropZoom(crop, Number(input.value));
+    else { crop.straighten = Number(input.value); clampCrop(crop); }
+    updateCrop(crop); scheduleRender();
+  });
+
+  // Stage: drag to move, handles to resize, wheel / pinch to zoom, keys on the focused box.
+  const view = elements.cropView;
+  const pinchDistance = () => { const [a, b] = [...cropUi.pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+  view.addEventListener('pointerdown', event => {
+    if (!state.image || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    event.preventDefault();
+    cropUi.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    view.setPointerCapture(event.pointerId);
+    beginCropGesture();
+    if (cropUi.pointers.size === 2) { cropUi.drag = { kind: 'pinch', distance: pinchDistance(), crop: cloneCrop(state.crop) }; return; }
+    if (cropUi.pointers.size > 2) return;
+    elements.cropBox.focus({ preventScroll: true });
+    cropUi.drag = { kind: event.target.dataset.handle ? 'resize' : 'move', handle: event.target.dataset.handle, x: event.clientX, y: event.clientY, crop: cloneCrop(state.crop) };
+  });
+  view.addEventListener('pointermove', event => {
+    if (!cropUi.pointers.has(event.pointerId)) return;
+    cropUi.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const drag = cropUi.drag; if (!drag) return;
+    if (drag.kind === 'pinch') { updateCrop(setCropZoom(cloneCrop(drag.crop), drag.crop.zoom * pinchDistance() / drag.distance)); return; }
+    const next = drag.kind === 'move' ? moveCrop(drag.crop, event.clientX - drag.x, event.clientY - drag.y) : resizeCrop(drag.crop, drag.handle, event.clientX - drag.x, event.clientY - drag.y);
+    if (next) updateCrop(next);
+  });
+  const release = event => {
+    if (!cropUi.pointers.delete(event.pointerId)) return;
+    cropUi.drag = null; // a pinch that loses a finger stops; lift both to start a new gesture
+    if (!cropUi.pointers.size) endCropGesture();
+  };
+  view.addEventListener('pointerup', release);
+  view.addEventListener('pointercancel', release);
+  view.addEventListener('wheel', event => {
+    if (!state.image) return;
+    event.preventDefault(); beginCropGesture();
+    updateCrop(setCropZoom(cloneCrop(state.crop), state.crop.zoom * Math.exp(-event.deltaY * .0015)));
+    endCropGesture(400);
+  }, { passive: false });
+  elements.cropBox.addEventListener('keydown', event => {
+    const step = event.shiftKey ? .1 : .01;
+    const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+    const zoom = { '+': 1.1, '=': 1.1, '-': 1 / 1.1, _: 1 / 1.1 }[event.key];
+    if (!move && !zoom) return;
+    event.preventDefault(); beginCropGesture();
+    const crop = cloneCrop(state.crop);
+    if (move) { crop.x += move[0]; crop.y += move[1]; clampCrop(crop); } else setCropZoom(crop, crop.zoom * zoom);
+    updateCrop(crop); endCropGesture(500);
+  });
+  new ResizeObserver(() => { if (!elements.cropStage.hidden) drawCropView(); }).observe(elements.cropStage);
+}
+/** Screen delta (px) → oriented-photo delta: undo the straighten rotation and the display scale. */
+function toPhotoDelta(dx, dy) {
+  const angle = -state.crop.straighten * Math.PI / 180, k = cropUi.k;
+  return [(dx * Math.cos(angle) - dy * Math.sin(angle)) / k, (dx * Math.sin(angle) + dy * Math.cos(angle)) / k];
+}
+function moveCrop(start, dx, dy) {
+  const { W, H } = cropGeo(start); const [px, py] = toPhotoDelta(dx, dy);
+  return clampCrop({ ...start, x: start.x + px / W, y: start.y + py / H });
+}
+function resizeCrop(start, handle, dx, dy) {
+  const g = cropGeo(start); const ratio = ratioValue(start, g.W, g.H);
+  const sx = handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0, sy = handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0;
+  const k = cropUi.k;
+  let width = Math.max(MIN_CROP_PX, g.width + sx * dx / k), height = Math.max(MIN_CROP_PX, g.height + sy * dy / k);
+  if (ratio) {
+    const scale = Math.max(MIN_CROP_PX / g.width, MIN_CROP_PX / g.height, sx && sy ? Math.max(width / g.width, height / g.height) : sx ? width / g.width : height / g.height);
+    width = g.width * scale; height = g.height * scale;
+  }
+  // The opposite side stays put: the centre moves by half the change, along the box's own axes.
+  const [px, py] = toPhotoDelta(sx * (width - g.width) / 2 * k, sy * (height - g.height) / 2 * k);
+  const crop = { ...start, w: width * start.zoom / g.W, h: height * start.zoom / g.H, x: start.x + px / g.W, y: start.y + py / g.H };
+  return cropFits(crop) ? crop : null;
+}
+/** Draws the oriented, straightened photo to fit the stage and places the crop box on it. */
+function drawCropView() {
+  if (!state.image || elements.cropStage.hidden) return;
+  const crop = state.crop; const { W, H } = cropGeo();
+  const { ex, ey } = cropExtents(W, H, crop.straighten);
+  const availableWidth = Math.max(80, elements.cropStage.clientWidth - 32);
+  const availableHeight = Math.max(80, elements.cropStage.clientHeight - elements.cropHint.offsetHeight - 46);
+  const k = Math.min(availableWidth / (2 * ex), availableHeight / (2 * ey));
+  const vw = Math.round(2 * ex * k), vh = Math.round(2 * ey * k);
+  Object.assign(cropUi, { k, vw, vh });
+  const key = JSON.stringify([state.imageId, crop.rotate, crop.flip, crop.straighten, vw, vh]);
+  if (cropUi.key !== key) {
+    cropUi.key = key;
+    if (cropUi.thumbId !== state.imageId) { cropUi.thumb = renderImage(state.image, defaultAdjustments, 'none', CROP_PREVIEW_EDGE); cropUi.thumbId = state.imageId; }
+    const thumb = cropUi.thumb, scale = thumb.width / state.image.naturalWidth;
+    const canvas = elements.cropCanvas, dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
+    canvas.style.width = elements.cropView.style.width = `${vw}px`; canvas.style.height = elements.cropView.style.height = `${vh}px`;
+    const ctx = canvas.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, canvas.width / 2, canvas.height / 2);
+    ctx.rotate(crop.straighten * Math.PI / 180);
+    ctx.translate(-W / 2, -H / 2);
+    ctx.scale(1 / scale, 1 / scale);
+    drawOriented(ctx, thumb, crop, W * scale, H * scale);
+  }
+  const g = cropGeo(); const angle = crop.straighten * Math.PI / 180;
+  const dx = g.cx - W / 2, dy = g.cy - H / 2;
+  const cx = vw / 2 + k * (dx * Math.cos(angle) - dy * Math.sin(angle)), cy = vh / 2 + k * (dx * Math.sin(angle) + dy * Math.cos(angle));
+  const box = elements.cropBox, bw = g.width * k, bh = g.height * k;
+  Object.assign(box.style, { left: `${cx - bw / 2}px`, top: `${cy - bh / 2}px`, width: `${bw}px`, height: `${bh}px` });
+}
+function syncCrop() {
+  const crop = state.crop;
+  syncRadios(elements.ratioGrid, 'data-ratio', crop.ratio);
+  $('#cropSwap').disabled = ['orig', 'free', '1:1'].includes(crop.ratio);
+  const zoom = $('#cropZoom'), straighten = $('#cropStraighten');
+  if (document.activeElement !== zoom) zoom.value = crop.zoom;
+  if (document.activeElement !== straighten) straighten.value = crop.straighten;
+  $('#cropZoomOutput').value = `${Number(crop.zoom.toFixed(2))}×`;
+  $('#cropStraightenOutput').value = `${Number(crop.straighten.toFixed(1))}°`;
+  $('#cropFlip').setAttribute('aria-pressed', crop.flip);
+  $('#cropReset').disabled = isIdentityCrop(crop) && crop.ratio === 'orig';
+  if (!state.image) { elements.cropOutput.textContent = ''; return; }
+  const { width, height } = croppedSize();
+  elements.cropOutput.textContent = `Output ${width} × ${height} px`;
+  elements.cropBox.setAttribute('aria-label', `Crop area, ${width} by ${height} pixels`);
+  drawCropView();
 }
 
 // ---------- Advanced engines: load on selection ----------
@@ -750,13 +961,15 @@ function syncControls() {
   syncAdvancedPanel();
   syncAdjustments();
   syncFrames();
+  syncCrop();
   syncLooks();
 }
 
 // ---------- Rendering ----------
 function renderEdge() {
   if (state.zoom === 'fit' || !state.image) return PREVIEW_EDGE;
-  return Math.min(ZOOM_MAX_EDGE, Math.max(state.image.naturalWidth, state.image.naturalHeight));
+  const { width, height } = croppedSize();
+  return Math.min(ZOOM_MAX_EDGE, Math.max(width, height));
 }
 function scheduleRender() {
   if (!state.image) return;
@@ -773,9 +986,10 @@ function renderPreview(token) {
     try {
       const edge = renderEdge();
       const frame = renderFrame();
-      state.editedCanvas = renderImage(state.image, effectiveAdjustments(), frame, edge);
-      const originalKey = JSON.stringify([frame, edge]);
-      if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
+      const source = croppedSource(edge);
+      state.editedCanvas = renderImage(source, effectiveAdjustments(), frame, edge);
+      const originalKey = JSON.stringify([frame, edge, cropKey()]);
+      if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(source, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
       elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
       applyZoom();
       drawPreview();
@@ -803,7 +1017,7 @@ let advancedBusy = false;
 let advancedDirty = false;
 // Last engine preview, so Adjust and Frames changes don't run the engine again.
 let enginePreview = { key: '', bitmap: null };
-const enginePreviewKey = () => JSON.stringify([state.imageId, state.engine, advParams()]);
+const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams()]);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
 let adjustWorker = null, adjustJobId = 0;
 const adjustJobs = new Map();
@@ -826,8 +1040,13 @@ function adjustFull(bitmap, adjustments) {
     adjustWorker.postMessage({ id, bitmap, adjustments }, [bitmap]);
   });
 }
+// The engine's input: the cropped photo at full size, re-made when the crop changes.
 async function ensureBitmap() {
-  if (!state.imageBitmap) state.imageBitmap = await createImageBitmap(state.image);
+  const key = cropKey();
+  if (state.imageBitmap && state.bitmapKey === key) return state.imageBitmap;
+  const bitmap = await createImageBitmap(croppedSource());
+  if (cropKey() !== key) { bitmap.close(); return ensureBitmap(); } // the crop changed meanwhile
+  state.imageBitmap?.close?.(); state.imageBitmap = bitmap; state.bitmapKey = key;
   return state.imageBitmap;
 }
 function scheduleAdvancedRender(delay = ADVANCED_DEBOUNCE) {
@@ -871,8 +1090,8 @@ function showPreviewStatus(text) {
 function presentAdvanced(bitmap, frame) {
   state.editedCanvas = frameCanvas(bitmap, frame);
   const edge = activeModule()?.engineInfo.previewEdge ?? PREVIEW_EDGE;
-  const originalKey = JSON.stringify([frame, edge]);
-  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(state.image, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
+  const originalKey = JSON.stringify([frame, edge, cropKey()]);
+  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(croppedSource(edge), defaultAdjustments, frame, edge); state.originalKey = originalKey; }
   elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
   applyZoom();
   drawPreview();
@@ -883,7 +1102,7 @@ function setRenderProgress(value) {
   if (state.renderQuality === 'rendering') elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
 }
 // The full render holds the engine output with Adjust edits applied.
-const fullRenderKey = () => JSON.stringify([state.imageId, state.engine, advParams(), state.edits]);
+const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams(), state.edits]);
 async function renderFullQuality() {
   const module = activeModule();
   if (!isFilm() || !state.image || !module) return;
@@ -955,7 +1174,7 @@ async function loadFile(file) {
     const url = URL.createObjectURL(file); const image = new Image();
     await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
     if (!image.naturalWidth) throw new Error('Invalid image');
-    state.image = image; state.filename = file.name.replace(/\.[^.]+$/, '') || 'photo'; state.undo = []; state.redo = [];
+    state.image = image; state.filename = file.name.replace(/\.[^.]+$/, '') || 'photo'; state.undo = []; state.redo = []; state.crop = { ...defaultCrop };
     state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
     exportCanvas = { key: '', canvas: null }; preparedExport = null;
     if (state.renderAbort) cancelFullRender();
@@ -966,7 +1185,8 @@ async function loadFile(file) {
     elements.fileChip.title = file.name;
     elements.fileSize.textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
     elements.fileChip.setAttribute('aria-label', `${file.name}, ${image.naturalWidth} by ${image.naturalHeight} pixels. Photo options`);
-    updateButtons(); scheduleRender(); toast('Photo opened locally.');
+    elements.cropStage.hidden = document.body.dataset.tab !== 'crop';
+    updateButtons(); syncCrop(); scheduleRender(); toast('Photo opened locally.');
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch { toast('PhotoKamo could not decode that image.'); }
   elements.fileInput.value = ''; elements.cameraInput.value = '';
@@ -1058,7 +1278,11 @@ function setTab(tabButton) {
     tab.tabIndex = selected ? 0 : -1;
     $(`#${tab.getAttribute('aria-controls')}`).hidden = !selected;
   });
+  if (tabButton.id === 'cropTab' && document.body.dataset.tab !== 'crop') cropUi.previousTab = `${document.body.dataset.tab || 'looks'}Tab`;
   document.body.dataset.tab = tabButton.id.replace('Tab', '');
+  // Crop: the whole photo with the crop box replaces the preview while the tab is open.
+  elements.cropStage.hidden = tabButton.id !== 'cropTab' || !state.image;
+  if (!elements.cropStage.hidden) { cropUi.key = ''; syncCrop(); }
 }
 
 // ---------- Save / export ----------
@@ -1073,7 +1297,7 @@ const canShareFiles = (() => {
 })();
 
 function exportDimensions() {
-  const { naturalWidth: width, naturalHeight: height } = state.image;
+  const { width, height } = croppedSize();
   const module = activeModule();
   return module ? module.fullRenderSize(width, height) : { width, height, capped: false };
 }
@@ -1117,7 +1341,7 @@ function exportSummary() {
 }
 function syncExportOptions() {
   document.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', button.dataset.format === state.exportFormat));
-  const { naturalWidth: width, naturalHeight: height } = state.image;
+  const { width, height } = croppedSize();
   const canShrink = width > SHARE_WIDTH;
   if (!canShrink && state.exportSize === 'share') state.exportSize = 'full';
   document.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === state.exportSize));
@@ -1140,7 +1364,7 @@ function prepareExport() {
     await new Promise(resolve => setTimeout(resolve, 30));
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), renderFrame(), edge) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(croppedSource(edge), effectiveAdjustments(), renderFrame(), edge) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -1205,12 +1429,12 @@ function closePhoto() {
   state.image = null; state.imageId++; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
   exportCanvas = { key: '', canvas: null }; preparedExport = null;
   document.body.classList.remove('has-image');
-  elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true;
+  elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true; elements.cropStage.hidden = true;
   updateButtons();
 }
 
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildAdvancedPanel(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildAdvancedPanel(); syncControls(); updateButtons();
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
@@ -1285,7 +1509,7 @@ window.addEventListener('blur', () => setHolding(false));
 document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => setZoom(button.dataset.zoom)));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', () => {
   const options = presets.filter(p => p.id !== state.presetId && p.id !== 'original' && filterMatches(p));

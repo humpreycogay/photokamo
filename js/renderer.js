@@ -140,6 +140,50 @@ export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400) 
   return frameCanvas(photo, frame);
 }
 
+// ---------- Crop ----------
+// crop = { ratio, swapped, x, y, w, h, zoom, rotate, flip, straighten }. Coordinates are in the
+// "oriented" photo (after rotate 90° steps and flip), normalised 0–1: the box is centred on
+// (x, y), measures (w × W) / zoom by (h × H) / zoom px, and is turned by `straighten` degrees.
+export const defaultCrop = Object.freeze({ ratio: 'orig', swapped: false, x: .5, y: .5, w: 1, h: 1, zoom: 1, rotate: 0, flip: false, straighten: 0 });
+export const isIdentityCrop = c => !c || (c.rotate % 360 === 0 && !c.flip && !c.straighten && c.x === .5 && c.y === .5 && c.w / c.zoom === 1 && c.h / c.zoom === 1);
+
+/** Oriented size (W, H), box size in px and box centre for a source of sourceWidth × sourceHeight. */
+export function cropGeometry(sourceWidth, sourceHeight, crop) {
+  const turned = crop.rotate % 180 !== 0;
+  const W = turned ? sourceHeight : sourceWidth, H = turned ? sourceWidth : sourceHeight;
+  return { W, H, width: crop.w * W / crop.zoom, height: crop.h * H / crop.zoom, cx: crop.x * W, cy: crop.y * H };
+}
+/** Half-extents of the straightened box along the photo's axes. All four corners are inside the
+ *  photo exactly when this bounding box is. */
+export function cropExtents(width, height, degrees) {
+  const angle = degrees * Math.PI / 180, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+  return { ex: (width * cos + height * sin) / 2, ey: (width * sin + height * cos) / 2 };
+}
+/** Draws the source in its orientation (rotate clockwise in 90° steps, then flip horizontally). */
+export function drawOriented(ctx, image, crop, W, H) {
+  if (crop.flip) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  const turns = ((crop.rotate / 90) % 4 + 4) % 4;
+  if (turns === 1) { ctx.translate(W, 0); ctx.rotate(Math.PI / 2); }
+  else if (turns === 2) { ctx.translate(W, H); ctx.rotate(Math.PI); }
+  else if (turns === 3) { ctx.translate(0, H); ctx.rotate(-Math.PI / 2); }
+  ctx.drawImage(image, 0, 0);
+}
+/** The cropped photo as a canvas, at most maxEdge px on its long side. */
+export function cropSource(image, crop, maxEdge = Infinity) {
+  const sourceWidth = image.naturalWidth || image.width, sourceHeight = image.naturalHeight || image.height;
+  const g = cropGeometry(sourceWidth, sourceHeight, crop);
+  const scale = Math.min(1, maxEdge / Math.max(g.width, g.height));
+  const output = createCanvas(Math.max(1, Math.round(g.width * scale)), Math.max(1, Math.round(g.height * scale)));
+  const ctx = output.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.scale(output.width / g.width, output.height / g.height);
+  ctx.translate(g.width / 2, g.height / 2);
+  ctx.rotate(crop.straighten * Math.PI / 180);
+  ctx.translate(-g.cx, -g.cy);
+  drawOriented(ctx, image, crop, g.W, g.H);
+  return output;
+}
+
 // Adjust on top of an engine's output. Returns `source` itself when every value is 0,
 // so engine output without edits stays byte-identical.
 export function applyAdjustments(source, adjustments) {
