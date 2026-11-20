@@ -1,0 +1,35 @@
+// In-place log10 transform: data[i] = log10(max(data[i], 1e-10))
+// Used between the Hanatos2025 (raw) and density-curve interp stages.
+//
+// `n` is the total number of pixels (not elements). Each thread processes
+// the 3 channels of one pixel — keeps workgroup count under the 65535 limit
+// for large images.
+
+struct Params {
+    n_pixels: u32,
+    _pad: vec3<u32>,
+}
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read_write> data: array<f32>;
+
+// Threads per workgroup; the host may lower it to what the GPU's
+// compiled pipeline supports (see `WgpuBackend::workgroup_size`).
+override WORKGROUP_SIZE: u32 = 1024u;
+
+@compute @workgroup_size(WORKGROUP_SIZE)
+fn main(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(num_workgroups) groups: vec3<u32>,
+) {
+    // 2D grid above 65535 workgroups (see `linear_dispatch_grid`).
+    let idx = gid.y * groups.x * WORKGROUP_SIZE + gid.x;
+    if idx >= params.n_pixels {
+        return;
+    }
+    let base = idx * 3u;
+    let log10_inv = 1.0 / log(10.0);
+    data[base] = log(max(data[base], 1e-10)) * log10_inv;
+    data[base + 1u] = log(max(data[base + 1u], 1e-10)) * log10_inv;
+    data[base + 2u] = log(max(data[base + 2u], 1e-10)) * log10_inv;
+}

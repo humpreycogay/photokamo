@@ -1,0 +1,65 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/spektrafilm-core",
+    "crates/spektrafilm-gpu",
+    "crates/spektrafilm-math",
+    "crates/spektrafilm-model",
+    "crates/spektrafilm-io",
+    "crates/spektrafilm-cli",
+    "crates/spektrafilm-native",
+    "crates/spektrafilm-wasm",
+]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.17.0"
+edition = "2024"
+license = "GPL-3.0-only"
+rust-version = "1.89"
+
+[workspace.dependencies]
+spektrafilm-core = { path = "crates/spektrafilm-core" }
+spektrafilm-gpu = { path = "crates/spektrafilm-gpu" }
+spektrafilm-math = { path = "crates/spektrafilm-math" }
+spektrafilm-model = { path = "crates/spektrafilm-model" }
+spektrafilm-io = { path = "crates/spektrafilm-io" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1.10"
+rand = "0.9"
+rand_distr = "0.5"
+image = { version = "0.25", default-features = false, features = ["tiff", "png", "jpeg"] }
+exr = "1.73"
+# No DX12 (Vulkan or Metal only, see WgpuBackend::new); the dependents pick features.
+wgpu = { version = "24", default-features = false }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+anyhow = "1"
+byteorder = "1"
+libm = "0.2"
+rustfft = "6"
+# std::time on native; performance.now() in the browser, where std panics.
+web-time = "1"
+
+# Keep source locations and backtraces without full type/variable debug info
+# for every dependency and worktree. Tests inherit the development profile.
+[profile.dev]
+debug = 1
+
+# Shipping settings (CI, web/build.sh). Claude sessions build --release without
+# LTO, with 16 codegen units and incremental (.claude/settings.json): ~10× faster
+# rebuilds, byte-identical renders (all 496 golden renders, 2026-11-17), and
+# render times within 1%. Benchmark against shipped speed with those unset.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+# rawler with web_time::Instant, so RAW decoding doesn't panic in the browser.
+# Drop once upstream takes the change (see vendor/README.md).
+[patch.crates-io]
+rawler = { path = "vendor/rawler" }

@@ -1,0 +1,273 @@
+# Negs
+
+**English** · [简体中文](README.zh-CN.md)
+
+[![Downloads](https://img.shields.io/github/downloads/noahhaasis/negs/total)](https://github.com/noahhaasis/negs/releases)
+
+**Your photos, developed on film.**
+
+Negs is a **free** photo app for your browser, Mac, Windows and Linux that runs your pictures through a **physical simulation of film**: the dyes, the print paper, the glow around highlights, the grain. They come out looking shot on film, not filtered to look like it.
+
+Negs is built on two open-source projects: Andrea Volpato's [spektrafilm](https://github.com/andreavolpato/spektrafilm), the spectral film simulation behind every stock, and turbasvin's [spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs), the Rust port that runs it on the GPU. Negs improves on both: the GPU engine now matches the 64-bit reference render closely enough that exports run on the GPU by default, several times faster. It also adds Apple's RAW decoder and lab-style borders, and wraps it all in a web app and native apps for macOS, Windows and Linux.
+
+> [!TIP]
+> **Film simulation that keeps up with you.** Every slider updates live. Faster than spektrafilm-rs; dramatically faster than Python spektrafilm.
+
+**[▶ Try it in your browser](https://getnegs.com/try/)** · nothing to install · your photos stay on your device
+
+**[Download for Mac](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-macos-universal.dmg)** · macOS 14 or later · Apple silicon and Intel · [install steps](#macos)
+
+**[Download for Windows](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-windows-x64-Setup.exe)** · Windows x64 · [portable version](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-windows-x64-portable.zip) · [install steps](#windows)
+
+**Linux** · x86_64 · [Flatpak](https://github.com/noahhaasis/negs/releases/download/v0.17.0/negs-0.17.0-linux-x86_64.flatpak) · [AppImage](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-x86_64.AppImage) · [Arch and Omarchy](#arch-and-omarchy) · [install steps](#linux)
+
+[getnegs.com](https://getnegs.com)
+
+| RAW · Apple default | Negs · Kodak Ektar 100 |
+|---|---|
+| ![Rome at dusk, the RAW as macOS renders it by default](docs/readme/compare-before.webp) | ![The same photo developed on Ektar 100 in Negs](docs/readme/compare-after.webp) |
+
+## A darkroom in a window
+
+![The Negs window: an aerial photo of surfers on a beach in a Kodak Ektar 100 frame, with film, camera and print controls on the right](docs/readme/app-window.webp)
+
+In your browser, or as a native app on Mac, Windows and Linux. Pick a film, pick a paper, drag a slider, and watch the picture change as you move.
+
+**Open and organise**
+- Opens RAW files from most cameras, including Nikon HE★ (Mac only) and 60 MP medium format, plus JPEG, TIFF and PNG. Reads JPEG, PNG and TIFF colour profiles
+- **Gallery (Mac):** open a folder and it is your library, with nothing to import. Browse it as a grid or a film strip, rate with stars, flag picks and rejects, filter, and see every photo developed, not as a grey thumbnail. Ratings and edits are kept in a small file beside each photo, and exports carry the rating as `xmp:Rating` for Bridge and Photo Mechanic
+- Batch export a rating, a filter or a selection in one go (Mac)
+
+**Develop**
+- Pick from about 60 film stocks and papers, with a preview of each on your own photo
+- **Prep:** highlights, shadows, contrast, lift and gain, colour boost and saturation, midtone detail, and *Match camera brightness*, which starts a RAW at the exposure your camera showed
+- **Lens corrections** in the Mac, Windows and Linux apps: distortion, vignetting and chromatic aberration are fixed from the data in the file, using Apple's decoder on Mac and the camera's own correction data for Sony, Fujifilm, OM/Olympus, Panasonic and DNG on Windows and Linux
+- RAW white balance: as shot, daylight, tungsten or a custom temperature and tint
+- Image Size enlarges a photo *before* the film, so grain and halation form at print size instead of being stretched afterwards
+- Crop, straighten, and add borders with each stock's real edge print
+- Save, apply and share film and Lab presets, including Python spektrafilm community presets
+- Undo, keyboard shortcuts, pinch to zoom: it feels at home on Mac, Windows and Linux
+
+**Export**
+- PNG, TIFF or JPEG (with a quality slider) that keeps your camera's EXIF, at 8 or 16 bits per channel, in sRGB, Display P3, Adobe RGB or ProPhoto RGB (16-bit only) with an embedded ICC profile
+- Fast export on the GPU or Reference export on the CPU in 64-bit, see [Speed](#speed)
+- Export the current film and paper colours as a 33³ sRGB `.cube` LUT from File → Export LUT… on every platform. No photograph is needed; spatial effects and Post edits are excluded
+- Live preview while you drag a slider, and what you see in the preview is what you export
+- The web app speaks English and Chinese (简体中文)
+
+https://github.com/user-attachments/assets/25c00097-e668-48b2-8903-3299668b538e
+
+## Chemistry, not a filter
+
+Negs doesn't guess what film looks like. It follows the light through the whole chain (film, enlarger, paper, scanner) using the published data for each stock.
+
+- **Colour from the spectrum.** Your photo is turned back into light, exposed onto the film's three dye layers, printed onto paper and scanned. Colours shift the way they did on the real stock, because the same thing happens to them.
+- **Halation.** Bright lights bleed a warm red glow, the way light bounces back through real film. Street lamps, sun on chrome, candle flames.
+- **Grain that lives in the image.** Grain is simulated in each dye layer from how dense the film is at that spot. It sits inside the picture instead of being laid on top.
+- **The developer's bite.** Development chemistry sharpens edges and deepens colour where tones meet, giving the crispness film has and digital lacks.
+- **Paper matters.** The print paper changes the look as much as the film does, just like in a real lab.
+- **Print it, or scan it.** Print the negative onto paper for the classic lab look, or skip the paper and scan the film directly.
+
+### Why not a LUT?
+
+A LUT looks at each pixel on its own and swaps its colour. Real film doesn't work like that: light spreads through the emulsion, highlights glow, grain follows exposure and neighbouring tones pull on each other. Negs simulates all of it, so the look holds up where LUTs fall apart: skin, neon, deep shadows, bright skies.
+
+## Borders
+
+Finish with a solid border or a thin keyline in any width and colour, a black film edge, or the full 35mm frame, sprocket holes and all, printed with the stock's own edge markings.
+
+| White border | Keyline | Film edge | 35mm frame |
+|---|---|---|---|
+| ![A bench on a terrace above a lake and mountains, with a white border](docs/readme/border-white.webp) | ![Horse-drawn carriages in front of a palace, with a keyline border](docs/readme/border-keyline.webp) | ![A bar at night with glowing shelves, with a black film border](docs/readme/border-film.webp) | ![The Colosseum in a 35mm Kodak Gold 200 frame with sprocket holes and edge print](docs/readme/border-35mm.webp) |
+
+## Speed
+
+While you drag a slider, Negs renders only the pixels your screen shows, so the picture follows your hand. When you let go, the GPU develops the photo again at full resolution, with grain and halation at their real size. That full frame is what Fast export saves, so exporting takes no extra time.
+
+The table compares render times on a MacBook Pro with an M1 Pro and 32 GB: the same photo in every app (Kodak Gold 200 printed on Portra Endura), developed at full resolution. Memory is the most each program used.
+
+| | Nikon Z 6 · 24 MP | Leica Q3 · 60 MP |
+|---|---:|---:|
+| **Negs, full-resolution render (GPU)** | **0.9 s · 2.1 GB** | **2.1 s · 5.0 GB** |
+| spektrafilm-rs (GPU) | 1.3 s · 3.6 GB | 4.1 s · 8.9 GB |
+| **Negs, Reference export (CPU, 64-bit)** | **13.2 s · 7.1 GB** | **35.3 s · 13.9 GB** |
+| Negs, Reference with *Use less memory* | 37.5 s · 3.9 GB | 99.2 s · 9.7 GB |
+| Negs (CPU, 64-bit, LUTs) | 8.8 s · 5.1 GB | 24.1 s · 10.7 GB |
+| spektrafilm-rs (CPU, 64-bit, LUTs) | 9.7 s · 7.5 GB | 25.9 s · 17.2 GB |
+| Python spektrafilm (CPU, 64-bit, LUTs) | 43.4 s · 13.7 GB | 107.6 s · 27.8 GB* |
+
+\* More than fits in 32 GB alongside macOS: it swapped up to 7 GB to disk.
+
+Negs' Reference export computes the full spectrum for every pixel. spektrafilm-rs and Python speed up two spectral steps (enlarger and scanner) with small lookup tables (LUTs), which are quicker but approximate. These aren't film-look LUTs: grain, halation and the rest of the film are still simulated. The LUT row shows Negs with the same lookup tables, for a like-for-like comparison; the app doesn't export that way.
+
+**Use less memory** (Scan & Color → Output) is for Reference exports of large photos on Macs with less RAM. If an export would fill your Mac's memory and slow everything down, turn it on: the image is exactly the same, the export just takes longer.
+
+Method, versions and reproduction: [benchmarks](docs/benchmarks.md).
+
+## Your film shelf
+
+| | |
+|---|---|
+| **Colour negative** | Portra 160, Portra 400, Portra 800 (+1, +2), Ektar 100, Gold 200, Ultramax 400, Fujicolor C200, Pro 400H, Pro 160NS, Superia 200 *(approximate)*, Superia X-TRA 400, Superia Reala 100, Kodacolor 100, Aerocolor IV 2460, CineStill 800T, CineStill 400D *(approximate)*, Lomography Color 100 *(approximate)*, Harman Phoenix 200 *(approximate)*, LomoChrome Metropolis *(approximate)*, LomoChrome Turquoise *(approximate)* |
+| **Slide** | Ektachrome 100, Kodachrome 25, Kodachrome 64, Kodachrome 200, Velvia 50, Velvia 100, Provia 100F, Astia 100F, Agfachrome 50, Agfachrome 100, Agfachrome 200 |
+| **Motion picture** | Vision3 50D, Vision3 250D, Vision3 200T, Vision3 500T, Verita 200D, Eterna 500, Eterna Vivid 500, F-64D, Reala 500D |
+| **Infrared** | Aerochrome III 1443 *(approximate)*, Infrared Color *(creative)* |
+| **Black & white** | Tri-X 400 *(experimental)*, Double-X 5222 *(experimental)*, HP5 Plus, FP4 Plus, Delta 3200, T-MAX 100, Acros 100 II |
+| **Papers & print film** | Portra Endura, Endura Premier, Supra Endura, Ultra Endura, Ektacolor Edge, Crystal Archive II, Ilford Multigrade RC, Vision 2383, Vision 2393 |
+
+Kodak, Fujifilm, Ilford, Agfa, Harman, Lomography and CineStill stock names are trademarks of their owners. Negs is not affiliated with them.
+
+## Install
+
+### In your browser
+
+No install needed: open **[getnegs.com/try](https://getnegs.com/try/)** in any recent browser. Negs runs entirely on your device, on the GPU through WebGPU where the browser supports it, so your photos are never uploaded.
+
+[![Negs running in a browser: a photo of Rome at dusk on Kodak Portra 400, with film, paper and camera controls beside it](docs/readme/web-app.webp)](https://getnegs.com/try/)
+
+### macOS
+
+The first time you open Negs, macOS asks you to allow it in System Settings:
+
+1. **Download** the `.dmg` from the [latest release](https://github.com/noahhaasis/negs/releases).
+2. **Drag to Applications.** Open the `.dmg` and drag **Negs** into the **Applications** folder.
+3. **Open it once.** Double-click Negs. macOS says it can't verify the app and won't open it. Click **Done** (not *Move to Trash*).
+4. **Allow it in Settings.** Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the message about Negs. Enter your password, then click **Open**.
+
+Why the extra step? Negs isn't notarized by Apple, which needs a paid developer account, so macOS asks you to allow it yourself the first time.
+
+Negs updates itself: use **Negs → Check for Updates…**, or turn automatic checks on or off in Settings.
+
+### Windows
+
+Native Windows app with the same film engine as the Mac app: GPU previews, crop and straighten tools, borders, and Fast or Reference exports.
+
+![The Negs Windows app: a photo of Rome at dusk on Kodak Portra 800, with the film strip below and film and paper controls on the right](docs/readme/windows-app.webp)
+
+1. **Download** [`Negs-0.17.0-windows-x64-Setup.exe`](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-windows-x64-Setup.exe) and run it. It installs for your Windows account and adds Negs to **Open with**, without changing your default photo app.
+2. **If Windows SmartScreen warns you**, click **More info → Run anyway**. Negs isn't code-signed, which needs a paid certificate.
+
+Prefer no installer? Extract [`Negs-0.17.0-windows-x64-portable.zip`](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-windows-x64-portable.zip) and run `Negs.exe`. Keep the included helper executables and `data` folder beside it.
+
+Windows doesn't update itself yet: download the newer installer from the [releases page](https://github.com/noahhaasis/negs/releases) and run it over the old one. The editing panel and film strip start enabled, and F7/F6 toggle them during use.
+
+Windows packages can be built from source with [`windows/package.ps1`](windows/package.ps1); see the [Windows build instructions](docs/windows-app.md) and the [validation status](docs/windows-ui-validation.md).
+
+### Linux
+
+![The Negs Linux app: a photo of Rome at dusk on Kodak Ektar 100, with the film strip below and film and paper controls on the right](docs/readme/linux-app.webp)
+
+Native GTK4 app on the same film engine, for x86_64. There are three ways to install it; each needs a Vulkan driver for GPU acceleration (the engine falls back to the CPU without one).
+
+**Flatpak**, for any distribution with [Flatpak](https://flatpak.org/setup/). Download [`negs-0.17.0-linux-x86_64.flatpak`](https://github.com/noahhaasis/negs/releases/download/v0.17.0/negs-0.17.0-linux-x86_64.flatpak) and install it:
+
+```sh
+flatpak install --user negs-0.17.0-linux-x86_64.flatpak
+```
+
+Flatpak fetches the GNOME runtime from Flathub if you don't have it. Negs runs sandboxed: it sees the photos and folders you open, and nothing else. Use **Open Folder…** to see a whole folder in the film strip. To update, install the newer bundle the same way.
+
+**AppImage**, a single file that runs on Ubuntu 24.04 or newer, current Fedora, Arch and similar distributions, without installing anything:
+
+```sh
+chmod +x Negs-0.17.0-x86_64.AppImage
+./Negs-0.17.0-x86_64.AppImage
+```
+
+Download [`Negs-0.17.0-x86_64.AppImage`](https://github.com/noahhaasis/negs/releases/download/v0.17.0/Negs-0.17.0-x86_64.AppImage). If your system has no FUSE, run it with `--appimage-extract-and-run`. To update, download the newer AppImage. Settings and presets are kept in `~/.config/negs` either way.
+
+The AppImage prefers X11/XWayland when it's available, which avoids a GTK crash reported on some Wayland desktops. To use native Wayland anyway, run it with `GDK_BACKEND=wayland`.
+
+The Flatpak keeps its settings and presets separately, in `~/.var/app/io.github.noahhaasis.negs`. Export presets from one version and import them in the other to move them. How both are built and tested: [Linux Flatpak and AppImage](docs/linux-distribution.md).
+
+#### Arch and Omarchy
+
+On x86_64 Arch Linux and Omarchy you can also install the native package for your user (no root needed) with one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/noahhaasis/negs/main/linux/get-negs.sh | sh
+```
+
+It downloads the latest release, checks its SHA-256 checksum and installs under `~/.local`. It's built for rolling-release distributions: the release needs a very recent glibc (2.44), so it won't run on Ubuntu LTS, Debian stable or Fedora releases that ship older versions; use the Flatpak or AppImage there. If you'd rather read it first, [the script](linux/get-negs.sh) is short. The per-user bundle includes OpenBLAS. Negs needs GTK 4.16+, libadwaita 1.6+ and a Vulkan driver for your GPU (the engine falls back to the CPU without one). On Omarchy these are normally present; elsewhere:
+
+```sh
+sudo pacman -S --needed gtk4 libadwaita vulkan-icd-loader
+```
+
+Run `negs` (or `~/.local/bin/negs` if `~/.local/bin` isn't on your `PATH`) or open it from your launcher. To update, run the command again; to remove it, run `python3 ~/.local/share/negs/install.py --uninstall`. Your settings and photos are kept.
+
+### Handy shortcuts
+
+| | Mac | Windows & Linux |
+|---|---|---|
+| Open a photo | ⌘O | Ctrl+O |
+| Export | ⇧⌘E | Ctrl+Shift+E |
+| Save the preview | ⌘S | Ctrl+S |
+| Rotate | ⌘R | Ctrl+R |
+| Fit / actual size | ⌘0 / ⌘1 | Ctrl+0 / Ctrl+1 |
+| Show or hide adjustments | ⌥⌘I | F7 |
+| Show the original while held | \ | O or \ |
+
+Pinch to zoom, scroll or drag to pan, double-click to fit.
+
+## Questions
+
+**Is Negs free?**
+Yes. It's free to download and open source under the GPL-3.0 (see [License](#license)).
+
+**macOS says Negs can't be opened. Is it safe?**
+macOS shows that warning for every app that isn't notarized by Apple. Negs isn't, because notarizing needs a paid developer account. All of the source code is in this repository for anyone to check. Follow the [install steps](#macos): you only need to allow it once.
+
+**Which files can I open?**
+RAW files from most cameras, plus JPEG, TIFF and PNG. The Mac app uses Apple's RAW support with a rawler fallback; the Windows and Linux apps use rawler for RAW files.
+
+**Does Negs respect my photo's colour profile?**
+Yes. JPEG, PNG and TIFF files are read with their embedded ICC profile or colour tags (untagged files as sRGB), and RAW colours outside sRGB are kept. The preview develops in the colour space you export to, so on a wide-gamut display you see Display P3 or Adobe RGB colours while editing. For files with missing or wrong tags, Input Colour in the Lab tab lets you choose how they are read. A JPEG still carries its camera's tone curve and processing, which no profile undoes; RAW files give the film simulation the most to work with. Details: [colour management](docs/colour-management.md).
+
+**Does it run on Intel Macs?**
+Yes, on Intel Macs that run macOS 14 or later. Negs is a universal app, so it runs natively on both Intel and Apple silicon. It is developed and tested mainly on Apple silicon, so if something looks wrong on an Intel Mac, please [open an issue](https://github.com/noahhaasis/negs/issues).
+
+**Is this a preset pack?**
+No. Presets and LUTs remap colours. Negs simulates the film, the paper and the light, which is why halation, grain and edge effects come out right.
+
+**Which platforms does it run on?**
+Any recent browser, at [getnegs.com/try](https://getnegs.com/try/): nothing to install, and your photos never leave your device. As a desktop app: macOS 14 or later (Apple silicon and Intel), Windows x64, and x86_64 Linux. There is a [Mac app](#macos), a [Windows app](#windows) with an installer and a portable build, and a native GTK4 app for [Linux](#linux) as a Flatpak, an AppImage and an Arch package.
+
+**Found a bug or have an idea?**
+[Open an issue](https://github.com/noahhaasis/negs/issues).
+
+## Credits
+
+The film model at the heart of Negs comes from two open-source projects. Negs builds fast apps on top of them: in the browser, and native on Mac, Windows and Linux.
+
+- **[spektrafilm](https://github.com/andreavolpato/spektrafilm)** by Andrea Volpato: the spectral simulation of film and print. The physics and the stock data come from here.
+- **[spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs)** by turbasvin: the Rust port of spektrafilm that Negs started from.
+
+The default spectral-upsampling table is by [Johannes Hanatos](https://github.com/hanatos), author of [vkdt](https://github.com/hanatos/vkdt). The optional Arctic 2026 table is by Andrea Volpato, from spektrafilm, and the Mallett 2019 table is spektrafilm's tabulation of the spectral primary decomposition by Ian Mallett and Cem Yuksel (2019). The profiles and tables from spektrafilm are under CC BY-SA 4.0 ([license](data/SPEKTRAFILM_LICENSE.txt), [changes](data/CHANGELOG.txt)). 29 additional film profiles (24 colour, 5 black-and-white) are adapted from [Fotufilm](https://fotufilm.com) by MUAStudio Inc., also under CC BY-SA 4.0 ([license](data/FOTUFILM_LICENSE.txt), [changes](data/CHANGELOG.txt)). Parts of the maths are ported from numpy, scipy, scikit-image and colour-science. RAW files Apple can't read are decoded with [rawler](https://github.com/dnglab/dnglab); the Sony, Fujifilm, OM/Olympus and Panasonic lens corrections on Windows and Linux are ported from [darktable](https://www.darktable.org)'s embedded-metadata lens correction; updates are delivered with [Sparkle](https://sparkle-project.org); and the Mac app sets its names and numbers in [Newsreader](https://github.com/productiontype/Newsreader) by Production Type.
+
+The Prep tab, camera brightness matching, the RGB waveform and the Apple RAW 9 → 8 fallback come from [yosoyelchris](https://github.com/yosoyelchris)'s fork of Negs ([details](docs/prep.md)).
+
+## License
+
+Negs is free software under the **GNU General Public License, version 3** ([full text](LICENSE)), the same license as spektrafilm and spektrafilm-rs, which it builds on.
+
+That means you can use Negs for anything, including commercial work. The photos you make with it are yours, and the license puts no conditions on them. You may also share and modify the app. If you distribute it, modified or not, you must pass on the same freedoms: release it under the GPL-3.0 and make the source code available.
+
+- Copyright © Andrea Volpato (spektrafilm)
+- Copyright © turbasvin (spektrafilm-rs)
+- Copyright © 2026 Noah Haasis (Negs: the apps and the changes to the engine)
+- Copyright © 2026 yosoyelchris (the Prep controls, camera brightness matching and scopes)
+
+Third-party components keep their own licenses. Sparkle, the update framework bundled in the Mac app, is under the MIT license. Newsreader, the typeface bundled in the Mac app, is under the SIL Open Font License 1.1 ([license](macos/Fonts/OFL-Newsreader.txt)).
+
+## For developers
+
+Building from source, the command-line tools, accuracy against the original Python project, and how the code is laid out: see [docs/development.md](docs/development.md).
+
+### Building the web app
+
+The web app in [`web/`](web/) runs the same Rust film engine compiled to WebAssembly, with the WebGPU engine sharing the desktop apps' shaders. See [docs/web-wasm.md](docs/web-wasm.md) for how it's built and how closely it matches the native renders.
+
+### Building the Linux app
+
+The Linux app is a GTK4/libadwaita editor on the same Rust film engine. To build and run it, or to build an Arch package, see the [Linux build and installation details](docs/linux-app.md) and the [AUR/Omarchy release checklist](docs/linux-release.md).
