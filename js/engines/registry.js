@@ -19,6 +19,20 @@ export const engines = [
     ],
     folder: new URL('../../engines/spektrafilm-rs/', import.meta.url),
     load: () => import('./spektrafilm-rs/index.js')
+  },
+  {
+    id: 'negs',
+    label: 'Negs',
+    description: 'Spectral film model on WebGPU · 52 films incl. B&W, 10 papers',
+    licence: 'GPL-3.0',
+    approxDownload: '≈ 15 MB',
+    credit: [
+      'Film modelling by ', { text: 'negs', href: 'https://github.com/noahhaasis/negs' },
+      ', built on ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
+      ' by Andrea Volpato. Profiles CC BY-SA 4.0 (spektrafilm, Fotufilm).'
+    ],
+    folder: new URL('../../engines/negs/', import.meta.url),
+    load: () => import('./negs/index.js')
   }
 ];
 

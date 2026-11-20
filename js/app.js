@@ -451,7 +451,7 @@ function warmEngine() {
   const module = activeModule(); if (!module?.warm) { setEngineStatus('ready'); return; }
   setEngineStatus('preparing');
   module.warm(cloneParams(advParams())).then(
-    () => { if (activeModule() === module) setEngineStatus('ready'); },
+    () => { if (activeModule() === module) { setEngineStatus('ready'); if (state.mode === 'advanced' && state.renderQuality === 'preview') syncRenderStatus(); } },
     error => {
       if (activeModule() !== module) return;
       if (error?.name === 'AbortError') setEngineStatus('idle'); // a cancelled render restarted the worker

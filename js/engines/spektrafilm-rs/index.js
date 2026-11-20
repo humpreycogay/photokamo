@@ -13,6 +13,8 @@ export { sections, controls, controlByPath, defaultParams, isChanged, sameValue,
 /** Settings that carry over when switching to/from another engine (common key → this engine's path). */
 export const shared = {
   film: 'film',
+  paper: 'print',
+  scanFilm: 'io.scan_film',
   exposureEv: 'camera.exposure_compensation_ev',
   grain: 'film_render.grain.active',
   halation: 'film_render.halation.active'

@@ -6,12 +6,26 @@ export const controlId = path => `adv-${path.replace(/[^a-z0-9]+/gi, '-')}`;
 const CHEVRON = '<svg class="adv-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
 function controlHtml(control, engine) {
-  const id = controlId(control.path);
   const depends = control.dependsOn ? ` data-depends="${control.dependsOn}"` : '';
+  if (control.kind === 'heading') return `<h4 class="adv-group-heading"${depends}>${escapeHtml(control.label)}</h4>`;
+  if (control.kind === 'note') return `<p class="adv-hint adv-section-note" data-note="${escapeHtml(control.id || '')}"${depends}>${escapeHtml(control.label)}</p>`;
+  const id = controlId(control.path);
   const hint = control.hint ? `<p class="adv-hint" id="${id}-hint">${escapeHtml(control.hint)}</p>` : '';
   const described = control.hint ? ` aria-describedby="${id}-hint"` : '';
   if (control.kind === 'select') {
-    return `<div class="adv-control adv-select"${depends}><label for="${id}">${escapeHtml(control.label)}</label><select id="${id}" data-path="${control.path}"${described}>${control.options.map(option => `<option value="${escapeHtml(option)}">${escapeHtml(engine.optionLabel(option))}</option>`).join('')}</select>${hint}</div>`;
+    const option = value => `<option value="${escapeHtml(value)}">${escapeHtml(engine.optionLabel(value, control.path))}</option>`;
+    let options;
+    if (engine.optionGroup) {
+      // Grouped options (<optgroup>), in the order the groups first appear.
+      const groups = new Map();
+      for (const value of control.options) {
+        const group = engine.optionGroup(value, control.path) || '';
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(value);
+      }
+      options = [...groups].map(([group, values]) => group ? `<optgroup label="${escapeHtml(group)}">${values.map(option).join('')}</optgroup>` : values.map(option).join('')).join('');
+    } else options = control.options.map(option).join('');
+    return `<div class="adv-control adv-select"${depends}><label for="${id}">${escapeHtml(control.label)}</label><select id="${id}" data-path="${control.path}"${described}>${options}</select>${hint}</div>`;
   }
   if (control.kind === 'bool') {
     const header = control.role === 'effect-header';
@@ -43,7 +57,7 @@ export function syncAdvanced({ pipeline, container }, engine, params, { open, cu
   for (const section of sections) {
     const root = container.querySelector(`[data-section="${section.id}"]`);
     const isOpen = mobile ? section.id === current : open.has(section.id);
-    const edited = section.controls.some(control => isChanged(params, control.path));
+    const edited = section.controls.some(control => control.path && isChanged(params, control.path));
     root.classList.toggle('is-current', section.id === current);
     root.querySelector('.adv-head').setAttribute('aria-expanded', isOpen);
     root.querySelector('.adv-body').hidden = !isOpen;
@@ -81,6 +95,7 @@ export function engineAboutHtml(entry, credits) {
   const licenceUrl = credits.licence?.file ? new URL(credits.licence.file, entry.folder).href : credits.licence?.url;
   const people = (credits.credits || []).map(item => `<li>${link(item.name, item.url)}${item.by ? ` · ${escapeHtml(item.by)}` : ''}${item.licence ? ` <span class="engine-licence">${escapeHtml(item.licence)}</span>` : ''}${item.role ? `<br><span class="engine-role">${escapeHtml(item.role)}</span>` : ''}</li>`).join('');
   const changes = (credits.changes || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+  const dataLicences = (credits.dataLicences || []).map(item => `<li>${link(item.name, new URL(item.file, entry.folder).href)}</li>`).join('');
   return `<p class="eyebrow">About this engine</p><h2 id="engineAboutTitle">${escapeHtml(credits.name || entry.label)}</h2>
     <p>${escapeHtml(credits.summary || entry.description)}</p>
     <dl class="engine-facts">
@@ -90,6 +105,7 @@ export function engineAboutHtml(entry, credits) {
       <dt>Download</dt><dd>${escapeHtml(entry.approxDownload)}, only when you use this engine</dd>
     </dl>
     ${people ? `<h3 class="engine-sub">Credits</h3><ul class="engine-list">${people}</ul>` : ''}
+    ${dataLicences ? `<h3 class="engine-sub">Data licences</h3><ul class="engine-list">${dataLicences}</ul>` : ''}
     ${changes ? `<h3 class="engine-sub">Changed by PhotoKamo</h3><ul class="engine-list">${changes}</ul>` : ''}`;
 }
 
