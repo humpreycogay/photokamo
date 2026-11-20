@@ -13,6 +13,7 @@
   <a class="skip-link" href="#editor">Skip to editor</a>
   <header class="topbar">
     <div class="topbar-start">
+      <button class="icon-button icon-button-plain mobile-only editing-only" id="closeButton" type="button" aria-label="Close photo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <a class="brand" href="#" aria-label="PhotoKamo home">
         <span class="brand-mark" aria-hidden="true"><i></i></span>
         <span>Photo<span>Kamo</span></span>
@@ -48,6 +49,7 @@
       <button class="button button-primary editing-only" id="exportButton" type="button">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg> Export
       </button>
+      <button class="button button-primary save-pill mobile-only editing-only" id="saveButton" type="button">Save</button>
     </div>
   </header>
 
@@ -95,14 +97,15 @@
         </div>
       </div>
 
+      <span class="photo-look-badge" id="photoLookBadge" aria-hidden="true"></span>
       <div class="drop-overlay" aria-hidden="true">Drop to open</div>
     </section>
 
     <aside class="controls editing-only" aria-label="Editing controls">
       <div class="control-tabs" role="tablist" aria-label="Editor panels">
-        <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab">Looks</button>
-        <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1">Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
-        <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1">Frames</button>
+        <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>Looks</button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10"/></svg>Frames</button>
       </div>
 
       <div class="panel-body">
@@ -138,6 +141,16 @@
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
           <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
           <div id="adjustmentControls"></div>
+          <div class="mobile-adjust" id="mobileAdjust">
+            <div class="ma-head">
+              <label class="ma-name" for="maSlider" id="maName">Exposure</label>
+              <span class="ma-value-wrap"><output class="ma-value" id="maValue" for="maSlider">0</output><button class="ma-reset" id="maReset" type="button">Reset</button></span>
+            </div>
+            <div class="ma-track"><span class="ma-zero" id="maZero" aria-hidden="true"></span><input id="maSlider" type="range" aria-describedby="maHint"></div>
+            <p class="ma-hint" id="maHint">Double-tap the slider to reset</p>
+            <div class="ma-groups" id="maGroups" role="tablist" aria-label="Adjustment groups"></div>
+            <div class="ma-tools" id="maTools" role="tabpanel"></div>
+          </div>
         </section>
 
         <section class="tab-panel scroll-panel" id="framePanel" role="tabpanel" aria-labelledby="frameTab" hidden>
@@ -170,16 +183,40 @@
     </section>
   </dialog>
 
-  <dialog id="exportDialog">
-    <form method="dialog" class="dialog-card" id="exportForm">
-      <button class="dialog-close" id="exportClose" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      <p class="eyebrow">Final render</p><h2>Export photo</h2>
-      <p>Rendered locally at the best available resolution.</p>
-      <div class="export-options">
-        <label>Format<select id="exportFormat"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option></select></label>
-        <label id="qualityLabel">Quality <output id="qualityOutput">92%</output><input id="exportQuality" type="range" min="60" max="100" value="92"></label>
+  <dialog id="exportDialog" class="sheet-dialog" aria-labelledby="exportTitle">
+    <form method="dialog" class="dialog-card export-card" id="exportForm">
+      <span class="sheet-handle" aria-hidden="true"></span>
+      <div class="export-head">
+        <div><h2 id="exportTitle">Save photo</h2><p class="export-summary" id="exportSummary"></p></div>
+        <button class="dialog-close" id="exportClose" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <button class="button button-primary button-wide" id="confirmExport" value="default">Download image</button>
+      <fieldset>
+        <legend>Format</legend>
+        <div class="segmented" id="formatOptions">
+          <button type="button" data-format="image/jpeg" aria-pressed="true">JPEG</button>
+          <button type="button" data-format="image/png" aria-pressed="false">PNG</button>
+          <button type="button" data-format="image/webp" aria-pressed="false">WebP</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Size</legend>
+        <div class="size-options" id="sizeOptions">
+          <button type="button" data-size="full" aria-pressed="true"><span>Full size</span><span class="size-detail" id="fullSizeDetail"></span></button>
+          <button type="button" data-size="share" aria-pressed="false"><span>For sharing</span><span class="size-detail" id="shareSizeDetail">1080 px wide</span></button>
+        </div>
+      </fieldset>
+      <div class="quality-group" id="qualityGroup">
+        <label class="quality-label" for="exportQuality"><span>Quality</span><output id="qualityOutput" for="exportQuality">High · 92%</output></label>
+        <input id="exportQuality" type="range" min="60" max="100" value="92">
+      </div>
+      <div class="export-actions">
+        <button class="button button-primary button-xl" id="shareButton" type="button" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v7h14v-7"/></svg>
+          Share or save to Photos
+        </button>
+        <button class="button button-primary button-xl" id="confirmExport" type="submit">Download file</button>
+      </div>
+      <p class="export-status" id="exportStatus" role="status"></p>
     </form>
   </dialog>
 

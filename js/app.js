@@ -10,7 +10,10 @@ const elements = {
   strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
-  exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), format: $('#exportFormat'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityLabel: $('#qualityLabel'),
+  exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityGroup: $('#qualityGroup'),
+  exportSummary: $('#exportSummary'), shareButton: $('#shareButton'), downloadButton: $('#confirmExport'), exportStatus: $('#exportStatus'),
+  fullSizeDetail: $('#fullSizeDetail'), shareSizeDetail: $('#shareSizeDetail'), photoLookBadge: $('#photoLookBadge'),
+  maName: $('#maName'), maValue: $('#maValue'), maReset: $('#maReset'), maSlider: $('#maSlider'), maZero: $('#maZero'), maGroups: $('#maGroups'), maTools: $('#maTools'),
   cameraDialog: $('#cameraDialog'), cameraPreview: $('#cameraPreview'), cameraStatus: $('#cameraStatus'),
   capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast')
 };
@@ -19,8 +22,9 @@ const elements = {
 //   original + (look - original) * strength + edit
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
-  image: null, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
-  filter: 'All', zoom: 'fit', holding: false,
+  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
+  filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
+  exportFormat: 'image/jpeg', exportSize: 'full',
   undo: [], redo: [], editedCanvas: null, originalCanvas: null, originalKey: '', renderToken: 0
 };
 let toastTimer;
@@ -32,6 +36,8 @@ const presetPreviewSource = 'images/model.jpg';
 const PREVIEW_EDGE = 1000;
 const ZOOM_MAX_EDGE = 4096;
 const FAVORITES_KEY = 'photokamo:favorites';
+const SHARE_WIDTH = 1080;
+const mobileQuery = matchMedia('(max-width: 900px)');
 
 const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Film stocks': 'Film', 'Creative styles': 'Creative' };
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
@@ -107,6 +113,7 @@ function syncLooks() {
   });
   elements.lookGroup.textContent = groupLabel(preset);
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
+  elements.photoLookBadge.textContent = elements.lookName.textContent;
   elements.lookDesc.innerHTML = preset.description + (preset.engine === 'Spektrafilm-inspired' ? ' <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Credits<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a>' : '');
   const isFavorite = favorites.includes(preset.id);
   elements.favorite.setAttribute('aria-pressed', isFavorite);
@@ -159,19 +166,78 @@ function formatValue(key, value) {
 function buildAdjustments() {
   elements.adjustmentControls.innerHTML = adjustmentSections.map(section => `<section class="adjustment-section"><h3>${section.name}</h3>${section.controls.map(([id, label, min, max, step]) => `<div class="slider-row" data-row="${id}"><label class="slider-label" for="adjust-${id}"><span>${label}</span><output id="output-${id}" for="adjust-${id}">0</output></label><input id="adjust-${id}" data-adjustment="${id}" type="range" min="${min}" max="${max}" step="${step}" value="0"></div>`).join('')}</section>`).join('');
   const panel = elements.adjustmentControls;
-  panel.addEventListener('pointerdown', event => { if (event.target.matches('[data-adjustment]')) sliderStart = snapshot(); });
-  panel.addEventListener('focusin', event => { if (event.target.matches('[data-adjustment]') && !sliderStart) sliderStart = snapshot(); });
-  panel.addEventListener('input', event => {
-    const input = event.target.closest('[data-adjustment]'); if (!input) return;
-    const key = input.dataset.adjustment;
-    const value = Number(input.value);
-    const base = baseValue(key);
-    if (Math.abs(value - roundToStep(key, base)) < controlSpec[key].step / 2) delete state.edits[key];
-    else state.edits[key] = value - base;
-    syncAdjustments(); syncLooks(); scheduleRender();
+  bindHistorySlider(panel, '[data-adjustment]', input => input.dataset.adjustment);
+  panel.addEventListener('dblclick', event => { const input = event.target.closest('[data-adjustment]'); if (input) resetAdjustment(input.dataset.adjustment); });
+}
+
+// One history entry per drag / keyboard session on any adjustment slider.
+function bindHistorySlider(container, selector, keyOf) {
+  container.addEventListener('pointerdown', event => { if (event.target.matches(selector)) sliderStart = snapshot(); });
+  container.addEventListener('focusin', event => { if (event.target.matches(selector) && !sliderStart) sliderStart = snapshot(); });
+  container.addEventListener('input', event => { const input = event.target.closest(selector); if (input) setAdjustment(keyOf(input), Number(input.value)); });
+  container.addEventListener('change', event => { if (!event.target.matches(selector)) return; commit(sliderStart || snapshot()); sliderStart = snapshot(); });
+  container.addEventListener('focusout', event => { if (event.target.matches(selector)) sliderStart = null; });
+}
+function setAdjustment(key, value) {
+  const base = baseValue(key);
+  if (Math.abs(value - roundToStep(key, base)) < controlSpec[key].step / 2) delete state.edits[key];
+  else state.edits[key] = value - base;
+  syncAdjustments(); syncLooks(); scheduleRender();
+}
+function resetAdjustment(key) {
+  if (!(key in state.edits)) return;
+  change(() => { delete state.edits[key]; });
+}
+
+// ---------- Mobile Adjust: one slider at a time ----------
+function buildMobileAdjust() {
+  elements.maGroups.innerHTML = adjustmentSections.map((section, index) => `<button role="tab" type="button" data-group="${section.name}" aria-controls="maTools" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${section.name}</button>`).join('');
+  elements.maGroups.addEventListener('click', event => {
+    const tab = event.target.closest('[data-group]'); if (!tab) return;
+    state.mobileTool = adjustmentSections.find(section => section.name === tab.dataset.group).controls[0][0];
+    syncMobileAdjust();
   });
-  panel.addEventListener('change', event => { if (!event.target.matches('[data-adjustment]')) return; commit(sliderStart || snapshot()); sliderStart = snapshot(); });
-  panel.addEventListener('focusout', event => { if (event.target.matches('[data-adjustment]')) sliderStart = null; });
+  elements.maGroups.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    const tabs = [...elements.maGroups.querySelectorAll('[data-group]')];
+    const next = tabs[(tabs.indexOf(document.activeElement) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    event.preventDefault(); next.click(); next.focus();
+  });
+  elements.maTools.addEventListener('click', event => { const tool = event.target.closest('[data-tool]'); if (tool) { state.mobileTool = tool.dataset.tool; syncMobileAdjust(); } });
+  bindHistorySlider(elements.maSlider.parentElement, '#maSlider', () => state.mobileTool);
+  elements.maReset.addEventListener('click', () => resetAdjustment(state.mobileTool));
+  // Double-tap (two quick taps without dragging) resets the active slider.
+  let lastTap = 0, downAt = 0, downX = 0;
+  elements.maSlider.addEventListener('pointerdown', event => { downAt = event.timeStamp; downX = event.clientX; });
+  elements.maSlider.addEventListener('pointerup', event => {
+    const isTap = event.timeStamp - downAt < 250 && Math.abs(event.clientX - downX) < 8;
+    if (!isTap) { lastTap = 0; return; }
+    if (event.timeStamp - lastTap < 350) { lastTap = 0; setTimeout(() => resetAdjustment(state.mobileTool), 0); }
+    else lastTap = event.timeStamp;
+  });
+}
+function syncMobileAdjust() {
+  const key = state.mobileTool;
+  const spec = controlSpec[key];
+  const group = adjustmentSections.find(section => section.controls.some(control => control[0] === key));
+  elements.maGroups.querySelectorAll('[data-group]').forEach(tab => { const selected = tab.dataset.group === group.name; tab.setAttribute('aria-selected', selected); tab.tabIndex = selected ? 0 : -1; });
+  elements.maTools.setAttribute('aria-label', `${group.name} tools`);
+  const focusedTool = elements.maTools.contains(document.activeElement) ? document.activeElement.dataset.tool : null;
+  elements.maTools.innerHTML = group.controls.map(([id, label]) => {
+    const edited = id in state.edits;
+    return `<button class="ma-tool" type="button" data-tool="${id}" aria-pressed="${id === key}"><span class="ma-tool-name">${label}</span><span class="ma-tool-value${edited ? ' is-edited' : ''}">${formatValue(id, effectiveValue(id))}</span>${edited ? '<span class="ma-dot" aria-hidden="true"></span><span class="visually-hidden">, edited</span>' : ''}</button>`;
+  }).join('');
+  if (focusedTool) elements.maTools.querySelector(`[data-tool="${focusedTool}"]`)?.focus();
+  const slider = elements.maSlider;
+  slider.min = spec.min; slider.max = spec.max; slider.step = spec.step;
+  const value = effectiveValue(key);
+  if (document.activeElement !== slider || Number(slider.value) !== roundToStep(key, value)) slider.value = value;
+  elements.maName.textContent = spec.label;
+  elements.maValue.value = formatValue(key, value);
+  elements.maValue.classList.toggle('is-edited', key in state.edits);
+  elements.maReset.hidden = !(key in state.edits);
+  elements.maZero.hidden = !(spec.min < 0 && spec.max > 0);
+  elements.maZero.style.left = `calc(${(0 - spec.min) / (spec.max - spec.min) * 100}% - 1px)`;
 }
 function syncAdjustments() {
   document.querySelectorAll('[data-adjustment]').forEach(input => {
@@ -186,6 +252,7 @@ function syncAdjustments() {
   elements.adjustBadge.hidden = !count;
   elements.adjustBadge.innerHTML = count ? `${count}<span class="visually-hidden"> edited</span>` : '';
   $('#resetAdjustments').disabled = !count;
+  syncMobileAdjust();
 }
 
 // ---------- Frames ----------
@@ -267,7 +334,8 @@ async function loadFile(file) {
     await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
     if (!image.naturalWidth) throw new Error('Invalid image');
     state.image = image; state.filename = file.name.replace(/\.[^.]+$/, '') || 'photo'; state.undo = []; state.redo = [];
-    state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true;
+    state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
+    exportCanvas = { key: '', canvas: null }; preparedExport = null;
     document.body.classList.add('has-image');
     elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
     elements.fileName.textContent = file.name;
@@ -360,32 +428,137 @@ async function captureCameraPhoto() {
 
 // ---------- Tabs ----------
 function setTab(tabButton) {
-  document.querySelectorAll('[role=tab]').forEach(tab => {
+  document.querySelectorAll('.control-tabs [role=tab]').forEach(tab => {
     const selected = tab === tabButton;
     tab.setAttribute('aria-selected', selected);
     tab.tabIndex = selected ? 0 : -1;
     $(`#${tab.getAttribute('aria-controls')}`).hidden = !selected;
   });
+  document.body.dataset.tab = tabButton.id.replace('Tab', '');
 }
 
-// ---------- Export ----------
-async function exportPhoto() {
-  elements.exportDialog.close(); elements.processing.hidden = false;
-  await new Promise(resolve => setTimeout(resolve, 30));
-  try {
-    const fullEdge = Math.max(state.image.naturalWidth, state.image.naturalHeight);
-    const canvas = renderImage(state.image, effectiveAdjustments(), state.frame, fullEdge);
-    const type = elements.format.value; const quality = Number(elements.quality.value) / 100;
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
+// ---------- Save / export ----------
+// The file is prepared as soon as the sheet opens (and again when an option changes), so that
+// "Share" can call navigator.share() while the tap still counts as a user gesture.
+let exportCanvas = { key: '', canvas: null };
+let preparedExport = null; // { key, promise, file }
+let prepareTimer;
+
+const canShareFiles = (() => {
+  try { return Boolean(navigator.canShare?.({ files: [new File([new Blob(['x'], { type: 'image/jpeg' })], 'test.jpg', { type: 'image/jpeg' })] })); } catch { return false; }
+})();
+
+function exportEdge(size = state.exportSize) {
+  const { naturalWidth: width, naturalHeight: height } = state.image;
+  const full = Math.max(width, height);
+  if (size === 'share' && width > SHARE_WIDTH) return Math.round(SHARE_WIDTH * full / width);
+  return full;
+}
+function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportEdge(), state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
+function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
+function exportSummary() {
+  const preset = currentPreset();
+  const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;
+  const count = editCount();
+  const frame = frames.find(item => item.id === state.frame);
+  return [look, count ? `${count} adjustment${count === 1 ? '' : 's'}` : null, state.frame === 'none' ? 'no frame' : `${frame.name} frame`].filter(Boolean).join(' · ');
+}
+function syncExportOptions() {
+  document.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', button.dataset.format === state.exportFormat));
+  const { naturalWidth: width, naturalHeight: height } = state.image;
+  const canShrink = width > SHARE_WIDTH;
+  if (!canShrink && state.exportSize === 'share') state.exportSize = 'full';
+  document.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === state.exportSize));
+  const shareButton = document.querySelector('[data-size="share"]');
+  shareButton.disabled = !canShrink;
+  elements.fullSizeDetail.textContent = `${width} × ${height}`;
+  elements.shareSizeDetail.textContent = canShrink ? `${SHARE_WIDTH} px wide` : 'Already small';
+  elements.qualityGroup.hidden = state.exportFormat === 'image/png';
+  elements.qualityOutput.value = `${qualityWord(Number(elements.quality.value))} · ${elements.quality.value}%`;
+  elements.exportSummary.textContent = exportSummary();
+  elements.shareButton.hidden = !canShareFiles;
+  elements.downloadButton.className = `button button-xl ${canShareFiles ? 'button-ghost' : 'button-primary'}`;
+}
+function prepareExport() {
+  const key = exportKey();
+  if (preparedExport?.key === key) return preparedExport.promise;
+  const job = { key, file: null };
+  job.promise = (async () => {
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const edge = exportEdge();
+    const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
+    const type = state.exportFormat;
+    const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
-    const extension = type.split('/')[1].replace('jpeg', 'jpg'); const url = URL.createObjectURL(blob); const link = document.createElement('a');
-    link.href = url; link.download = `${state.filename}-photokamo.${extension}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); toast('Your photo is ready.');
+    const extension = type.split('/')[1].replace('jpeg', 'jpg');
+    job.file = new File([blob], `${state.filename}-photokamo.${extension}`, { type });
+    return job.file;
+  })();
+  job.promise.catch(() => {});
+  preparedExport = job;
+  return job.promise;
+}
+function schedulePrepare(delay = 250) {
+  clearTimeout(prepareTimer);
+  elements.exportStatus.textContent = '';
+  prepareTimer = setTimeout(() => {
+    const promise = prepareExport();
+    const job = preparedExport;
+    if (!job.file) elements.exportStatus.textContent = 'Preparing your photo…';
+    promise.finally(() => { if (preparedExport === job) elements.exportStatus.textContent = ''; }).catch(() => {});
+  }, delay);
+}
+function openSave() {
+  if (!state.image) return;
+  syncExportOptions();
+  elements.exportStatus.textContent = '';
+  elements.exportDialog.showModal();
+  schedulePrepare(120);
+}
+async function downloadPhoto() {
+  try {
+    elements.exportStatus.textContent = 'Preparing your photo…';
+    const file = await prepareExport();
+    const url = URL.createObjectURL(file); const link = document.createElement('a');
+    link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    elements.exportDialog.close(); toast('Your photo is ready.');
   } catch (error) { console.error(error); toast('Export failed. Try JPEG or a smaller photo.'); }
-  elements.processing.hidden = true;
+  elements.exportStatus.textContent = '';
+}
+async function sharePhoto() {
+  try {
+    const ready = preparedExport?.key === exportKey() ? preparedExport.file : null;
+    if (!ready) elements.exportStatus.textContent = 'Preparing your photo…';
+    const file = ready || await prepareExport();
+    elements.exportStatus.textContent = '';
+    await navigator.share({ files: [file] });
+    elements.exportDialog.close(); toast('Shared.');
+  } catch (error) {
+    elements.exportStatus.textContent = '';
+    if (error?.name === 'AbortError') return;
+    if (error?.name === 'NotAllowedError') { toast('Your photo is ready. Tap Share again.'); return; }
+    console.error(error); toast('Sharing failed. Try Download file instead.');
+  }
+}
+
+// ---------- Close (mobile) ----------
+function closePhoto() {
+  if (state.undo.length && !confirm('Close this photo? Your edits will be lost.')) return;
+  setHolding(false);
+  state.image = null; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
+  exportCanvas = { key: '', canvas: null }; preparedExport = null;
+  document.body.classList.remove('has-image');
+  elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true;
+  updateButtons();
 }
 
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildFrames(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); syncControls(); updateButtons();
+document.body.dataset.tab = 'looks';
+$('#closeButton').addEventListener('click', closePhoto);
+$('#saveButton').addEventListener('click', openSave);
+mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); });
 
 elements.fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
@@ -420,11 +593,11 @@ elements.switchCamera.addEventListener('click', () => { cameraFacingMode = camer
 ['dragleave', 'drop'].forEach(type => elements.dropZone.addEventListener(type, event => { event.preventDefault(); elements.dropZone.classList.remove('dragover'); }));
 elements.dropZone.addEventListener('drop', event => loadFile(event.dataTransfer.files[0]));
 
-document.querySelectorAll('[role=tab]').forEach(tab => {
+document.querySelectorAll('.control-tabs [role=tab]').forEach(tab => {
   tab.addEventListener('click', () => setTab(tab));
   tab.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-    const tabs = [...document.querySelectorAll('[role=tab]')];
+    const tabs = [...document.querySelectorAll('.control-tabs [role=tab]')];
     const direction = event.key === 'ArrowRight' ? 1 : -1;
     const next = tabs[(tabs.indexOf(tab) + direction + tabs.length) % tabs.length];
     event.preventDefault(); setTab(next); next.focus();
@@ -461,11 +634,15 @@ $('#surpriseButton').addEventListener('click', () => {
   elements.lookGrid.querySelector(`[data-preset="${state.presetId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
-elements.export.addEventListener('click', () => elements.exportDialog.showModal());
+elements.export.addEventListener('click', openSave);
 $('#exportClose').addEventListener('click', () => elements.exportDialog.close());
-elements.exportForm.addEventListener('submit', event => { event.preventDefault(); exportPhoto(); });
-elements.quality.addEventListener('input', () => elements.qualityOutput.value = `${elements.quality.value}%`);
-elements.format.addEventListener('change', () => elements.qualityLabel.hidden = elements.format.value === 'image/png');
+elements.exportDialog.addEventListener('close', () => clearTimeout(prepareTimer));
+elements.exportDialog.addEventListener('click', event => { if (event.target === elements.exportDialog) elements.exportDialog.close(); });
+elements.exportForm.addEventListener('submit', event => { event.preventDefault(); downloadPhoto(); });
+elements.shareButton.addEventListener('click', sharePhoto);
+$('#formatOptions').addEventListener('click', event => { const button = event.target.closest('[data-format]'); if (!button) return; state.exportFormat = button.dataset.format; syncExportOptions(); schedulePrepare(); });
+$('#sizeOptions').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button || button.disabled) return; state.exportSize = button.dataset.size; syncExportOptions(); schedulePrepare(); });
+elements.quality.addEventListener('input', () => { syncExportOptions(); schedulePrepare(400); });
 $('#aboutButton').addEventListener('click', () => elements.aboutDialog.showModal()); $('#aboutClose').addEventListener('click', () => elements.aboutDialog.close());
 
 document.addEventListener('keydown', event => {
