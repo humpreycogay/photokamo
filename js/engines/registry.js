@@ -15,7 +15,7 @@ export const engines = [
     // Shown under the controls; plain text + links, built in the UI.
     credit: [
       'Film modelling by ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
-      ' by Andrea Volpato, running on your device via ', { text: 'spektrafilm-rs', href: 'https://github.com/turbasvin/spektrafilm-rs' }, '.'
+      ' by Andrea Volpato, running on your device via ', { text: 'spektrafilm-rs', href: 'https://github.com/turbasvin/spektrafilm-rs' }, '. Profiles CC BY-SA 4.0.'
     ],
     folder: new URL('../../engines/spektrafilm-rs/', import.meta.url),
     load: () => import('./spektrafilm-rs/index.js')

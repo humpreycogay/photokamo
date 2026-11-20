@@ -32,11 +32,11 @@ In Simple mode, the **Spektrafilm-inspired** looks are approximations made with 
 
 **Advanced mode runs real film engines**, chosen from the Engine dropdown and downloaded only when selected. Each runs on your device in a Web Worker, has its own controls (modelled on the original project) and its own licence and credits (ⓘ next to the dropdown). PhotoKamo keeps its own copy of every engine's source in [`engines/`](engines/) and updates it only deliberately.
 
-| Engine | What it is | Licence | Folder |
-|---|---|---|---|
-| Spektrafilm | The spektrafilm model via the Rust port [spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs), WebAssembly. Colour-LUT preview; grain, halation and blur in the full-quality render (≤ 4 MP). | GPL-3.0 | [`engines/spektrafilm-rs/`](engines/spektrafilm-rs/README.md) |
-| Negs | [negs](https://github.com/noahhaasis/negs) v0.17.0: the spektrafilm model on WebGPU (CPU fallback), the complete model in every preview, 52 films incl. B&W and 10 papers. | GPL-3.0; profiles CC BY-SA 4.0 | [`engines/negs/`](engines/negs/README.md) |
-| DuXun | [DuXun Film Simulation](https://github.com/DuXun03/duxun-film-simulation), a DaVinci Resolve plugin, its renderer ported to JavaScript: 54 film presets, print stocks, grain, halation, bloom, dust and vignette. Verified against the plugin's C++. | GPL-2.0-or-later | [`engines/duxun/`](engines/duxun/README.md) |
+| Engine | What it is | Version (our copy) | Licence | Folder |
+|---|---|---|---|---|
+| Spektrafilm | The spektrafilm model by Andrea Volpato via the Rust port [spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs), WebAssembly. Colour-LUT preview; grain, halation and blur in the full-quality render (≤ 4 MP). | spektrafilm-rs `9dd59b0` + PhotoKamo patch | Code GPL-3.0; profiles CC BY-SA 4.0 | [`engines/spektrafilm-rs/`](engines/spektrafilm-rs/README.md) |
+| Negs | [negs](https://github.com/noahhaasis/negs): the spektrafilm model on WebGPU (CPU fallback), the complete model in every preview, 52 films incl. B&W and 10 papers (29 profiles adapted from Fotufilm). | v0.17.0 (`83e8c79`), unchanged | Code GPL-3.0; profiles CC BY-SA 4.0 | [`engines/negs/`](engines/negs/README.md) |
+| DuXun | [DuXun Film Simulation](https://github.com/DuXun03/duxun-film-simulation), a DaVinci Resolve plugin, its renderer ported to JavaScript: 54 film presets, print stocks, grain, halation, bloom, dust and vignette. Verified against the plugin's C++. | v5.0 (`91357a3`), ported | GPL-2.0-or-later (used under GPL-3.0) | [`engines/duxun/`](engines/duxun/README.md) |
 
 ## Licence
 

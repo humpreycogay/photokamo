@@ -6,10 +6,13 @@
   "licence": { "name": "GPL-3.0", "file": "LICENSE", "url": "https://www.gnu.org/licenses/gpl-3.0.html" },
   "source": { "local": "engines/spektrafilm-rs/src/", "upstream": "https://github.com/turbasvin/spektrafilm-rs", "commit": "9dd59b0380194b93686aaa230a8bb9680aa270a4" },
   "credits": [
-    { "name": "spektrafilm", "by": "Andrea Volpato", "role": "Film model, pipeline design, film and paper profiles", "url": "https://github.com/andreavolpato/spektrafilm" },
+    { "name": "spektrafilm", "by": "Andrea Volpato", "role": "Film model, pipeline design, film and paper profiles", "url": "https://github.com/andreavolpato/spektrafilm", "licence": "Code GPL-3.0; profiles CC BY-SA 4.0" },
     { "name": "spektrafilm-rs", "by": "turbasvin", "role": "Rust port, compiled to WebAssembly by PhotoKamo", "url": "https://github.com/turbasvin/spektrafilm-rs", "licence": "GPL-3.0" },
     { "name": "hanatos2025 spectral upsampling LUT", "by": "Johannes Hanatos", "role": "RGB to spectrum conversion", "url": "https://github.com/hanatos/vkdt" },
     { "name": "browser_wasi_shim", "by": "bjorn3", "role": "Runs the engine in the browser", "url": "https://github.com/bjorn3/browser_wasi_shim", "licence": "MIT OR Apache-2.0" }
+  ],
+  "dataLicences": [
+    { "name": "Spektrafilm profile licence (CC BY-SA 4.0), film and paper profiles by Andrea Volpato", "file": "licenses/SPEKTRAFILM_LICENSE.txt" }
   ],
   "changes": [
     "Built for WebAssembly (wasm32-wasip1), GPU backend off",

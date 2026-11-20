@@ -9,8 +9,9 @@ and run in a Web Worker with an in-memory file system. Nothing is uploaded: the 
 |---|---|
 | `src/` | PhotoKamo's own copy of the spektrafilm-rs source, with our changes applied. See `UPSTREAM.md`. |
 | `runtime/spektrafilm.wasm` | The `spektrafilm` command-line program, built from `src/`. |
-| `runtime/data/` | The subset of `src/data/` the app uses: one profile per offered film and paper, the neutral print filter database, and the `irradiance_xy_tc.npy` spectral-upsampling LUT. |
-| `LICENSE` | GNU GPL v3, the licence of spektrafilm-rs and its data. |
+| `runtime/data/` | The subset of `src/data/` the app uses, unmodified: one profile per offered film and paper, the neutral print filter database, and the `irradiance_xy_tc.npy` spectral-upsampling LUT. |
+| `LICENSE` | GNU GPL v3, the licence of the spektrafilm-rs code. |
+| `licenses/SPEKTRAFILM_LICENSE.txt` | CC BY-SA 4.0, the licence of the film and paper profiles (by Andrea Volpato; each profile's `license` field says so too). Copied unchanged, as the file asks. |
 | `UPSTREAM.md` | Where `src/` came from (commit), what was left out, our changes, and how to update. |
 | `manifest.json` | Size and SHA-256 of every file the app downloads, and a version id: exact download progress, and the key for the copy saved on the device (Cache Storage). Written by `tools/engine-manifests.mjs` (run by `tools/build.sh`). |
 | `credits.json` | Authors, licences and links shown in the app. |

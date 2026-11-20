@@ -9,7 +9,7 @@ decides to update it; nothing upstream flows in automatically.
 | Origin | <https://github.com/turbasvin/spektrafilm-rs> |
 | Commit | `9dd59b0380194b93686aaa230a8bb9680aa270a4` |
 | Imported | 2026-11-20 |
-| Licence | GPL-3.0 (`LICENSE`, also `src/LICENSE`) |
+| Licence | Code GPL-3.0 (`LICENSE`, also `src/LICENSE`); film and paper profiles CC BY-SA 4.0 by Andrea Volpato (`licenses/SPEKTRAFILM_LICENSE.txt`, and each profile's `license` field) |
 
 ## Left out of the copy
 
