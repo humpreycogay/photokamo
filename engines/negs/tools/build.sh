@@ -34,5 +34,8 @@ wasm-bindgen --target web --no-typescript --out-dir "$OUT/pkg" "$CARGO_TARGET_DI
 echo "==> Catalog"
 node "$HERE/tools/make-catalog.mjs"
 
+echo "==> Manifests (sizes + hashes for download progress and saved copies)"
+node "$HERE/../../tools/engine-manifests.mjs"
+
 echo "==> Done"
 ls -l "$OUT/pkg" "$OUT/catalog.json"

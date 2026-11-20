@@ -525,8 +525,32 @@ async function openEngineAbout() {
   const entry = engineById(state.engine);
   elements.engineAboutBody.innerHTML = `<p class="eyebrow">About this engine</p><h2 id="engineAboutTitle">${entry.label}</h2><p>Loading credits…</p>`;
   elements.engineAboutDialog.showModal();
-  try { elements.engineAboutBody.innerHTML = engineAboutHtml(entry, await loadCredits(entry.id)); }
-  catch { elements.engineAboutBody.querySelector('p:last-child').textContent = 'The credits could not be loaded. Check your connection and try again.'; }
+  try {
+    elements.engineAboutBody.innerHTML = engineAboutHtml(entry, await loadCredits(entry.id));
+    const saved = (await savedEngineList()).find(item => item.engineId === entry.id);
+    if (saved) {
+      const line = document.createElement('p');
+      line.className = 'engine-storage';
+      line.textContent = `Saved on this device: ${MB(saved.bytes)} MB, so it opens without downloading again. Remove it from About PhotoKamo.`;
+      elements.engineAboutBody.append(line);
+    }
+  } catch { elements.engineAboutBody.querySelector('p:last-child').textContent = 'The credits could not be loaded. Check your connection and try again.'; }
+}
+
+// ---------- Engines saved on this device (Cache Storage; js/engines/engine-files.js, loaded on demand) ----------
+const savedEngineList = () => import('./engines/engine-files.js').then(module => module.savedEngines()).catch(() => []);
+async function syncEngineStorage() {
+  const saved = (await savedEngineList()).filter(item => item.bytes > 0);
+  const box = $('#engineStorage');
+  box.hidden = !saved.length;
+  if (!saved.length) return;
+  const total = saved.reduce((sum, item) => sum + item.bytes, 0);
+  $('#engineStorageText').textContent = `Film engines saved on this device: ${MB(total)} MB (${saved.map(item => engineById(item.engineId)?.label || item.engineId).join(', ')}).`;
+}
+async function removeSavedEngines() {
+  try { await (await import('./engines/engine-files.js')).removeSavedEngines(); toast('Saved film engines removed. They download again when you use them.'); }
+  catch { toast('The saved film engines could not be removed.'); }
+  syncEngineStorage();
 }
 
 // ---------- Advanced panel ----------
@@ -561,6 +585,14 @@ function resetAdvanced(path) {
 function buildAdvancedPanel() {
   elements.engineSelect.innerHTML = engines.map(entry => `<option value="${entry.id}">${entry.label}</option>`).join('');
   elements.engineSelect.addEventListener('change', () => switchEngine(elements.engineSelect.value));
+  // Desktop: reaching for the dropdown loads the other engines' code (tens of KB) so a switch
+  // starts at once; their large files still wait until the engine is chosen.
+  const prefetchEngines = () => {
+    if (!matchMedia('(pointer: fine)').matches) return;
+    for (const entry of engines) if (entry.id !== state.engine) loadEngine(entry.id).catch(() => {});
+  };
+  elements.engineSelect.addEventListener('pointerenter', prefetchEngines, { once: true });
+  elements.engineSelect.addEventListener('focus', prefetchEngines, { once: true });
   elements.engineRetry.addEventListener('click', () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); });
   elements.engineAboutButton.addEventListener('click', openEngineAbout);
   $('#engineAboutClose').addEventListener('click', () => elements.engineAboutDialog.close());
@@ -1149,6 +1181,9 @@ $('#formatOptions').addEventListener('click', event => { const button = event.ta
 $('#sizeOptions').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button || button.disabled) return; state.exportSize = button.dataset.size; syncExportOptions(); schedulePrepare(); });
 elements.quality.addEventListener('input', () => { syncExportOptions(); schedulePrepare(400); });
 $('#aboutButton').addEventListener('click', () => elements.aboutDialog.showModal()); $('#aboutClose').addEventListener('click', () => elements.aboutDialog.close());
+// Both About buttons open the same dialog; refresh the saved-engines line whenever it opens.
+new MutationObserver(() => { if (elements.aboutDialog.open) syncEngineStorage(); }).observe(elements.aboutDialog, { attributes: true, attributeFilter: ['open'] });
+$('#engineStorageRemove').addEventListener('click', removeSavedEngines);
 
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }

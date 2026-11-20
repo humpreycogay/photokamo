@@ -7,9 +7,10 @@
 // reports it in `missing`; we fetch it from engines/negs/src/data/ (upstream's own files) and
 // render again, as negs's own web app does.
 
+import { engineFiles } from '../engine-files.js';
+
 const ENGINE = new URL('../../../engines/negs/', import.meta.url);
 const PKG = new URL('runtime/pkg/', ENGINE);
-const DATA = new URL('src/data/', ENGINE);
 // Fetched with the engine so the first render doesn't wait for them.
 const WARM_DATA = ['filters/neutral_print_filters.json', 'luts/spectral_upsampling/hanatos2025_irradiance_xy_tc.npy', 'luts/spectral_upsampling/hanatos2025_irradiance_xy_tc.toml'];
 
@@ -21,47 +22,15 @@ let loaded = null;       // { imageId, maxPixels, width, height } loaded into th
 
 const post = (message, transfer = []) => self.postMessage(message, transfer);
 
-// ---------- Download progress (same protocol as the spektrafilm-rs worker) ----------
-const downloads = new Map();
-let downloadPostAt = 0;
-function postDownload(force = false) {
-  const now = Date.now();
-  if (!force && now - downloadPostAt < 100) return;
-  downloadPostAt = now;
-  let loadedBytes = 0, total = 0, known = true;
-  for (const item of downloads.values()) { loadedBytes += item.loaded; total += item.total; if (!item.total || item.loaded > item.total) known = false; }
-  post({ type: 'download', loaded: loadedBytes, total: known ? total : 0, done: [...downloads.values()].every(item => item.done) });
-}
-async function readCounted(response) {
-  const item = { loaded: 0, total: Number(response.headers.get('content-length')) || 0, done: false };
-  downloads.set(response.url, item);
-  const reader = response.body.getReader();
-  const chunks = [];
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value); item.loaded += value.byteLength; postDownload();
-  }
-  item.done = true; postDownload(true);
-  const bytes = new Uint8Array(item.loaded);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return bytes;
-}
-async function fetchChecked(url, label) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load ${label} (HTTP ${response.status})`);
-  return response;
-}
+// Engine files: saved on the device after the first download, exact progress from the manifest
+// (posted as { type: 'download', loaded, total, done }).
+const files = engineFiles({ engineId: 'negs', base: ENGINE, onProgress: progress => post({ type: 'download', ...progress }) });
 
 // ---------- Engine ----------
 function start(prefer) {
   startPromise ||= (async () => {
     wasm = await import(new URL('spektrafilm_wasm.js', PKG).href);
-    const response = await fetchChecked(new URL('spektrafilm_wasm_bg.wasm', PKG), 'the film engine');
-    const [compileStream, countStream] = response.body.tee();
-    readCounted(new Response(countStream, { headers: response.headers }));
-    await wasm.default({ module_or_path: new Response(compileStream, { headers: { 'Content-Type': 'application/wasm' } }) });
+    await wasm.default({ module_or_path: await files.wasm('runtime/pkg/spektrafilm_wasm_bg.wasm') });
     if (prefer !== 'cpu' && self.navigator?.gpu) {
       try { engine = await wasm.Engine.newGpu(); backend = 'webgpu'; } catch { engine = null; }
     }
@@ -73,7 +42,7 @@ function start(prefer) {
 
 async function registerFiles(paths) {
   await Promise.all(paths.filter(path => !registered.has(path)).map(async path => {
-    const bytes = await readCounted(await fetchChecked(new URL(path, DATA), path));
+    const bytes = await files.bytes(`src/data/${path}`);
     wasm.registerData(path, bytes);
     registered.add(path);
   }));

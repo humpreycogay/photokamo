@@ -13,6 +13,7 @@ uploaded: the photo stays on the device.
 | `runtime/catalog.json` | Films, papers, colour filters and every default setting, made by the engine at build time. |
 | `LICENSE` | GNU GPL v3 (negs). Data licences: `src/data/SPEKTRAFILM_LICENSE.txt`, `src/data/FOTUFILM_LICENSE.txt` (CC BY-SA 4.0). |
 | `UPSTREAM.md` | Where `src/` came from, what was left out, and how to update. |
+| `manifest.json` | Size and SHA-256 of every file the app downloads, and a version id: exact download progress, and the key for the copy saved on the device (Cache Storage). Written by `tools/engine-manifests.mjs` (run by `tools/build.sh`). |
 | `credits.json` | Authors, licences and links shown in the app. |
 | `tools/build.sh` | Rebuilds `runtime/` from `src/`. |
 | `tools/make-catalog.mjs` | Writes `runtime/catalog.json` (adapted from negs `web/make-catalog.mjs`). |

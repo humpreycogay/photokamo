@@ -334,6 +334,8 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-list { margin:0; padding-left:18px; font-size:var(--fs-md); line-height:1.5; color:var(--text-2); }
 .engine-list li + li { margin-top:4px; }
 .engine-role,.engine-licence { color:var(--text-muted); font-size:var(--fs-sm); }
+.engine-storage { margin:14px 0 0; font-size:var(--fs-md); color:var(--text-2); }
+.engine-storage .text-button { font-weight:600; }
 body.is-advanced .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
 body.is-advanced .control-tabs,body.is-advanced .panel-body { display:none; }
 body.is-advanced .advanced-panel { display:flex; }

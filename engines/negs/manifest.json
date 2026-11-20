@@ -1,0 +1,390 @@
+{
+ "engine": "negs",
+ "version": "a66d052582f7fd68",
+ "files": {
+  "runtime/catalog.json": {
+   "size": 45658,
+   "sha256": "300a6d334d37dca2c54b167bea4f88c1489d47f9ff527dd56aff9ced8ad3a32c"
+  },
+  "runtime/pkg/snippets/spektrafilm-wasm-1300a282f1bb2645/inline0.js": {
+   "size": 150,
+   "sha256": "820c003dc3912c57931cfd102df8db66cd672cbe5b6c1148b0020cec773bf058"
+  },
+  "runtime/pkg/spektrafilm_wasm.js": {
+   "size": 111702,
+   "sha256": "d0b330b0290e796f4fe62eca36d37812319a79cfd49a3400f54733580308c7c3"
+  },
+  "runtime/pkg/spektrafilm_wasm_bg.wasm": {
+   "size": 8681114,
+   "sha256": "1ba952441d4d3a27c1375c12f7dab95d181e298b39f1fa0adb08e542667a64be"
+  },
+  "src/data/profiles/agfa_agfachrome_100.json": {
+   "size": 73040,
+   "sha256": "9b29e7dd61afac4a944737ec84d26d70698ecf614808acc6e32d0ba8289b3212"
+  },
+  "src/data/profiles/agfa_agfachrome_200.json": {
+   "size": 72510,
+   "sha256": "2926532e96a8c4b382ae9f3e591e4ff5b4a234b8ed492881a2b6b60147c92624"
+  },
+  "src/data/profiles/agfa_agfachrome_50.json": {
+   "size": 72831,
+   "sha256": "b38579c6f39a43d9291f661ca6dff250567e6e0dea2a68ad82ff22d98a584e43"
+  },
+  "src/data/profiles/cinestill_400d.json": {
+   "size": 73789,
+   "sha256": "c5aeb63d8aad83a915fe0174971b6deeedd78017c6e933b8110171bc37f36bae"
+  },
+  "src/data/profiles/cinestill_800t.json": {
+   "size": 73437,
+   "sha256": "c2721a07e0e0db858f7d9aa66db6ec70c4c48921c9762147df02df7e2fec7e88"
+  },
+  "src/data/profiles/fotufilm_infrared_color.json": {
+   "size": 69791,
+   "sha256": "e2061436d574340135a134f4654c6a18c629ca54fdf6476d9fa58fde092d7425"
+  },
+  "src/data/profiles/fujifilm_acros_100_ii.json": {
+   "size": 86422,
+   "sha256": "15fbc8294c13677fc861526e9f17e4bfdc85a33418913406b81646f3fb0b9576"
+  },
+  "src/data/profiles/fujifilm_astia_100f.json": {
+   "size": 73259,
+   "sha256": "4ae2bffa8a61d6b410731f58e3ff743bff05186f24ab0b1eb0d9a635939dd79e"
+  },
+  "src/data/profiles/fujifilm_c200.json": {
+   "size": 163084,
+   "sha256": "aa32ce52ea414fdd408c20f09cc3924a50801b58de5f0c7ec76a5ffcb06f28b3"
+  },
+  "src/data/profiles/fujifilm_crystal_archive_typeii.json": {
+   "size": 158851,
+   "sha256": "983ab9015bc7b4726b64a5bb937596cc215d7e411bb78bc63b431548cb25b42b"
+  },
+  "src/data/profiles/fujifilm_eterna_500.json": {
+   "size": 73359,
+   "sha256": "4bb38634ebf6eca049ce8ee856b3b67a82a054b0020d5919344b7204040c4dbe"
+  },
+  "src/data/profiles/fujifilm_eterna_vivid_500.json": {
+   "size": 73116,
+   "sha256": "91287d9a8c1a1825cbb4a05138223860f8cb5d1f3be42cf1b9321041a366c4a7"
+  },
+  "src/data/profiles/fujifilm_f64d.json": {
+   "size": 73152,
+   "sha256": "d67958ce9a088e81c1878459593a06b130c33c8aa7dcbc1fdf2da6f530c41e9d"
+  },
+  "src/data/profiles/fujifilm_pro_160ns.json": {
+   "size": 72270,
+   "sha256": "4be99bd662310d499c8ef11e352b76288605c6d40d246eafe0fd8e28f9154dfb"
+  },
+  "src/data/profiles/fujifilm_pro_400h.json": {
+   "size": 162408,
+   "sha256": "d57fe6becc8e418385d92344de1588b3b70d7e145f320ab4f89a83265a5b8c19"
+  },
+  "src/data/profiles/fujifilm_provia_100f.json": {
+   "size": 159325,
+   "sha256": "fed3f45ae581996b2a5b826b8b5d19ccd1a6f7854fff475aa64d2755940b9c20"
+  },
+  "src/data/profiles/fujifilm_reala_100.json": {
+   "size": 72381,
+   "sha256": "53c74693dd6573dd6e352ebaf013af0f4779761bde66f3e7f26493c87c1479fd"
+  },
+  "src/data/profiles/fujifilm_reala_500d.json": {
+   "size": 73777,
+   "sha256": "35a3e4b881e7b2c2d20c413f4052e69f23c8d3295d00852d1fcc8c7e645d93f3"
+  },
+  "src/data/profiles/fujifilm_superia_200.json": {
+   "size": 73661,
+   "sha256": "b06772deb96223010ddc4f6be98effc9b4c96d4f7bba74794af62758fb63756e"
+  },
+  "src/data/profiles/fujifilm_velvia_100.json": {
+   "size": 158844,
+   "sha256": "fd572ea29e139145c19e21c47abd7a264c5b858b993dc463799b299b69b3731f"
+  },
+  "src/data/profiles/fujifilm_velvia_50.json": {
+   "size": 72047,
+   "sha256": "166e55e8343d8e74965d176a64b93e92d6d3895647f001e2ff017f7fc902969d"
+  },
+  "src/data/profiles/fujifilm_xtra_400.json": {
+   "size": 162882,
+   "sha256": "7cf468b0d056262436f12ecdbdf03def3a14bbc76600551bda8f004d9b8700a1"
+  },
+  "src/data/profiles/harman_phoenix_200.json": {
+   "size": 73779,
+   "sha256": "ba724f327e32638cfc26b80b12c8396bf42c911ddef86aa1db78b8bbdd8a6650"
+  },
+  "src/data/profiles/ilford_delta_3200.json": {
+   "size": 103367,
+   "sha256": "b83c32d1dffd9770cc94a8eeaa47a8cf23a9a2d4550a295416c74dd4461c4773"
+  },
+  "src/data/profiles/ilford_fp4_plus.json": {
+   "size": 84799,
+   "sha256": "942e8ed067e381af98c202f86c4b5b6813e43c170cb8acd5016e7274d0df3903"
+  },
+  "src/data/profiles/ilford_hp5_plus.json": {
+   "size": 86228,
+   "sha256": "372a13c189606f20a3ba85e1c57b086ed84c097a054f77a3192cd63a1326755c"
+  },
+  "src/data/profiles/ilford_mgrc_deluxe_grade2.json": {
+   "size": 69155,
+   "sha256": "12c5cb28e875b687bcc9a21078b8c95b8faa4b5ba7051e13f71e2a60f0f308da"
+  },
+  "src/data/profiles/kodak_2302.json": {
+   "size": 218242,
+   "sha256": "145d7ec07f070c2985d8c5f5845206903e00a6c2a5fed39d402368acbc8252b4"
+  },
+  "src/data/profiles/kodak_2383.json": {
+   "size": 159239,
+   "sha256": "f61d0dbf2eb2479102add4b16c838b003742be631a32cbbe2b28c0086d339607"
+  },
+  "src/data/profiles/kodak_2393.json": {
+   "size": 159187,
+   "sha256": "c2f13feaaeca751a55dad689756e9110f42b306c3f741e37e1581d280ee00ebc"
+  },
+  "src/data/profiles/kodak_aerochrome_1443.json": {
+   "size": 71038,
+   "sha256": "324ac18f8aa6e728fc42391fa0d2e4cea43f9f61a43055d7f253d89253cbd045"
+  },
+  "src/data/profiles/kodak_aerocolor_2460.json": {
+   "size": 72655,
+   "sha256": "d2d0aac5d3d550746cff769481e4756627f4f4c1726a2efbeffb46736979921f"
+  },
+  "src/data/profiles/kodak_doublex.json": {
+   "size": 219914,
+   "sha256": "4c36da545d10463b6249074bf644501082a11853aa08e8fbc1a8282b3d6709e5"
+  },
+  "src/data/profiles/kodak_ektachrome_100.json": {
+   "size": 159483,
+   "sha256": "dc7c5589d109f7944c0615a366368951768fb5560327379cc9d78b587866c765"
+  },
+  "src/data/profiles/kodak_ektacolor_edge.json": {
+   "size": 159010,
+   "sha256": "d6f9f8cdfef19e50139e90e5b800f38851de92c65e9cee1d681c6a7f1dc3918f"
+  },
+  "src/data/profiles/kodak_ektar_100.json": {
+   "size": 161574,
+   "sha256": "ec772dd4424c0b4e468697a8a64b37e73af765b1e6cbf050497155e80e72750f"
+  },
+  "src/data/profiles/kodak_endura_premier.json": {
+   "size": 158520,
+   "sha256": "bf5af37f1ee657f93e54367a212ae9f7dfa65dfea8b0bcfcc2b087b0cfb3a028"
+  },
+  "src/data/profiles/kodak_gold_200.json": {
+   "size": 162655,
+   "sha256": "e1fb1fb3b728c67be42524cfca77e03ebded2d53d81ca89f5f8d58bf5ab3291e"
+  },
+  "src/data/profiles/kodak_kodachrome_200.json": {
+   "size": 71251,
+   "sha256": "ffd72e753b7041279ee3d9631be4fbce6c1d1732a3df08acbc626a7f508adf6b"
+  },
+  "src/data/profiles/kodak_kodachrome_25.json": {
+   "size": 70257,
+   "sha256": "c6600945458075d317bcad8b0dd234913e99988c03f1fb491791d88019c5ddbf"
+  },
+  "src/data/profiles/kodak_kodachrome_64.json": {
+   "size": 159372,
+   "sha256": "eada9c17da095730b348970513d3333bc972494e92d9e16e671d252dab61ad48"
+  },
+  "src/data/profiles/kodak_kodacolor_100.json": {
+   "size": 73002,
+   "sha256": "ebe6b2c5fc658b2b06d33035238d67653a27a69044db20bfe11e86f84e0a9fad"
+  },
+  "src/data/profiles/kodak_portra_160.json": {
+   "size": 161939,
+   "sha256": "a39036dabbda1227c9ffd1d0fb3cddc18aa7da29ae96b369301fe56516029f9f"
+  },
+  "src/data/profiles/kodak_portra_400.json": {
+   "size": 161683,
+   "sha256": "eb8b733fd8f79223b93ee389f1f32774378ea1905364ed658e4ce1d46ec1c069"
+  },
+  "src/data/profiles/kodak_portra_800.json": {
+   "size": 162220,
+   "sha256": "a9554e3f75f95dab547379401c37c6da37044f15c2f94ada49ac85f928f33a7b"
+  },
+  "src/data/profiles/kodak_portra_800_push1.json": {
+   "size": 162060,
+   "sha256": "43bfbe92d2a8f8ffea39c057768b2d694176b022b4e6ab143dc1b275f5dbdfab"
+  },
+  "src/data/profiles/kodak_portra_800_push2.json": {
+   "size": 162317,
+   "sha256": "633f7374b67fba21cc308dc70a25d64c7eb3efc8b9451433887ccc34a266e913"
+  },
+  "src/data/profiles/kodak_portra_endura.json": {
+   "size": 158722,
+   "sha256": "e3450fd941155c88e63060dcf202542ccb6da151e9ab6c56c295d7b2d4837969"
+  },
+  "src/data/profiles/kodak_supra_endura.json": {
+   "size": 158653,
+   "sha256": "9f2c8ca36f53440a6e61b599b59682605e4234963e54cf130adb0321b728ae80"
+  },
+  "src/data/profiles/kodak_tmax_100.json": {
+   "size": 66507,
+   "sha256": "b8bb051bf838e64dc0a3b1e07a15c50f8127c81b03e7701dc9b648ddcbc45bec"
+  },
+  "src/data/profiles/kodak_trix.json": {
+   "size": 92602,
+   "sha256": "223b6c940b7536558ff952ade5069c58d4ef1fd7a98949d3160e4e92d3b7869c"
+  },
+  "src/data/profiles/kodak_trix400_d76_8min.json": {
+   "size": 82407,
+   "sha256": "9f75031fbd6afe8a40b4ed91d4aa7d7855a536fba8487d92713698b18c57f381"
+  },
+  "src/data/profiles/kodak_ultra_endura.json": {
+   "size": 158505,
+   "sha256": "8b117834f50d0838684cc812d665ce0d1c9d32016b1b562d28a6e0defbdaf16f"
+  },
+  "src/data/profiles/kodak_ultramax_400.json": {
+   "size": 162286,
+   "sha256": "eaa93c6bd212e1ff056b3f678879bab93f5219374210de83eaf5a6264d7c34ed"
+  },
+  "src/data/profiles/kodak_verita_200d.json": {
+   "size": 162225,
+   "sha256": "13b8e61365eeca07c3425676efa81533a11dd3fb0a71adbd1af4f3e01b2e5165"
+  },
+  "src/data/profiles/kodak_vision3_200t.json": {
+   "size": 163018,
+   "sha256": "9d9718bb3900cafe4b84ba2963427a97dfe2cd9b6ffa5bdc5c708652f6e8a3e2"
+  },
+  "src/data/profiles/kodak_vision3_250d.json": {
+   "size": 163526,
+   "sha256": "07d26ffc039be333a05f76ef76f9b97208c8493925d14d95ca8e54c3defb9346"
+  },
+  "src/data/profiles/kodak_vision3_500t.json": {
+   "size": 163534,
+   "sha256": "dabadd09d329b3b10148028f8061537bf16c4932282cef5d5bc33452e8f64e47"
+  },
+  "src/data/profiles/kodak_vision3_50d.json": {
+   "size": 162437,
+   "sha256": "a9534523800ae27e572b8f70c1cec9f790f8824c06a3317029e61123785b550f"
+  },
+  "src/data/profiles/lomography_color_100.json": {
+   "size": 75289,
+   "sha256": "60eaeb92a4f197654c744eb1d884af0ec3818fb7950bc95494c8a17207a280b3"
+  },
+  "src/data/profiles/lomography_lomochrome_metropolis.json": {
+   "size": 75680,
+   "sha256": "47bd4bf4d5adb39dc09a8f615da3fb933cb9a2770a183ef6718d9d73f215f88f"
+  },
+  "src/data/profiles/lomography_lomochrome_turquoise.json": {
+   "size": 75656,
+   "sha256": "6d4eff19c9f04866a78989086a6bb76437d14b37e19e16a5706208e8f8251e2f"
+  },
+  "src/data/luts/spectral_upsampling/arctic2026beta04_reflectance_xy_tc.npy": {
+   "size": 5972096,
+   "sha256": "cf5b3dafad6470cdd3981038149374c967820654b94142332808681d364083a6"
+  },
+  "src/data/luts/spectral_upsampling/arctic2026beta04_reflectance_xy_tc.toml": {
+   "size": 1222,
+   "sha256": "4bbc5183fb86a767d53c3851bffb02500a494f77bc9a8c1f447fbd2c05371d0e"
+  },
+  "src/data/luts/spectral_upsampling/hanatos2025_irradiance_xy_tc.npy": {
+   "size": 5972096,
+   "sha256": "52f90c724811f5fab80769f8548bf24d08a521eb09e65ab6e016893258d2a783"
+  },
+  "src/data/luts/spectral_upsampling/hanatos2025_irradiance_xy_tc.toml": {
+   "size": 1722,
+   "sha256": "a228a265eba9ef7ed593105140d005718dfffc55f9fd61addb8e982f4cc7dd30"
+  },
+  "src/data/luts/spectral_upsampling/hanatos_irradiance_xy_coeffs_250304.lut": {
+   "size": 4194741,
+   "sha256": "6bfb031761bd5a68975030d61426351a58bd15a3254ff42f384e09d7d3d1e40f"
+  },
+  "src/data/luts/spectral_upsampling/mallett2019_reflectance_xy_tc.npy": {
+   "size": 5972096,
+   "sha256": "c1ea8a0c3e164a56736748300caf2c262c606e0d93fc047dd5615228dc5fc71e"
+  },
+  "src/data/luts/spectral_upsampling/mallett2019_reflectance_xy_tc.toml": {
+   "size": 1842,
+   "sha256": "814fd0d85595baefdd1224181da46d6c2befea7b5167ec8433fa67fd482672d2"
+  },
+  "src/data/filters/colored/README.md": {
+   "size": 780,
+   "sha256": "1ebd48d168a8e9ce7ff7aa6e44173762c2959e885fe5280f36abc5dbee034431"
+  },
+  "src/data/filters/colored/hoya/r1.csv": {
+   "size": 3417,
+   "sha256": "211fec78a84573b769372bbfffa9ceed70813386e4aedb25d230189943c3e4d5"
+  },
+  "src/data/filters/colored/hoya/x0.csv": {
+   "size": 4447,
+   "sha256": "fc9a2fbe5b79b5e7689483345263fd3a4d17e1490cd41de1657dca78705ce6f2"
+  },
+  "src/data/filters/colored/hoya/x1.csv": {
+   "size": 4216,
+   "sha256": "ab98aa320f521861550316b34e05b99ebe3452ebaec0b4bab7e76dd3f121f3a8"
+  },
+  "src/data/filters/colored/hoya/y2.csv": {
+   "size": 4695,
+   "sha256": "e96cb228d81f4a258e8ae61fe0515c5bd7845c724429ce089d0c68a1143976f2"
+  },
+  "src/data/filters/colored/hoya/ya3.csv": {
+   "size": 5460,
+   "sha256": "b8a93c1372b88acbf357b7edd8e4f819fd08d1d5167d998bb17c6c316017e177"
+  },
+  "src/data/filters/dichroics/durst_digital_light/filter_c.csv": {
+   "size": 6447,
+   "sha256": "d462d257d1345248f6d134cb00254a713b54cc9125d822f191942c577f15f070"
+  },
+  "src/data/filters/dichroics/durst_digital_light/filter_m.csv": {
+   "size": 6768,
+   "sha256": "891f2fcad2df32a1d7b3ddc222cae1c61f005126ef6656d01463f3022b9c2b66"
+  },
+  "src/data/filters/dichroics/durst_digital_light/filter_y.csv": {
+   "size": 4004,
+   "sha256": "f8631b4868630db366d1b7d52473d371419d250101d8ffab94878cc8862c593f"
+  },
+  "src/data/filters/dichroics/edmund_optics/filter_c.csv": {
+   "size": 6663,
+   "sha256": "f72dc5b7ae571d8f5539756ac7951036639ed77f135fdf21e8a18d48f41b2ad2"
+  },
+  "src/data/filters/dichroics/edmund_optics/filter_m.csv": {
+   "size": 6787,
+   "sha256": "40c42c1feed00cf0cb76781f83ab5de0e8c0d90cca9ba7670bb8dbda05cc5612"
+  },
+  "src/data/filters/dichroics/edmund_optics/filter_y.csv": {
+   "size": 5318,
+   "sha256": "21607355113717a854f8e61e78dd9784a7a1e91bfbd79dd1704293b9f58d9da9"
+  },
+  "src/data/filters/dichroics/edmund_optics/info.txt": {
+   "size": 116,
+   "sha256": "b77f383a39ebd1f034ef6cc89e1e87ecbeaf499c9a8b3bb71f2b78b3ccea846d"
+  },
+  "src/data/filters/dichroics/thorlabs/filter_c.csv": {
+   "size": 5604,
+   "sha256": "114a7afdc772b7ab2561c9ca54872dcac04c71bd8c20295774f45325c44b200b"
+  },
+  "src/data/filters/dichroics/thorlabs/filter_m.csv": {
+   "size": 5692,
+   "sha256": "6bbb5491980138d0a3b3e691da552497363e483ca10a87b5b03a2684734d2f24"
+  },
+  "src/data/filters/dichroics/thorlabs/filter_y.csv": {
+   "size": 5688,
+   "sha256": "ba50c8d55b94a8ea98b406a34f45783dd5719d6dcb220c0c3528fdb825a60ad0"
+  },
+  "src/data/filters/heat_absorbing/schott/KG1.csv": {
+   "size": 5784,
+   "sha256": "211761b6203796b091c09a597bea110bb4c3687551c9ff03fe2221478bbe9555"
+  },
+  "src/data/filters/heat_absorbing/schott/KG3.csv": {
+   "size": 5609,
+   "sha256": "7654aa57fa8e42ae280e8d679ae9ebf8cef48ed5cbe6c2ab43eba1c6608f3d1f"
+  },
+  "src/data/filters/heat_absorbing/schott/KG5.csv": {
+   "size": 5351,
+   "sha256": "254ab420a9f296adca669f6130b1b7512d402c945c25542b420d3ecf32fc8665"
+  },
+  "src/data/filters/heat_absorbing/schott/info.txt": {
+   "size": 88,
+   "sha256": "cd9ae1fa3694cf0d6c422cfafd06e80250520023479294d628f4d678a1ba58db"
+  },
+  "src/data/filters/lens_transmission/canon/canon_24_f28_is.csv": {
+   "size": 3969,
+   "sha256": "6edc1be37bc22ef4e36b98981c09c45ff0e9b3a3ce80e00c62906d8ec941df3a"
+  },
+  "src/data/filters/lens_transmission/canon/canon_24_f28_is_info.txt": {
+   "size": 90,
+   "sha256": "3f776692ad77f102afa228ad87498050e09681cc296ab83f717215e21f6ed04e"
+  },
+  "src/data/filters/neutral_print_filters.json": {
+   "size": 40048,
+   "sha256": "503cdcba46852ee08a02d42e507a439d8e687d538ac77d998c5b5b1d8633a5a4"
+  }
+ }
+}

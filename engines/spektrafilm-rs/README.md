@@ -12,6 +12,7 @@ and run in a Web Worker with an in-memory file system. Nothing is uploaded: the 
 | `runtime/data/` | The subset of `src/data/` the app uses: one profile per offered film and paper, the neutral print filter database, and the `irradiance_xy_tc.npy` spectral-upsampling LUT. |
 | `LICENSE` | GNU GPL v3, the licence of spektrafilm-rs and its data. |
 | `UPSTREAM.md` | Where `src/` came from (commit), what was left out, our changes, and how to update. |
+| `manifest.json` | Size and SHA-256 of every file the app downloads, and a version id: exact download progress, and the key for the copy saved on the device (Cache Storage). Written by `tools/engine-manifests.mjs` (run by `tools/build.sh`). |
 | `credits.json` | Authors, licences and links shown in the app. |
 | `patches/photokamo.patch` | Our changes to upstream as one file (also applied in `src/`). |
 | `tools/build.sh` | Rebuilds `runtime/` from `src/`. |

@@ -34,6 +34,9 @@ for stock in $FILMS $PAPERS; do cp "$SRC/data/profiles/$stock.json" "$OUT/data/p
 cp "$SRC/data/filters/neutral_print_filters.json" "$OUT/data/filters/"
 cp "$SRC/data/luts/spectral_upsampling/irradiance_xy_tc.npy" "$OUT/data/luts/spectral_upsampling/"
 
+echo "==> Manifests (sizes + hashes for download progress and saved copies)"
+node "$HERE/../../tools/engine-manifests.mjs"
+
 echo "==> Done"
 ls -l "$OUT/spektrafilm.wasm"
 du -sh "$OUT/data"
