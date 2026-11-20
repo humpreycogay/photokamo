@@ -5,6 +5,7 @@
 # Engine source copies: store byte-for-byte as upstream has them (no line-ending conversion),
 # so updates from upstream merge cleanly.
 engines/*/src/** -text
+engines/*/runtime/** -text
 
 # Binary engine artifacts and data
 *.wasm  binary

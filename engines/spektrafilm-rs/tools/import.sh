@@ -25,6 +25,9 @@ fi
 
 echo "==> Fetching spektrafilm-rs @ $REF"
 git init -q "$WORK/up"
+# Keep upstream's exact bytes: no CRLF conversion, whatever the local git settings are.
+git -C "$WORK/up" config core.autocrlf false
+git -C "$WORK/up" config core.eol lf
 git -C "$WORK/up" fetch -q --depth 1 "$UPSTREAM" "$REF"
 git -C "$WORK/up" -c advice.detachedHead=false checkout -q FETCH_HEAD
 commit="$(git -C "$WORK/up" rev-parse HEAD)"
