@@ -17,7 +17,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 spektrafilm-core = { path = "crates/spektrafilm-core" }
-spektrafilm-gpu = { path = "crates/spektrafilm-gpu" }
+spektrafilm-gpu = { path = "crates/spektrafilm-gpu", default-features = false }
 spektrafilm-math = { path = "crates/spektrafilm-math" }
 spektrafilm-model = { path = "crates/spektrafilm-model" }
 

@@ -27,7 +27,7 @@ cblas = "0.4"
 blas-src = { version = "0.10", features = ["accelerate"] }
 accelerate-src = "0.3"
 
-[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
+[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows"), not(target_family = "wasm")))'.dependencies]
 cblas = "0.4"
 blas-src = { version = "0.10", features = ["openblas"] }
 openblas-src = "0.10"
