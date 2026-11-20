@@ -32,6 +32,7 @@ const elements = {
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
   filmstrip: $('#filmstrip'), stripList: $('#stripList'), stripCount: $('#stripCount'), stripStatus: $('#stripStatus'), stripHint: $('#stripHint'),
   applyBar: $('#applyBar'), applyButton: $('#applyButton'), applyDialog: $('#applyDialog'), applyForm: $('#applyForm'),
+  engineLookName: $('#engineLookName'), mobileApplyButton: $('#mobileApplyButton'), topbarTitle: $('#topbarTitle'),
   exportLabel: $('#exportLabel'), batchDialog: $('#batchDialog'), batchForm: $('#batchForm'), batchZipName: $('#batchZipName'), batchQuality: $('#batchQuality'), batchQualityGroup: $('#batchQualityGroup'),
   batchProgress: $('#batchProgress'), batchProgressText: $('#batchProgressText'), batchProgressCount: $('#batchProgressCount'), batchBar: $('#batchBar'), batchStatus: $('#batchStatus'),
   batchCancel: $('#batchCancel'), batchShare: $('#batchShare'), batchDownload: $('#batchDownload'),
@@ -243,7 +244,7 @@ function syncLooks() {
     const edited = mine && module && JSON.stringify(module.normalizeParams(mine.params)) !== JSON.stringify(params);
     elements.lookGroup.textContent = engineById(state.engine).label;
     elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Film edit';
-    elements.photoLookBadge.textContent = elements.lookName.textContent;
+    elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
     elements.lookDesc.textContent = module ? module.stockSummary(params) : 'Loading the film engine…';
     elements.strength.disabled = true;
     elements.strengthOutput.value = '—';
@@ -251,7 +252,7 @@ function syncLooks() {
   }
   elements.lookGroup.textContent = groupLabel(preset);
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
-  elements.photoLookBadge.textContent = elements.lookName.textContent;
+  elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
   elements.lookDesc.innerHTML = preset.description + (preset.engine === 'Spektrafilm-inspired' ? ' <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Credits<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a>' : '');
   const isFavorite = favorites.includes(preset.id);
   elements.favorite.setAttribute('aria-pressed', isFavorite);
@@ -1361,6 +1362,11 @@ function syncStrip() {
   if (!others && app.liveEdit) { app.liveEdit = false; toast('Live editing turned off: only one photo is selected.'); }
   elements.applyBar.hidden = !others;
   $('#applyButtonText').textContent = `Apply to ${others} other selected…`;
+  // Phones: "Apply to N" sits in the engine row; the header names the selection or the photo.
+  elements.mobileApplyButton.hidden = !others;
+  elements.mobileApplyButton.textContent = `Apply to ${others}`;
+  elements.mobileApplyButton.setAttribute('aria-label', `Apply to ${plural(others, 'other selected photo')}`);
+  elements.topbarTitle.textContent = selected > 1 ? `${selected} selected` : activePhoto()?.name || '';
   $('#liveEdit').checked = app.liveEdit;
   // Export N / Save N when several photos are selected (batch export)
   const batchCount = isBatchExport() ? selected : 0;
@@ -1384,11 +1390,23 @@ function pickPhoto(id) {
 function focusStripItem(id) { app.focusId = id; syncStrip(); photoById(id)?.el.focus(); photoById(id)?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
 function buildStrip() {
   const list = elements.stripList;
+  // Touch: long-press a thumb (or tap its check box) to add it to or remove it from the selection.
+  let press = null, pressed = false;
+  list.addEventListener('pointerdown', event => {
+    const item = event.target.closest('[data-photo]'); if (!item || event.pointerType === 'mouse') return;
+    pressed = false;
+    press = { x: event.clientX, y: event.clientY, timer: setTimeout(() => { pressed = true; toggleSelected(Number(item.dataset.photo)); syncStrip(); }, 450) };
+  });
+  const endPress = () => { if (press) clearTimeout(press.timer); press = null; };
+  list.addEventListener('pointermove', event => { if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) endPress(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => list.addEventListener(type, endPress));
+  list.addEventListener('contextmenu', event => { if (event.target.closest('[data-photo]')) event.preventDefault(); });
   list.addEventListener('click', event => {
     const item = event.target.closest('[data-photo]'); if (!item) return;
+    if (pressed) { pressed = false; return; } // the long-press already toggled it
     const id = Number(item.dataset.photo); app.focusId = id;
     if (event.shiftKey) selectRange(id);
-    else if (event.ctrlKey || event.metaKey) toggleSelected(id);
+    else if (event.ctrlKey || event.metaKey || event.target.closest('.strip-check')) toggleSelected(id);
     else pickPhoto(id);
     syncStrip(); item.focus();
   });
@@ -1477,6 +1495,7 @@ function openApply() {
     drawCover(canvas.getContext('2d'), photo.preview || photo.thumb, 112, 112);
     return canvas;
   }));
+  $('#applyLive').checked = app.liveEdit;
   syncApplyForm();
   elements.applyDialog.showModal();
 }
@@ -1492,13 +1511,15 @@ function syncApplyForm() {
 }
 function buildApply() {
   elements.applyButton.addEventListener('click', openApply);
+  elements.mobileApplyButton.addEventListener('click', openApply);
   elements.applyForm.addEventListener('change', syncApplyForm);
   elements.applyForm.addEventListener('submit', event => {
     event.preventDefault();
     applyParts = syncApplyForm();
     try { localStorage.setItem(APPLY_PARTS_KEY, JSON.stringify(applyParts)); } catch { /* remembered for this visit only */ }
     const changed = applyToPhotos(otherSelected(), applyParts);
-    elements.applyDialog.close();
+    if (mobileQuery.matches) app.liveEdit = $('#applyLive').checked; // phones: the live switch is in this dialog
+    elements.applyDialog.close(); syncStrip();
     toast(changed ? `Applied to ${plural(changed, 'photo')}. Undo on each photo.` : 'Those photos already match.');
   });
   $('#applyCancel').addEventListener('click', () => elements.applyDialog.close());
