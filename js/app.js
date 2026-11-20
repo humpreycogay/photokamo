@@ -1974,7 +1974,6 @@ elements.renderCancel.addEventListener('click', () => { cancelFullRender(); sche
 elements.fileInput.addEventListener('change', event => addFiles(event.target.files));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
 $('#sampleButton').addEventListener('click', loadSample);
-$('#lookCount').textContent = presets.filter(preset => preset.id !== 'original').length;
 $('#cameraButton').addEventListener('click', openCamera);
 $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click());
 elements.fileMenu.addEventListener('click', event => {

@@ -126,7 +126,8 @@ body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); }
 .start-copy { padding:28px 8px 0; }
 .start-copy h1 { margin:0; font-size:40px; line-height:1.05; letter-spacing:-1.6px; font-weight:700; }
 .start-copy h1 em { font-family:var(--font-display); font-style:italic; font-weight:600; letter-spacing:-.6px; color:var(--accent); }
-.start-copy p { margin:12px 0 0; font-size:15px; line-height:1.5; color:var(--text-2); }
+.start-copy .start-brand { margin:0 0 10px; font-size:19px; font-weight:700; letter-spacing:-.4px; color:var(--text); }
+.start-brand span { color:var(--accent); }
 .start-actions { display:flex; flex-direction:column; gap:10px; padding-top:24px; }
 .start-actions .button-xl { min-height:54px; font-size:16px; }
 .start-actions .button-secondary { background:var(--surface); }

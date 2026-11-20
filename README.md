@@ -1,6 +1,6 @@
 # PhotoKamo
 
-PhotoKamo is a privacy-first, browser-native photo editor for camera-inspired color, film looks, manual adjustments, a physical film simulation, and vintage frames. Images are processed locally and are never uploaded.
+PhotoKamo is a privacy-first, browser-native photo editor for camera-inspired color, film looks, manual adjustments, physical film simulation, cropping, and print frames. Images are processed locally and are never uploaded.
 
 ## Run locally
 
@@ -15,22 +15,23 @@ Open <http://localhost:8080>.
 
 ## Features
 
-- Upload, drag-and-drop, sample photo, live camera preview/capture, camera switching, and mobile capture fallback
-- Simple mode: 20 camera, film and creative looks with strength, favorites, and light/color/character adjustments
-- Advanced mode: spectral film → print → scan engines (Spektrafilm, Negs; see below) with film stocks incl. B&W,
-  papers, enlarger filtration, grain, halation, couplers and scanner settings; each engine with its own controls
-- Hold to compare, undo/redo, and saved looks
-- Independent classic, instant, and film-strip frames
-- JPEG, PNG and WebP export, a size for sharing, and Web Share on supported phones
+- Open several photos at once (file picker, drag-and-drop, sample photo, live camera or mobile capture); a filmstrip to switch between them, with Ctrl/Cmd-click, Shift-click, keyboard or long-press selection
+- One **Engine** picker in the Look tab: **Basic** (20 camera, film and creative looks with strength and favorites) or a film engine (Spektrafilm, Negs, DuXun; see below) with film stocks incl. B&W, papers, enlarger filtration, grain, halation, couplers and scanner settings
+- Adjust (light, color, character) on top of every engine
+- Crop: 10 aspect ratios with Swap W×H, zoom, drag and resize, straighten (no empty corners), rotate 90°, flip, and the output size in pixels
+- Frames: Paper print (border width, extra at the bottom, paper colour, match the print paper), classic, instant and film strip, all drawn into the exported image
+- Apply the look, adjustments, frame or crop ratio of the photo in view to the other selected photos, or edit them together live
+- Per-photo undo/redo, hold to compare, and saved looks
+- JPEG, PNG and WebP export, a size for sharing, Web Share on supported phones, and batch export of the selected photos as one ZIP or separate files
 - Dark, responsive and keyboard-accessible UI
 
 ## Privacy and accuracy
 
 There is no backend, account, telemetry, or image upload. Camera and film names describe creative approximations rather than measured emulations.
 
-In Simple mode, the **Spektrafilm-inspired** looks are approximations made with PhotoKamo's own renderer, informed by Andrea Volpato's [spektrafilm](https://github.com/andreavolpato/spektrafilm); RawTherapee-inspired labels likewise describe workflow inspiration, not bundled profiles.
+Among the Basic looks, the **Spektrafilm-inspired** ones are approximations made with PhotoKamo's own renderer, informed by Andrea Volpato's [spektrafilm](https://github.com/andreavolpato/spektrafilm); RawTherapee-inspired labels likewise describe workflow inspiration, not bundled profiles.
 
-**Advanced mode runs real film engines**, chosen from the Engine dropdown and downloaded only when selected. Each runs on your device in a Web Worker, has its own controls (modelled on the original project) and its own licence and credits (ⓘ next to the dropdown). PhotoKamo keeps its own copy of every engine's source in [`engines/`](engines/) and updates it only deliberately.
+**The film engines are real film simulations**, chosen in the Engine picker and downloaded only when selected. Each runs on your device in a Web Worker, has its own controls (modelled on the original project) and its own licence and credits (ⓘ next to the picker). PhotoKamo keeps its own copy of every engine's source in [`engines/`](engines/) and updates it only deliberately.
 
 | Engine | What it is | Version (our copy) | Licence | Folder |
 |---|---|---|---|---|
