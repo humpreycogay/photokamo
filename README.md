@@ -36,10 +36,11 @@ In Simple mode, the **Spektrafilm-inspired** looks are approximations made with 
 |---|---|---|---|
 | Spektrafilm | The spektrafilm model via the Rust port [spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs), WebAssembly. Colour-LUT preview; grain, halation and blur in the full-quality render (≤ 4 MP). | GPL-3.0 | [`engines/spektrafilm-rs/`](engines/spektrafilm-rs/README.md) |
 | Negs | [negs](https://github.com/noahhaasis/negs) v0.17.0: the spektrafilm model on WebGPU (CPU fallback), the complete model in every preview, 52 films incl. B&W and 10 papers. | GPL-3.0; profiles CC BY-SA 4.0 | [`engines/negs/`](engines/negs/README.md) |
+| DuXun | [DuXun Film Simulation](https://github.com/DuXun03/duxun-film-simulation), a DaVinci Resolve plugin, its renderer ported to JavaScript: 54 film presets, print stocks, grain, halation, bloom, dust and vignette. Verified against the plugin's C++. | GPL-2.0-or-later | [`engines/duxun/`](engines/duxun/README.md) |
 
 ## Licence
 
-PhotoKamo is free software, licensed under the [GNU General Public License v3](LICENSE), because it includes GPL-3.0 film engines (spektrafilm-rs, negs). Credits: spektrafilm by Andrea Volpato; spektrafilm-rs; negs; spektrafilm and Fotufilm film profiles (CC BY-SA 4.0); spectral upsampling LUTs by Johannes Hanatos and others; rawler (LGPL-2.1, inside negs); [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) (MIT OR Apache-2.0); Inter and Playfair Display fonts (SIL Open Font License).
+PhotoKamo is free software, licensed under the [GNU General Public License v3](LICENSE), because it includes GPL-3.0 film engines (spektrafilm-rs, negs) and DuXun (GPL-2.0-or-later, used under GPL-3.0). Credits: spektrafilm by Andrea Volpato; spektrafilm-rs; negs; spektrafilm and Fotufilm film profiles (CC BY-SA 4.0); spectral upsampling LUTs by Johannes Hanatos and others; rawler (LGPL-2.1, inside negs); [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) (MIT OR Apache-2.0); Inter and Playfair Display fonts (SIL Open Font License).
 
 ## Browser support
 

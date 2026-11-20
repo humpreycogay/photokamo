@@ -1,0 +1,19 @@
+{
+  "id": "duxun",
+  "name": "DuXun",
+  "summary": "Film look from a DaVinci Resolve plugin: 54 film presets with tone curves, film colour matrices, print stocks, grain, halation, bloom, dust and vignette. Fast, runs in JavaScript.",
+  "version": "DuXun Film Simulation v5.0 (91357a3), renderer ported to JavaScript",
+  "licence": { "name": "GPL-2.0-or-later", "file": "LICENSE", "url": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" },
+  "source": { "local": "engines/duxun/src/", "upstream": "https://github.com/DuXun03/duxun-film-simulation", "commit": "91357a308d0b76f1a00a284af274579688613dc0" },
+  "credits": [
+    { "name": "DuXun Film Simulation", "by": "DuXun03", "role": "Film presets, colour pipeline, grain, halation, bloom and damage models", "url": "https://github.com/DuXun03/duxun-film-simulation", "licence": "GPL-2.0-or-later" },
+    { "name": "NativeEnhancer-FE", "by": "dddfault", "role": "Grain, halation and bloom ideas the plugin adapts", "url": "https://github.com/dddfault/NativeEnhancer-FE", "licence": "MIT" },
+    { "name": "t3mujinpack", "by": "t3mujinpack contributors", "role": "Film preset data", "url": "https://github.com/t3mujinpack/t3mujinpack", "licence": "MIT" }
+  ],
+  "changes": [
+    "The plugin's CPU renderer is ported to JavaScript; the original source is kept unchanged",
+    "Film breath, gate weave and overscan (video motion effects) are left out",
+    "Rendered as if on a 1920 px timeline, so previews and exports match",
+    "Labels translated from Chinese"
+  ]
+}

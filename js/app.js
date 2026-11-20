@@ -554,7 +554,8 @@ function setAdvancedValue(path, raw) {
 }
 function resetAdvanced(path) {
   const module = activeModule(); if (!module) return;
-  const fallback = module.controlByPath[path].default;
+  // An engine may define per-setting defaults that depend on other settings (DuXun: the film's preset).
+  const fallback = module.defaultFor ? module.defaultFor(advParams(), path) : module.controlByPath[path].default;
   change(() => { advParams()[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
 }
 function buildAdvancedPanel() {

@@ -33,6 +33,19 @@ export const engines = [
     ],
     folder: new URL('../../engines/negs/', import.meta.url),
     load: () => import('./negs/index.js')
+  },
+  {
+    id: 'duxun',
+    label: 'DuXun',
+    description: 'Fast film look from a Resolve plugin · 54 film presets, grain, halation, bloom',
+    licence: 'GPL-2.0-or-later',
+    approxDownload: '≈ 60 KB',
+    credit: [
+      'Film look by ', { text: 'DuXun Film Simulation', href: 'https://github.com/DuXun03/duxun-film-simulation' },
+      ' (presets from ', { text: 't3mujinpack', href: 'https://github.com/t3mujinpack/t3mujinpack' }, '), ported to run on your device.'
+    ],
+    folder: new URL('../../engines/duxun/', import.meta.url),
+    load: () => import('./duxun/index.js')
   }
 ];
 

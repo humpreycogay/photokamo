@@ -6,6 +6,7 @@ export const controlId = path => `adv-${path.replace(/[^a-z0-9]+/gi, '-')}`;
 const CHEVRON = '<svg class="adv-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
 function controlHtml(control, engine) {
+  if (control.hidden) return ''; // a parameter the original UI also hides (still part of the params)
   const depends = control.dependsOn ? ` data-depends="${control.dependsOn}"` : '';
   if (control.kind === 'heading') return `<h4 class="adv-group-heading"${depends}>${escapeHtml(control.label)}</h4>`;
   if (control.kind === 'note') return `<p class="adv-hint adv-section-note" data-note="${escapeHtml(control.id || '')}"${depends}>${escapeHtml(control.label)}</p>`;
