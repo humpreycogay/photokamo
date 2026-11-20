@@ -1068,7 +1068,7 @@ function closePhoto() {
   if (state.renderAbort) cancelFullRender();
   clearTimeout(advancedTimer);
   state.imageBitmap?.close?.(); state.imageBitmap = null; state.fullRender = null;
-  state.image = null; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
+  state.image = null; state.imageId++; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
   exportCanvas = { key: '', canvas: null }; preparedExport = null;
   document.body.classList.remove('has-image');
   elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true;

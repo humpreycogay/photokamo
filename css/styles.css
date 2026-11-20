@@ -389,7 +389,7 @@ body.is-advanced .advanced-panel { display:flex; }
 
 /* Print view (Advanced): mid-grey surround, photo on a paper border */
 body.is-advanced { --print-border:22px; }
-body.is-advanced .stage { background:var(--stage-print); }
+body.is-advanced.has-image .stage { background:var(--stage-print); }
 body.is-advanced .viewport { container-type:size; }
 body.is-advanced .canvas-wrap { padding:var(--print-border); background:var(--paper); border-radius:0; box-shadow:0 18px 50px rgba(0,0,0,.35); }
 body.is-advanced.no-paper .canvas-wrap { padding:0; background:transparent; }
@@ -524,7 +524,7 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   body.is-advanced { --print-border:12px; }
   body.is-advanced .canvas-wrap { position:relative; inset:auto; margin:auto; box-shadow:0 10px 30px rgba(0,0,0,.35); }
   body.is-advanced .canvas-wrap canvas,body.is-advanced .viewport.is-actual canvas { width:auto!important; height:auto; object-fit:fill; }
-  body.is-advanced[data-tab=adjust] .stage { flex:none; height:46dvh; min-height:220px; }
+  body.is-advanced.has-image[data-tab=adjust] .stage { flex:none; height:46dvh; min-height:220px; }
   body.is-advanced[data-tab=adjust] .controls { flex:1; min-height:0; }
   body.is-advanced .control-tabs { display:grid; }
   body.is-advanced .panel-body { display:flex; }
