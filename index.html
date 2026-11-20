@@ -131,15 +131,14 @@
             <div class="engine-row">
               <button class="engine-button" id="engineButton" type="button" popovertarget="engineList" aria-haspopup="listbox" aria-expanded="false" aria-controls="engineList" aria-labelledby="engineLabel engineButtonName engineButtonStatus">
                 <span class="engine-button-icon" aria-hidden="true"></span>
-                <span class="engine-button-text"><span class="engine-button-name" id="engineButtonName">Presets</span><span class="engine-button-status" id="engineButtonStatus"></span></span>
+                <span class="engine-button-text"><span class="engine-button-name" id="engineButtonName">Basic</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span>
                 <svg class="icon-sm engine-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </button>
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
             </div>
-            <div class="engine-list" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>
+            <div class="engine-menu" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>
             <div class="engine-status" id="engineStatus" role="status" data-state="idle">
               <span class="engine-status-text" id="engineStatusText"></span>
-              <span class="engine-progress" id="engineProgress" hidden><span id="engineProgressBar"></span></span>
               <button class="text-button" id="engineRetry" type="button" hidden>Retry</button>
             </div>
           </div>
@@ -285,7 +284,7 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
       <p>PhotoKamo is a privacy-first photo playground. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
-      <p>The Presets are creative approximations, not exact reproductions. The film engines run real film simulations entirely in your browser, downloaded only when you choose one: Spektrafilm (spektrafilm by Andrea Volpato, via the Rust port spektrafilm-rs), Negs (the spektrafilm model on WebGPU) and DuXun (a DaVinci Resolve film plugin, ported to JavaScript).</p>
+      <p>The Basic looks are creative approximations, not exact reproductions. The film engines run real film simulations entirely in your browser, downloaded only when you choose one: Spektrafilm (spektrafilm by Andrea Volpato, via the Rust port spektrafilm-rs), Negs (the spektrafilm model on WebGPU) and DuXun (a DaVinci Resolve film plugin, ported to JavaScript).</p>
       <p>PhotoKamo is free software under the GNU General Public License v3. Each film engine keeps its own licence and credits (choose it under Engine in Looks and use ⓘ next to it).</p>
       <h3 class="engine-sub">Licences</h3>
       <ul class="engine-list" id="licenceList">

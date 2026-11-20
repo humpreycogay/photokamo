@@ -3,20 +3,21 @@
 // Keys: ↑/↓ Home/End move, Enter/Space choose, Esc/Tab close; clicking outside closes.
 // On phones the same popover is styled as a bottom sheet (css: .engine-list).
 //
-// createEnginePicker({ button, list, name, status, groups, onChoose, onOpen, place })
-//   groups: [{ id, label, items: [{ id, name, description, icon }] }]
+// createEnginePicker({ button, list, name, status, groups, onChoose, place })
+//   groups: [{ id, label, items: [{ id, name, icon }] }]. Rows show the name only; groups are
+//   split by a line, and their label is for screen readers.
 //   place(): false to skip positioning under the button (bottom sheet)
-// Returns { setValue(id), setStatus(text, tone), setMeta(id, { size, downloaded, note }) }.
+// Returns { setValue(id), setStatus(text, tone) }.
 
 const check = '<svg class="engine-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
-export function createEnginePicker({ button, list, name, status, groups, onChoose, onOpen, place = () => true }) {
+export function createEnginePicker({ button, list, name, status, groups, onChoose, place = () => true }) {
   const items = groups.flatMap(group => group.items);
   const optionId = id => `engine-option-${id}`;
   let value = items[0].id;
   let active = value;
 
-  list.innerHTML = groups.map(group => `<div class="engine-group" role="group" aria-labelledby="engine-group-${group.id}"><div class="engine-group-label" id="engine-group-${group.id}">${group.label}</div>${group.items.map(item => `<div class="engine-option" role="option" id="${optionId(item.id)}" data-engine="${item.id}" aria-selected="false"><span class="engine-option-icon" aria-hidden="true">${item.icon}</span><span class="engine-option-text"><span class="engine-option-name">${item.name}<span class="engine-badge" hidden>Downloaded</span></span><span class="engine-option-desc">${item.description}</span><span class="engine-option-note" hidden></span></span><span class="engine-option-size"></span>${check}</div>`).join('')}</div>`).join('');
+  list.innerHTML = groups.map(group => `<div class="engine-group" role="group" aria-label="${group.label}">${group.items.map(item => `<div class="engine-option" role="option" id="${optionId(item.id)}" data-engine="${item.id}" aria-selected="false"><span class="engine-option-icon" aria-hidden="true">${item.icon}</span><span class="engine-option-name">${item.name}</span>${check}</div>`).join('')}</div>`).join('');
   const option = id => list.querySelector(`[data-engine="${id}"]`);
 
   function setActive(id, scroll = true) {
@@ -47,7 +48,6 @@ export function createEnginePicker({ button, list, name, status, groups, onChoos
     position();
     setActive(value);
     list.focus();
-    onOpen?.();
   });
   list.addEventListener('keydown', event => {
     const index = items.findIndex(item => item.id === active);
@@ -74,15 +74,8 @@ export function createEnginePicker({ button, list, name, status, groups, onChoos
       list.querySelectorAll('.engine-option').forEach(row => row.setAttribute('aria-selected', row.dataset.engine === id));
     },
     setStatus(text, tone = '') {
-      status.textContent = text;
+      status.textContent = text; status.hidden = !text;
       status.dataset.tone = tone;
-    },
-    setMeta(id, { size = '', downloaded = false, note = '' } = {}) {
-      const row = option(id); if (!row) return;
-      row.querySelector('.engine-badge').hidden = !downloaded;
-      row.querySelector('.engine-option-size').textContent = downloaded ? '' : size;
-      const noteEl = row.querySelector('.engine-option-note');
-      noteEl.textContent = note; noteEl.hidden = !note;
     }
   };
 }

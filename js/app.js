@@ -25,7 +25,7 @@ const elements = {
   renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
   engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
-  engineProgress: $('#engineProgress'), engineProgressBar: $('#engineProgressBar'), engineRetry: $('#engineRetry'),
+  engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
   engineWait: $('#engineWait'), engineWaitTitle: $('#engineWaitTitle'), engineWaitSub: $('#engineWaitSub'), engineWaitProgress: $('#engineWaitProgress'), engineWaitRetry: $('#engineWaitRetry')
@@ -540,28 +540,23 @@ function buildEnginePanel() {
 }
 
 const MB = bytes => (bytes / 1048576).toFixed(1);
-const HAS_WEBGPU = 'gpu' in navigator;
 const ICONS = {
   presets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>',
   film: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18M16 3v18M4 8h4M4 13h4M4 18h4M16 8h4M16 13h4M16 18h4"/></svg>'
 };
-// Engine picker (js/engine-picker.js): Presets, then the film engines in registry order.
+// Engine picker (js/engine-picker.js): names only. Basic (the preset looks), then the film engines.
 const enginePicker = createEnginePicker({
   button: elements.engineButton, list: elements.engineList, name: $('#engineButtonName'), status: $('#engineButtonStatus'),
   groups: [
-    { id: 'quick', label: 'Quick', items: [{ id: PRESETS, name: 'Presets', description: `${presets.filter(preset => preset.id !== 'original').length} looks · instant · works everywhere`, icon: ICONS.presets }] },
-    { id: 'film', label: 'Film simulation · runs on your device', items: engines.map(entry => ({ id: entry.id, name: entry.label, description: entry.description, icon: ICONS.film })) }
+    { id: 'basic', label: 'Basic', items: [{ id: PRESETS, name: 'Basic', icon: ICONS.presets }] },
+    { id: 'film', label: 'Film engines', items: engines.map(entry => ({ id: entry.id, name: entry.label, icon: ICONS.film })) }
   ],
   onChoose: id => switchEngine(id),
-  onOpen: syncSavedBadges,
   place: () => !mobileQuery.matches
 });
-const engineNote = entry => (entry.slowWithoutWebGPU && !HAS_WEBGPU ? 'Slower here (no WebGPU)' : '');
-for (const entry of engines) enginePicker.setMeta(entry.id, { size: entry.approxDownload, note: engineNote(entry) });
 function setEngineStatus(status, error = null) {
-  if (status === 'ready' && engine.status !== 'ready') syncSavedBadges();
   engine.status = status; engine.error = error;
-  if (status !== 'preparing') { elements.engineProgress.hidden = true; elements.engineProgressBar.style.width = '0%'; engine.download = null; }
+  if (status !== 'preparing') engine.download = null;
   syncEngineBar();
 }
 function showEngineDownload({ loaded, total, done }) {
@@ -569,11 +564,6 @@ function showEngineDownload({ loaded, total, done }) {
   if (engine.status !== 'preparing') { engine.status = 'preparing'; syncEngineBar(); }
   engine.download = done ? null : { percent: total ? Math.min(100, Math.round(loaded / total * 100)) : null, mb: MB(loaded) };
   syncEngineWait();
-  if (done) { elements.engineStatusText.textContent = 'Preparing the engine…'; elements.engineProgress.hidden = true; enginePicker.setStatus('Preparing…'); return; }
-  elements.engineStatusText.textContent = total ? `Downloading the engine… ${MB(loaded)} of ${MB(total)} MB` : `Downloading the engine… ${MB(loaded)} MB`;
-  enginePicker.setStatus(total ? `Downloading… ${Math.min(100, Math.round(loaded / total * 100))}%` : `Downloading… ${MB(loaded)} MB`);
-  elements.engineProgress.hidden = !total;
-  if (total) elements.engineProgressBar.style.width = `${Math.min(100, Math.round(loaded / total * 100))}%`;
 }
 // While the chosen film engine loads, downloads or failed, its renders can't run yet: the photo
 // is dimmed with a status pill, and Adjust / Frames say that changes apply once it is ready.
@@ -587,7 +577,7 @@ function syncEngineWait() {
   elements.engineWaitRetry.hidden = !failed;
   if (!waiting) { document.querySelectorAll('[data-engine-wait]').forEach(note => { note.hidden = true; }); return; }
   const download = engine.status === 'preparing' ? engine.download : null;
-  const title = failed ? `${entry.label} couldn't load` : download ? `Downloading ${entry.label}…` : engine.status === 'preparing' ? `Preparing ${entry.label}…` : `Loading ${entry.label}…`;
+  const title = failed ? `${entry.label} couldn't load` : `Loading ${entry.label}…`;
   const sub = failed ? 'Your changes are saved. Check your connection and retry.' : 'Your changes will show when it’s ready.';
   if (elements.engineWaitTitle.textContent !== title) elements.engineWaitTitle.textContent = title;
   if (elements.engineWaitSub.textContent !== sub) elements.engineWaitSub.textContent = sub;
@@ -595,32 +585,16 @@ function syncEngineWait() {
   const note = failed ? `${entry.label} couldn't load. Your changes are saved; retry from the photo.` : `${entry.label} isn't ready yet. Changes are saved and will apply when it finishes loading.`;
   document.querySelectorAll('[data-engine-wait]').forEach(element => { element.hidden = false; element.textContent = note; });
 }
+// The picker button says only "Loading…" while an engine loads or downloads; a failure shows a line with Retry.
 function syncEngineBar() {
   syncEngineWait();
   enginePicker.setValue(state.engine);
   elements.engineAboutButton.hidden = !isFilm();
-  if (!isFilm()) {
-    enginePicker.setStatus(`${presets.filter(preset => preset.id !== 'original').length} quick looks · instant · nothing to download`);
-    elements.engineStatus.dataset.state = 'idle'; elements.engineStatusText.textContent = '';
-    elements.engineProgress.hidden = true; elements.engineRetry.hidden = true;
-    return;
-  }
-  const entry = engineById(state.engine);
-  const ready = !entry.slowWithoutWebGPU ? 'Ready · runs on this device' : HAS_WEBGPU ? 'Ready · WebGPU' : 'Ready · slower here (no WebGPU)';
-  if (engine.status !== 'preparing' || !elements.engineStatusText.textContent.startsWith('Downloading')) {
-    enginePicker.setStatus({ idle: 'Runs on this device', loading: 'Loading…', preparing: 'Preparing…', ready, failed: 'Could not load' }[engine.status],
-      { ready: 'ok', failed: 'error' }[engine.status]);
-  }
-  const text = {
-    idle: '',
-    loading: `Loading ${entry.label}…`,
-    preparing: 'Preparing the engine…',
-    ready: 'Ready · runs on this device',
-    failed: `${entry.label} could not be loaded. Check your connection and try again.`
-  }[engine.status];
-  elements.engineStatus.dataset.state = engine.status;
-  if (engine.status !== 'preparing' || !elements.engineStatusText.textContent.startsWith('Downloading')) elements.engineStatusText.textContent = text;
-  elements.engineRetry.hidden = engine.status !== 'failed';
+  const status = isFilm() ? engine.status : 'idle';
+  enginePicker.setStatus({ loading: 'Loading…', preparing: 'Loading…', failed: 'Couldn’t load' }[status] || '', status === 'failed' ? 'error' : '');
+  elements.engineStatus.dataset.state = status;
+  elements.engineStatusText.textContent = status === 'failed' ? `${engineById(state.engine).label} couldn’t load. Check your connection and try again.` : '';
+  elements.engineRetry.hidden = status !== 'failed';
 }
 /** Engine dropdown: keeps each engine's own settings and carries over the shared ones (film, exposure, grain, halation).
  *  Adjust edits and the frame stay. One undo step. */
@@ -666,11 +640,6 @@ async function openEngineAbout() {
 
 // ---------- Engines saved on this device (Cache Storage; js/engines/engine-files.js, loaded on demand) ----------
 const savedEngineList = () => import('./engines/engine-files.js').then(module => module.savedEngines()).catch(() => []);
-/** Picker rows: download size, or "Downloaded" once the engine's files are saved here. */
-async function syncSavedBadges() {
-  const saved = new Set((await savedEngineList()).filter(item => item.bytes > 0).map(item => item.engineId));
-  for (const entry of engines) enginePicker.setMeta(entry.id, { size: entry.approxDownload, downloaded: saved.has(entry.id), note: engineNote(entry) });
-}
 async function syncEngineStorage() {
   const saved = (await savedEngineList()).filter(item => item.bytes > 0);
   const box = $('#engineStorage');
@@ -682,7 +651,7 @@ async function syncEngineStorage() {
 async function removeSavedEngines() {
   try { await (await import('./engines/engine-files.js')).removeSavedEngines(); toast('Saved film engines removed. They download again when you use them.'); }
   catch { toast('The saved film engines could not be removed.'); }
-  syncEngineStorage(); syncSavedBadges();
+  syncEngineStorage();
 }
 
 // ---------- Advanced panel ----------

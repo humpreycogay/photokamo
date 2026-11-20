@@ -331,35 +331,29 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-bar { flex:none; padding:14px 20px 10px; border-bottom:1px solid var(--line); }
 .engine-label { display:block; margin-bottom:6px; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
 .engine-row { display:flex; gap:8px; }
-.engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px 6px 8px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
+.engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 8px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
 .engine-button-icon,.engine-option-icon { flex:none; width:32px; height:32px; display:grid; place-items:center; border-radius:var(--radius-sm); background:var(--bg); color:var(--accent); }
 .engine-button-icon svg,.engine-option-icon svg { width:18px; height:18px; }
-.engine-button-text,.engine-option-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
-.engine-button-name,.engine-option-name { display:flex; align-items:center; gap:8px; font-weight:600; }
-.engine-button-status,.engine-option-desc,.engine-option-note { font-size:var(--fs-sm); color:var(--text-muted); }
-.engine-button-status[data-tone=ok] { color:var(--ok); }
+.engine-button-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.engine-button-name,.engine-option-name { font-weight:600; }
+.engine-option-name { flex:1; min-width:0; }
+.engine-button-status { font-size:var(--fs-sm); color:var(--text-muted); }
 .engine-button-status[data-tone=error] { color:var(--accent); }
 .engine-chevron { flex:none; color:var(--text-muted); }
-/* Picker popover (desktop: under the button; phones: bottom sheet, see the mobile block) */
-.engine-list { position:fixed; inset:auto; margin:0; max-height:calc(100dvh - 16px); overflow-y:auto; padding:6px; background:var(--raised); color:var(--text); border:1px solid var(--line-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow-photo); }
-.engine-list:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.engine-group-label { padding:10px 10px 6px; font-size:var(--fs-xs); font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text-muted); }
+/* Picker popover .engine-menu (desktop: under the button; phones: bottom sheet, see the mobile block) */
+.engine-menu { position:fixed; inset:auto; margin:0; max-height:calc(100dvh - 16px); overflow-y:auto; padding:6px; background:var(--raised); color:var(--text); border:1px solid var(--line-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow-photo); }
+.engine-menu:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.engine-group + .engine-group { margin-top:6px; padding-top:6px; border-top:1px solid var(--line-strong); }
 .engine-option { display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:8px 10px; border-radius:var(--radius-sm); cursor:pointer; }
 .engine-option.is-active { background:var(--control); }
-.engine-list:focus-visible .engine-option.is-active { box-shadow:inset 0 0 0 2px var(--accent); }
-.engine-option-note { color:var(--accent); }
-.engine-option-size { flex:none; font-size:var(--fs-sm); color:var(--text-2); font-variant-numeric:tabular-nums; }
-.engine-badge { padding:1px 7px; border-radius:9px; background:var(--ok); color:var(--bg); font-size:var(--fs-xs); font-weight:700; }
+.engine-menu:focus-visible .engine-option.is-active { box-shadow:inset 0 0 0 2px var(--accent); }
 .engine-check { flex:none; width:18px; height:18px; color:var(--accent); visibility:hidden; }
 .engine-option[aria-selected=true] .engine-check { visibility:visible; }
 .engine-status { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:6px; font-size:var(--fs-sm); color:var(--text-2); }
-.engine-status[data-state=idle] { display:none; }
-.engine-status[data-state=ready] { display:none; }
+.engine-status:not([data-state=failed]) { display:none; }
 .engine-status[data-state=failed] { color:var(--accent); }
 .engine-status .text-button { padding:2px 0; font-size:var(--fs-sm); font-weight:600; }
-.engine-progress { flex-basis:100%; height:4px; border-radius:2px; background:var(--control); overflow:hidden; }
-.engine-progress span { display:block; width:0; height:100%; background:var(--accent); transition:width .2s ease; }
 .advanced-panel.is-loading .adv-footer button { opacity:.5; pointer-events:none; }
 /* About this engine */
 .engine-about { max-height:calc(100dvh - 48px); overflow-y:auto; }
@@ -577,8 +571,8 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
      download progress and errors still show while an engine loads. */
   .engine-button { border-radius:12px; background:var(--surface); }
   .engine-row .icon-button { width:46px; height:46px; }
-  .engine-list { inset:auto 0 0 0; width:100%; max-width:none; max-height:80dvh; padding:6px 10px max(14px,env(safe-area-inset-bottom)); border-width:1px 0 0; border-radius:var(--radius-sheet) var(--radius-sheet) 0 0; }
-  .engine-list::backdrop { background:rgba(12,12,11,.55); }
+  .engine-menu { inset:auto 0 0 0; width:100%; max-width:none; max-height:80dvh; padding:6px 10px max(14px,env(safe-area-inset-bottom)); border-width:1px 0 0; border-radius:var(--radius-sheet) var(--radius-sheet) 0 0; }
+  .engine-menu::backdrop { background:rgba(12,12,11,.55); }
   .engine-option { min-height:56px; }
 
   /* Render status floats on the print; hold-to-compare hidden for film engines */
