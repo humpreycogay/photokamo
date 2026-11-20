@@ -524,7 +524,7 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   body.is-advanced { --print-border:12px; }
   body.is-advanced .canvas-wrap { position:relative; inset:auto; margin:auto; box-shadow:0 10px 30px rgba(0,0,0,.35); }
   body.is-advanced .canvas-wrap canvas,body.is-advanced .viewport.is-actual canvas { width:auto!important; height:auto; object-fit:fill; }
-  body.is-advanced[data-tab=adjust] .stage { flex:none; height:40dvh; min-height:220px; }
+  body.is-advanced[data-tab=adjust] .stage { flex:none; height:46dvh; min-height:220px; }
   body.is-advanced[data-tab=adjust] .controls { flex:1; min-height:0; }
   body.is-advanced .control-tabs { display:grid; }
   body.is-advanced .panel-body { display:flex; }
@@ -554,6 +554,9 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .adv-credit { padding:0 16px 16px; }
   .adv-note { margin:0 16px 6px; }
   .engine-bar { padding:12px 16px 10px; }
+  /* Phones: keep the photo large. No description or "Ready" line under the Engine dropdown;
+     download progress and errors still show while an engine loads. */
+  .engine-desc,.engine-status[data-state=ready] { display:none; }
   .engine-row select { min-height:46px; border-radius:12px; background:var(--surface); font-size:15px; }
   .engine-row .icon-button { width:46px; height:46px; }
 
