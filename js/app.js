@@ -5,6 +5,7 @@ import { renderImage, frameCanvas, applyAdjustments, defaultCrop, isIdentityCrop
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
+import { createRenderQueue } from './render-queue.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -28,6 +29,8 @@ const elements = {
   engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
+  filmstrip: $('#filmstrip'), stripList: $('#stripList'), stripCount: $('#stripCount'), stripStatus: $('#stripStatus'), stripHint: $('#stripHint'),
+  applyBar: $('#applyBar'), applyButton: $('#applyButton'), applyDialog: $('#applyDialog'), applyForm: $('#applyForm'),
   cropPanel: $('#cropPanel'), cropStage: $('#cropStage'), cropView: $('#cropView'), cropCanvas: $('#cropCanvas'), cropBox: $('#cropBox'), cropHint: $('#cropHint'), ratioGrid: $('#ratioGrid'), cropOutput: $('#cropOutput'),
   engineWait: $('#engineWait'), engineWaitTitle: $('#engineWaitTitle'), engineWaitSub: $('#engineWaitSub'), engineWaitProgress: $('#engineWaitProgress'), engineWaitRetry: $('#engineWaitRetry')
 };
@@ -99,18 +102,26 @@ function migrateSnapshot(value) {
   const engineId = value.mode === 'advanced' && engineById(value.engine) ? value.engine : PRESETS;
   return { look: { engine: engineId, presetId, strength, engineParams, myLookId }, edits, frame };
 }
-function restore(value) {
+/** Puts settings ({ look, edits, crop, frame }) into the editor state without syncing the UI. */
+function applySettings(value) {
   const { look, edits, frame, crop } = migrateSnapshot(value);
   state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
   state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
   state.edits = { ...edits }; state.frame = cloneFrame(frame); state.crop = { ...defaultCrop, ...crop };
+}
+function restore(value) {
+  applySettings(value);
   syncControls(); scheduleRender(); // syncControls loads the engine if the restored one isn't active
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-function commit(previous = snapshot()) { if (!sameSnapshot(previous, snapshot())) { state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons(); } }
+function commit(previous = snapshot()) {
+  if (sameSnapshot(previous, snapshot())) return;
+  state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons();
+  if (app.liveEdit) applyToPhotos(otherSelected(), applyParts); // live: the same change goes to the other selected photos
+}
 function undo() { if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
 function redo() { if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); }
-function updateButtons() { elements.undo.disabled = !state.undo.length; elements.redo.disabled = !state.redo.length; }
+function updateButtons() { elements.undo.disabled = !state.undo.length; elements.redo.disabled = !state.redo.length; syncStrip(); }
 function toast(message) { clearTimeout(toastTimer); elements.toast.textContent = message; elements.toast.classList.add('show'); toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600); }
 function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
 function pickLook(id) {
@@ -290,7 +301,7 @@ async function loadSample() {
     const response = await fetch(presetPreviewSource);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const blob = await response.blob();
-    await loadFile(new File([blob], 'sample-portrait.jpg', { type: blob.type || 'image/jpeg' }));
+    await addFiles([new File([blob], 'sample-portrait.jpg', { type: blob.type || 'image/jpeg' })]);
   } catch (error) {
     console.error(error);
     toast('The sample photo could not be loaded.');
@@ -456,10 +467,11 @@ function matchedPaper() {
   return module?.paperTint && params && module.showsPaper(params) ? module.paperTint(params) : null;
 }
 /** The frame as the renderer takes it: an id, or Paper print with its sizes and resolved colour. */
-function renderFrame() {
-  const { id, border } = state.frame;
+function renderFrame() { return frameFor(state.frame, matchedPaper()); }
+/** `tint`: the print paper's tint for "Match paper tint", or null. */
+function frameFor({ id, border }, tint) {
   if (id !== 'paper') return id;
-  const color = (border.matchPaper && matchedPaper()) || border.color;
+  const color = (border.matchPaper && tint) || border.color;
   return { id, width: border.width, bottom: border.bottom, paper: (paperColors.find(item => item.id === color) || paperColors[1]).hex };
 }
 function syncFrames() {
@@ -488,7 +500,8 @@ const RATIOS = [['orig', 'Orig.', 'Original'], ['free', 'Free', 'Free'], ['1:1',
 const MIN_CROP_PX = 64, CROP_ZOOM_MAX = 3, CROP_PREVIEW_EDGE = 1600;
 const cloneCrop = crop => ({ ...defaultCrop, ...crop });
 const cropKey = () => JSON.stringify([state.imageId, state.crop]);
-const cropGeo = (crop = state.crop) => cropGeometry(state.image.naturalWidth, state.image.naturalHeight, crop);
+// `size` is the photo (an image, or { naturalWidth, naturalHeight } for a photo not in view).
+const cropGeo = (crop = state.crop, size = state.image) => cropGeometry(size.naturalWidth, size.naturalHeight, crop);
 const cropUi = { k: 1, vw: 0, vh: 0, key: '', thumb: null, thumbId: -1, start: null, timer: 0, drag: null, pointers: new Map(), previousTab: 'looksTab' };
 
 /** Width / height of the chosen ratio in px of the oriented photo; null for Free. */
@@ -499,8 +512,8 @@ function ratioValue(crop, W, H) {
   return crop.swapped ? b / a : a / b;
 }
 /** Keeps the straightened box inside the photo (no empty corners): zooms in if it is too big, then moves it in. */
-function clampCrop(crop) {
-  const { naturalWidth: width, naturalHeight: height } = state.image;
+function clampCrop(crop, size = state.image) {
+  const { naturalWidth: width, naturalHeight: height } = size;
   let g = cropGeometry(width, height, crop);
   let { ex, ey } = cropExtents(g.width, g.height, crop.straighten);
   const fit = Math.min(g.W / (2 * ex), g.H / (2 * ey));
@@ -517,11 +530,11 @@ const cropFits = crop => {
   return g.width >= MIN_CROP_PX - .5 && g.height >= MIN_CROP_PX - .5 && g.cx - ex >= -.5 && g.cy - ey >= -.5 && g.cx + ex <= g.W + .5 && g.cy + ey <= g.H + .5;
 };
 /** The largest box of the chosen ratio around the current centre (Free keeps its box). */
-function fitRatio(crop) {
-  const { W, H } = cropGeo(crop);
+function fitRatio(crop, size = state.image) {
+  const { W, H } = cropGeo(crop, size);
   const ratio = ratioValue(crop, W, H);
   if (ratio) { const width = Math.min(W, H * ratio); crop.w = width / W; crop.h = width / ratio / H; crop.zoom = 1; }
-  return clampCrop(crop);
+  return clampCrop(crop, size);
 }
 const setCropZoom = (crop, zoom) => { crop.zoom = Math.min(CROP_ZOOM_MAX, Math.max(1, zoom)); return clampCrop(crop); };
 
@@ -982,7 +995,7 @@ function scheduleRender() {
 function renderPreview(token) {
   elements.processing.hidden = false;
   setTimeout(() => {
-    if (token !== state.renderToken) return;
+    if (token !== state.renderToken || !state.image) { elements.processing.hidden = true; return; }
     try {
       const edge = renderEdge();
       const frame = renderFrame();
@@ -992,12 +1005,13 @@ function renderPreview(token) {
       if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(source, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
       elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
       applyZoom();
-      drawPreview();
+      drawPreview(); scheduleActiveThumb();
     } catch (error) {
       console.error(error);
       toast('This photo could not be rendered.');
     } finally {
       elements.processing.hidden = true;
+      renderQueue.pump();
     }
   }, 0);
 }
@@ -1080,6 +1094,7 @@ async function runAdvancedPreview() {
     advancedBusy = false;
     if (state.renderQuality === 'preview') syncRenderStatus();
     if (advancedDirty && isFilm() && state.image) runAdvancedPreview();
+    else renderQueue.pump(); // photos not in view render once the one in view is done
   }
 }
 function showPreviewStatus(text) {
@@ -1094,7 +1109,7 @@ function presentAdvanced(bitmap, frame) {
   if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(croppedSource(edge), defaultAdjustments, frame, edge); state.originalKey = originalKey; }
   elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
   applyZoom();
-  drawPreview();
+  drawPreview(); scheduleActiveThumb();
 }
 function setRenderProgress(value) {
   const percent = Math.round(value * 100);
@@ -1165,32 +1180,369 @@ function setHolding(holding) {
   drawPreview();
 }
 
-// ---------- Files ----------
-async function loadFile(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) return toast('Choose a JPEG, PNG, WebP, or GIF image.');
-  if (file.size > 40 * 1024 * 1024) return toast('That photo is over the 40 MB limit.');
+// ---------- Photos: several open at once (SPEC §2) ----------
+// The editor `state` always holds the photo in view. Switching saves its settings and undo/redo
+// into its photo, frees its decoded image and bitmaps, then decodes the next one from its File.
+// Every photo keeps only its File, a 256 px thumbnail and (after a look) a small rendered preview.
+const MAX_PHOTOS = 50, THUMB_EDGE = 256, MAX_FILE_BYTES = 40 * 1024 * 1024;
+const app = { photos: [], activeId: null, selected: new Set(), anchorId: null, focusId: null, nextId: 1, viewToken: 0, liveEdit: false };
+const photoById = id => app.photos.find(photo => photo.id === id) || null;
+const activePhoto = () => photoById(app.activeId);
+const photoSize = photo => ({ naturalWidth: photo.width, naturalHeight: photo.height });
+const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, frame: { id: 'none', border: { ...defaultBorder } } });
+const settingsOf = photo => (photo.id === app.activeId && state.image ? snapshot() : photo.settings);
+const isEdited = settings => settings.look.engine !== PRESETS || settings.look.presetId !== 'original' || Object.keys(settings.edits).length > 0
+  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none';
+const otherSelected = () => app.photos.filter(photo => app.selected.has(photo.id) && photo.id !== app.activeId);
+
+async function decodeImage(file) {
+  const url = URL.createObjectURL(file);
   try {
-    const url = URL.createObjectURL(file); const image = new Image();
-    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
+    const image = new Image(); image.src = url;
+    await image.decode();
     if (!image.naturalWidth) throw new Error('Invalid image');
-    state.image = image; state.filename = file.name.replace(/\.[^.]+$/, '') || 'photo'; state.undo = []; state.redo = []; state.crop = { ...defaultCrop };
-    state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
-    exportCanvas = { key: '', canvas: null }; preparedExport = null;
-    if (state.renderAbort) cancelFullRender();
-    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview'; state.fullRender = null; enginePreview = { key: '', bitmap: null };
-    document.body.classList.add('has-image');
-    elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
-    elements.fileName.textContent = file.name;
-    elements.fileChip.title = file.name;
-    elements.fileSize.textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
-    elements.fileChip.setAttribute('aria-label', `${file.name}, ${image.naturalWidth} by ${image.naturalHeight} pixels. Photo options`);
-    elements.cropStage.hidden = document.body.dataset.tab !== 'crop';
-    updateButtons(); syncCrop(); scheduleRender(); toast('Photo opened locally.');
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch { toast('PhotoKamo could not decode that image.'); }
-  elements.fileInput.value = ''; elements.cameraInput.value = '';
+    return image;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
+function makeThumb(image) {
+  const scale = Math.min(1, THUMB_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const ctx = canvas.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/** Opens files as new photos (appended); the first new one comes into view. */
+async function addFiles(fileList) {
+  const files = [...(fileList || [])];
+  elements.fileInput.value = ''; elements.cameraInput.value = '';
+  if (!files.length) return;
+  const problems = { type: 0, size: 0, decode: 0, cap: 0 };
+  let added = 0;
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { problems.type++; continue; }
+    if (file.size > MAX_FILE_BYTES) { problems.size++; continue; }
+    if (app.photos.length >= MAX_PHOTOS) { problems.cap++; continue; }
+    let image;
+    try { image = await decodeImage(file); } catch { problems.decode++; continue; }
+    const photo = { id: app.nextId++, file, name: file.name, filename: file.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
+      thumb: makeThumb(image), preview: null, settings: defaultSettings(), undo: [], redo: [], render: { status: 'idle' }, el: null };
+    app.photos.push(photo); addStripItem(photo);
+    if (!added++) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
+    syncStrip();
+  }
+  const skipped = problems.type + problems.size + problems.decode + problems.cap;
+  if (!skipped) toast(added === 1 ? 'Photo opened locally.' : `${added} photos opened locally.`);
+  else if (files.length === 1) toast(problems.type ? 'Choose a JPEG, PNG, WebP, or GIF image.' : problems.size ? 'That photo is over the 40 MB limit.' : problems.cap ? `PhotoKamo keeps up to ${MAX_PHOTOS} photos open. Close some to add more.` : 'PhotoKamo could not decode that image.');
+  else toast([added ? `${added} opened` : 'No photos opened', problems.cap ? `${problems.cap} over the ${MAX_PHOTOS}-photo limit` : '', problems.size ? `${problems.size} over 40 MB` : '', problems.type + problems.decode ? `${problems.type + problems.decode} not readable` : ''].filter(Boolean).join(' · ') + '.');
+}
+
+/** Brings a photo into view (decoding it from its File unless `decoded` is given). */
+async function viewPhoto(id, decoded = null) {
+  const target = photoById(id);
+  if (!target || (id === app.activeId && state.image)) return;
+  stashActive();
+  const token = ++app.viewToken;
+  app.activeId = id; app.focusId = id;
+  renderQueue.remove(id); // the photo in view renders through the main preview
+  syncStrip();
+  let image = decoded;
+  if (!image) {
+    try { image = await decodeImage(target.file); }
+    catch { if (token === app.viewToken) toast('PhotoKamo could not decode that image.'); return; }
+  }
+  if (token !== app.viewToken) return;
+  showPhoto(target, image);
+}
+/** Saves the editor's settings and history into the photo in view and frees its decoded data. */
+function stashActive() {
+  const current = activePhoto();
+  if (!current || !state.image) return;
+  if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
+  current.settings = snapshot(); current.undo = state.undo; current.redo = state.redo;
+  releaseImage();
+}
+function releaseImage() {
+  setHolding(false);
+  if (state.renderAbort) cancelFullRender();
+  clearTimeout(advancedTimer); clearTimeout(activeThumbTimer); state.renderToken++; // drop renders scheduled for this photo
+  state.imageBitmap?.close?.(); state.imageBitmap = null; state.bitmapKey = '';
+  state.fullRender?.bitmap?.close?.(); state.fullRender = null;
+  enginePreview.bitmap?.close?.(); enginePreview = { key: '', bitmap: null };
+  state.image = null; state.imageId++; state.originalKey = ''; state.originalCanvas = null; state.editedCanvas = null;
+  croppedCache.key = ''; croppedCache.sizes.clear(); cropUi.thumb = null; cropUi.thumbId = -1;
+  exportCanvas = { key: '', canvas: null }; preparedExport = null;
+}
+function showPhoto(target, image) {
+  state.image = image; state.imageId++; state.filename = target.filename;
+  applySettings(target.settings); state.undo = target.undo; state.redo = target.redo;
+  state.holding = false; elements.originalBadge.hidden = true; state.renderQuality = 'preview';
+  document.body.classList.add('has-image');
+  elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
+  elements.fileName.textContent = target.name;
+  elements.fileChip.title = target.name;
+  elements.fileSize.textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
+  elements.fileChip.setAttribute('aria-label', `${target.name}, ${image.naturalWidth} by ${image.naturalHeight} pixels. Photo options`);
+  elements.cropStage.hidden = document.body.dataset.tab !== 'crop';
+  updateButtons(); syncControls(); scheduleRender();
+}
+/** Closes the photo in view; the next one (or the start screen) comes into view. */
+function closePhoto() {
+  const current = activePhoto(); if (!current) return;
+  if (state.undo.length && !confirm('Close this photo? Its edits will be lost.')) return;
+  const index = app.photos.indexOf(current);
+  releaseImage(); renderQueue.remove(current.id);
+  app.photos.splice(index, 1); app.selected.delete(current.id); current.el.remove();
+  app.activeId = null;
+  const next = app.photos[index] || app.photos[index - 1];
+  if (next) { if (!app.selected.size) app.selected.add(next.id); app.anchorId = next.id; viewPhoto(next.id); return; }
+  applySettings(defaultSettings()); state.undo = []; state.redo = [];
+  document.body.classList.remove('has-image');
+  elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true; elements.cropStage.hidden = true;
+  updateButtons(); syncControls();
+}
+
+// ---------- Filmstrip ----------
+function addStripItem(photo) {
+  const item = document.createElement('div');
+  item.className = 'strip-item'; item.id = `photo-${photo.id}`; item.dataset.photo = photo.id;
+  item.setAttribute('role', 'option'); item.tabIndex = -1;
+  item.innerHTML = '<canvas width="168" height="168"></canvas><span class="strip-check" aria-hidden="true"></span><span class="strip-dot" aria-hidden="true"></span><span class="strip-progress" aria-hidden="true"><span></span></span><span class="strip-error" aria-hidden="true">!</span><span class="strip-label" aria-hidden="true">In view</span>';
+  photo.el = item;
+  elements.stripList.append(item);
+  drawStripThumb(photo);
+}
+function drawStripThumb(photo) {
+  const canvas = photo.el?.querySelector('canvas'); if (!canvas) return;
+  drawCover(canvas.getContext('2d'), photo.preview || photo.thumb, canvas.width, canvas.height);
+}
+// The thumb of the photo in view follows its preview (look, crop, frame), a moment after it renders.
+let activeThumbTimer;
+function scheduleActiveThumb() {
+  clearTimeout(activeThumbTimer);
+  activeThumbTimer = setTimeout(() => {
+    const photo = activePhoto(); if (!photo || !state.editedCanvas) return;
+    const source = state.editedCanvas, scale = Math.min(1, THUMB_EDGE / Math.max(source.width, source.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(source.width * scale)); canvas.height = Math.max(1, Math.round(source.height * scale));
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+    photo.preview = canvas; drawStripThumb(photo);
+  }, 250);
+}
+function syncStrip() {
+  const count = app.photos.length;
+  elements.filmstrip.hidden = !count;
+  elements.filmstrip.classList.toggle('is-single', count < 2);
+  document.body.classList.toggle('has-strip', count > 0);
+  if (!app.photos.some(photo => photo.id === app.focusId)) app.focusId = app.activeId;
+  for (const photo of app.photos) {
+    const item = photo.el, active = photo.id === app.activeId, selected = app.selected.has(photo.id);
+    const edited = isEdited(settingsOf(photo)), status = photo.render.status;
+    item.classList.toggle('is-active', active); item.classList.toggle('is-edited', edited);
+    item.setAttribute('aria-selected', selected); item.dataset.status = status;
+    item.tabIndex = photo.id === app.focusId ? 0 : -1;
+    item.setAttribute('aria-label', [photo.name, active && 'in view', edited && 'edited', (status === 'queued' || status === 'rendering') && 'updating', status === 'error' && 'could not update'].filter(Boolean).join(', '));
+  }
+  const selected = app.photos.filter(photo => app.selected.has(photo.id)).length;
+  elements.stripCount.textContent = `${selected} selected`;
+  elements.stripHint.textContent = otherSelected().length ? 'Changes go to the photo in view. Use Apply to copy them to the rest.' : '';
+  const busy = renderQueue.size;
+  elements.stripStatus.textContent = busy ? `Updating ${busy} photo${busy === 1 ? '' : 's'}…` : '';
+  $('#selectAllButton').disabled = selected === count; $('#clearSelectionButton').disabled = selected <= 1;
+  // Apply to the other selected photos; live editing turns off once only one photo is selected.
+  const others = otherSelected().length;
+  if (!others && app.liveEdit) { app.liveEdit = false; toast('Live editing turned off: only one photo is selected.'); }
+  elements.applyBar.hidden = !others;
+  $('#applyButtonText').textContent = `Apply to ${others} other selected…`;
+  $('#liveEdit').checked = app.liveEdit;
+}
+function selectRange(id) {
+  const ids = app.photos.map(photo => photo.id);
+  const from = ids.indexOf(app.anchorId ?? app.activeId), to = ids.indexOf(id);
+  app.selected = new Set(ids.slice(Math.min(from, to), Math.max(from, to) + 1));
+}
+function toggleSelected(id) {
+  if (app.selected.has(id) && app.selected.size > 1) app.selected.delete(id); else app.selected.add(id);
+  app.anchorId = id;
+}
+/** Click or Enter: view the photo, selecting only it unless it is already selected. */
+function pickPhoto(id) {
+  if (!app.selected.has(id)) app.selected = new Set([id]);
+  app.anchorId = id; viewPhoto(id);
+}
+function focusStripItem(id) { app.focusId = id; syncStrip(); photoById(id)?.el.focus(); photoById(id)?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+function buildStrip() {
+  const list = elements.stripList;
+  list.addEventListener('click', event => {
+    const item = event.target.closest('[data-photo]'); if (!item) return;
+    const id = Number(item.dataset.photo); app.focusId = id;
+    if (event.shiftKey) selectRange(id);
+    else if (event.ctrlKey || event.metaKey) toggleSelected(id);
+    else pickPhoto(id);
+    syncStrip(); item.focus();
+  });
+  // Keys act on the focused thumb, however it got focus (Tab, click, script).
+  list.addEventListener('focusin', event => { const item = event.target.closest('[data-photo]'); if (item && Number(item.dataset.photo) !== app.focusId) { app.focusId = Number(item.dataset.photo); syncStrip(); } });
+  list.addEventListener('keydown', event => {
+    const ids = app.photos.map(photo => photo.id); if (!ids.length) return;
+    const index = Math.max(0, ids.indexOf(app.focusId));
+    const target = { ArrowRight: index + 1, ArrowDown: index + 1, ArrowLeft: index - 1, ArrowUp: index - 1, Home: 0, End: ids.length - 1 }[event.key];
+    if (target !== undefined) {
+      event.preventDefault();
+      const id = ids[Math.max(0, Math.min(ids.length - 1, target))];
+      if (event.shiftKey) selectRange(id);
+      focusStripItem(id); return;
+    }
+    if (event.key === ' ') { event.preventDefault(); toggleSelected(app.focusId); syncStrip(); return; }
+    if (event.key === 'Enter') { event.preventDefault(); pickPhoto(app.focusId); syncStrip(); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); app.selected = new Set(ids); syncStrip(); }
+  });
+  $('#stripAdd').addEventListener('click', () => elements.fileInput.click());
+  $('#selectAllButton').addEventListener('click', () => { app.selected = new Set(app.photos.map(photo => photo.id)); syncStrip(); });
+  $('#clearSelectionButton').addEventListener('click', () => { app.selected = new Set(app.activeId ? [app.activeId] : []); app.anchorId = app.activeId; syncStrip(); });
+}
+
+// ---------- Apply to selected + live editing (SPEC §4 D) ----------
+const APPLY_PARTS_KEY = 'photokamo:apply-parts';
+const APPLY_DEFAULTS = { look: true, adjustments: true, frame: true, crop: false, exposure: false };
+const EXPOSURE_KEYS = ['exposure', 'temperature', 'tint'];
+function loadApplyParts() {
+  try { const value = JSON.parse(localStorage.getItem(APPLY_PARTS_KEY) || '{}'); return Object.fromEntries(Object.keys(APPLY_DEFAULTS).map(key => [key, typeof value[key] === 'boolean' ? value[key] : APPLY_DEFAULTS[key]])); }
+  catch { return { ...APPLY_DEFAULTS }; }
+}
+let applyParts = loadApplyParts();
+const pickEdits = (edits, exposure) => Object.fromEntries(Object.entries(edits).filter(([key]) => EXPOSURE_KEYS.includes(key) === exposure));
+/** The target's settings with the chosen parts of `source` copied in. */
+function mergeSettings(target, source, parts) {
+  const settings = structuredClone(target.settings);
+  if (parts.look) settings.look = structuredClone(source.look);
+  settings.edits = { ...pickEdits(parts.adjustments ? source.edits : settings.edits, false), ...pickEdits(parts.exposure ? source.edits : settings.edits, true) };
+  if (parts.frame) settings.frame = structuredClone(source.frame);
+  // Crop: the ratio only, centred at zoom 1 on each photo (their rotation, flip and straighten stay).
+  if (parts.crop) settings.crop = fitRatio({ ...settings.crop, ratio: source.crop.ratio, swapped: source.crop.swapped, x: .5, y: .5, zoom: 1 }, photoSize(target));
+  return settings;
+}
+/** One undo step per target photo; their thumbnails re-render through the queue. */
+function applyToPhotos(targets, parts) {
+  const source = snapshot(); let changed = 0;
+  for (const target of targets) {
+    const next = mergeSettings(target, source, parts);
+    if (sameSnapshot(next, target.settings)) continue;
+    target.undo.push(target.settings); if (target.undo.length > 50) target.undo.shift(); target.redo = [];
+    target.settings = next; changed++;
+    renderQueue.add(target.id);
+  }
+  syncStrip();
+  return changed;
+}
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+function applySummaries() {
+  const source = snapshot();
+  const module = activeModule();
+  const look = isFilm() ? [engineById(state.engine).label, currentMyLook()?.name, module ? module.stockSummary(advParams()) : null].filter(Boolean).join(' · ')
+    : `Basic · ${currentPreset().name}${state.strength < 100 && state.presetId !== 'original' ? ` ${state.strength}%` : ''}`;
+  const named = edits => Object.keys(edits).map(key => `${controlSpec[key].label} ${formatValue(key, effectiveValue(key))}`);
+  const adjustments = named(pickEdits(source.edits, false)), exposure = named(pickEdits(source.edits, true));
+  const frame = frames.find(item => item.id === state.frame.id)?.name || 'None';
+  const ratio = RATIOS.find(([id]) => id === state.crop.ratio);
+  return {
+    look,
+    adjustments: adjustments.length ? adjustments.slice(0, 3).join(' · ') + (adjustments.length > 3 ? ` · +${adjustments.length - 3} more` : '') : 'None (clears theirs)',
+    frame: state.frame.id === 'paper' ? `${frame} · ${state.frame.border.width}% border` : frame,
+    crop: `${ratio[2] || ratio[1]}${state.crop.swapped ? ' (swapped)' : ''}, centered on each photo (position is not copied)`,
+    exposure: exposure.length ? `${exposure.join(' · ')} · usually per-shot` : 'Off by default: these are usually per-shot'
+  };
+}
+function openApply() {
+  const targets = otherSelected(); if (!targets.length || !state.image) return;
+  const form = elements.applyForm, summaries = applySummaries();
+  for (const key of Object.keys(APPLY_DEFAULTS)) {
+    form.elements[key].checked = applyParts[key];
+    $(`#applySum${key[0].toUpperCase()}${key.slice(1)}`).textContent = summaries[key];
+  }
+  $('#applyTitle').textContent = `Apply to ${plural(targets.length, 'other photo')}`;
+  $('#applyThumbs').replaceChildren(...targets.slice(0, 6).map(photo => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 112;
+    drawCover(canvas.getContext('2d'), photo.preview || photo.thumb, 112, 112);
+    return canvas;
+  }));
+  syncApplyForm();
+  elements.applyDialog.showModal();
+}
+function syncApplyForm() {
+  const form = elements.applyForm;
+  const parts = Object.fromEntries(Object.keys(APPLY_DEFAULTS).map(key => [key, form.elements[key].checked]));
+  const any = Object.values(parts).some(Boolean);
+  const count = otherSelected().length;
+  $('#applyConfirm').disabled = !any;
+  $('#applyConfirm').textContent = `Apply to ${plural(count, 'photo')}`;
+  $('#applyNote').hidden = !(parts.look && isFilm());
+  return parts;
+}
+function buildApply() {
+  elements.applyButton.addEventListener('click', openApply);
+  elements.applyForm.addEventListener('change', syncApplyForm);
+  elements.applyForm.addEventListener('submit', event => {
+    event.preventDefault();
+    applyParts = syncApplyForm();
+    try { localStorage.setItem(APPLY_PARTS_KEY, JSON.stringify(applyParts)); } catch { /* remembered for this visit only */ }
+    const changed = applyToPhotos(otherSelected(), applyParts);
+    elements.applyDialog.close();
+    toast(changed ? `Applied to ${plural(changed, 'photo')}. Undo on each photo.` : 'Those photos already match.');
+  });
+  $('#applyCancel').addEventListener('click', () => elements.applyDialog.close());
+  $('#applyClose').addEventListener('click', () => elements.applyDialog.close());
+  elements.applyDialog.addEventListener('click', event => { if (event.target === elements.applyDialog) elements.applyDialog.close(); });
+  $('#liveEdit').addEventListener('change', event => {
+    app.liveEdit = event.target.checked;
+    if (app.liveEdit) { const changed = applyToPhotos(otherSelected(), applyParts); toast(`Live: changes now go to all ${app.selected.size} selected photos.`); }
+  });
+}
+
+// ---------- Render queue for photos not in view (js/render-queue.js) ----------
+const QUEUE_EDGE = THUMB_EDGE;
+const queueEngines = new Set(); // engine modules the queue started, stopped again once it is idle
+/** Adjust values for any photo's settings (same formula as effectiveValue). */
+function adjustmentsFor({ look, edits }) {
+  const preset = look.engine === PRESETS ? presets.find(item => item.id === look.presetId) || presets[0] : null;
+  return Object.fromEntries(Object.keys(defaultAdjustments).map(key => {
+    const original = defaultAdjustments[key];
+    const base = preset ? original + (preset.values[key] - original) * look.strength / 100 : original;
+    return [key, clampToRange(key, base + (edits[key] || 0))];
+  }));
+}
+async function renderPhotoThumb(id, job) {
+  const photo = photoById(id); if (!photo) return null;
+  const settings = photo.settings, engineId = settings.look.engine;
+  const source = isIdentityCrop(settings.crop) ? photo.thumb : cropSource(photo.thumb, settings.crop, QUEUE_EDGE);
+  if (engineId === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), QUEUE_EDGE);
+  const module = await loadEngine(engineId);
+  if (module !== engine.module) queueEngines.add(module);
+  const params = module.normalizeParams(settings.look.engineParams[engineId]);
+  const input = await createImageBitmap(source);
+  const raw = await module.render(input, cloneParams(params), { quality: 'preview' });
+  input.close();
+  if (job.stale) return null;
+  const output = Object.keys(settings.edits).length ? applyAdjustments(raw, adjustmentsFor(settings)) : raw;
+  const tint = module.paperTint && module.showsPaper(params) ? module.paperTint(params) : null;
+  return frameCanvas(output, frameFor(settings.frame, tint));
+}
+const renderQueue = createRenderQueue({
+  render: renderPhotoThumb,
+  canRun: () => !advancedBusy && !state.renderAbort,
+  onChange: (id, status, result) => {
+    const photo = photoById(id); if (!photo) return;
+    photo.render.status = status === 'done' ? 'idle' : status;
+    if (status === 'done' && result) { photo.preview = result; drawStripThumb(photo); }
+    if (status === 'error') console.error(result);
+    syncStrip();
+  },
+  onIdle: () => {
+    for (const module of queueEngines) if (module !== engine.module) module.dispose?.();
+    queueEngines.clear();
+  }
+});
 
 // ---------- Camera ----------
 function stopCamera() {
@@ -1267,7 +1619,7 @@ async function captureCameraPhoto() {
   const filename = `camera-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
   stopCamera();
   elements.cameraDialog.close();
-  await loadFile(new File([blob], filename, { type: 'image/jpeg' }));
+  await addFiles([new File([blob], filename, { type: 'image/jpeg' })]);
 }
 
 // ---------- Tabs ----------
@@ -1419,22 +1771,8 @@ async function sharePhoto() {
   }
 }
 
-// ---------- Close (mobile) ----------
-function closePhoto() {
-  if (state.undo.length && !confirm('Close this photo? Your edits will be lost.')) return;
-  setHolding(false);
-  if (state.renderAbort) cancelFullRender();
-  clearTimeout(advancedTimer);
-  state.imageBitmap?.close?.(); state.imageBitmap = null; state.fullRender = null; enginePreview = { key: '', bitmap: null };
-  state.image = null; state.imageId++; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
-  exportCanvas = { key: '', canvas: null }; preparedExport = null;
-  document.body.classList.remove('has-image');
-  elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true; elements.cropStage.hidden = true;
-  updateButtons();
-}
-
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildAdvancedPanel(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildAdvancedPanel(); buildStrip(); buildApply(); syncControls(); updateButtons();
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
@@ -1442,7 +1780,7 @@ mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom(
 elements.renderFull.addEventListener('click', renderFullQuality);
 elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
 
-elements.fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
+elements.fileInput.addEventListener('change', event => addFiles(event.target.files));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
 $('#sampleButton').addEventListener('click', loadSample);
 $('#lookCount').textContent = presets.filter(preset => preset.id !== 'original').length;
@@ -1467,7 +1805,7 @@ elements.fileMenu.addEventListener('keydown', event => {
   event.preventDefault(); next.focus();
 });
 
-elements.cameraInput.addEventListener('change', event => { stopCamera(); elements.cameraDialog.close(); loadFile(event.target.files[0]); });
+elements.cameraInput.addEventListener('change', event => { stopCamera(); elements.cameraDialog.close(); addFiles(event.target.files); });
 $('#cameraClose').addEventListener('click', () => elements.cameraDialog.close());
 elements.cameraDialog.addEventListener('close', stopCamera);
 elements.capturePhoto.addEventListener('click', captureCameraPhoto);
@@ -1475,7 +1813,7 @@ elements.switchCamera.addEventListener('click', () => { cameraFacingMode = camer
 
 ['dragenter', 'dragover'].forEach(type => elements.dropZone.addEventListener(type, event => { event.preventDefault(); elements.dropZone.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(type => elements.dropZone.addEventListener(type, event => { event.preventDefault(); elements.dropZone.classList.remove('dragover'); }));
-elements.dropZone.addEventListener('drop', event => loadFile(event.dataTransfer.files[0]));
+elements.dropZone.addEventListener('drop', event => addFiles(event.dataTransfer.files));
 
 document.querySelectorAll('.control-tabs [role=tab]').forEach(tab => {
   tab.addEventListener('click', () => setTab(tab));
