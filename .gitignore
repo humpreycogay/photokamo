@@ -39,6 +39,14 @@ dist/
 build/
 coverage/
 .cache/
+# Rust build output (engines/<id>/src/target)
+target/
+
+# Film engines: their copied source, build tools and built runtime files ARE committed
+# (GPL source availability + GitHub Pages serves the repo as-is). Re-include folders the
+# generic rules above would hide inside engines/.
+!engines/**/build/
+!engines/**/dist/
 
 # IDE and editor settings
 .vscode/

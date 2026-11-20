@@ -1,0 +1,12 @@
+# Keep the spektrafilm-rs patch and build script byte-exact on every platform.
+*.patch text eol=lf
+*.sh    text eol=lf
+
+# Engine source copies: store byte-for-byte as upstream has them (no line-ending conversion),
+# so updates from upstream merge cleanly.
+engines/*/src/** -text
+
+# Binary engine artifacts and data
+*.wasm  binary
+*.npy   binary
+*.woff2 binary

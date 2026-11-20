@@ -1,8 +1,7 @@
 import { presets, frames, adjustmentSections, defaultAdjustments } from './presets.js';
 import { renderImage, frameCanvas } from './renderer.js';
-import { renderSpectral, engineInfo } from './spectral/engine.js';
-import { sections as advancedSections, controlByPath, defaultParams, sliderValue, optionLabel } from './spectral/params.js';
-import { stubAdjustments } from './spectral/stub.js';
+import { renderSpectral, engineInfo, fullRenderSize } from './spectral/engine.js';
+import { sections as advancedSections, controlByPath, defaultParams, stockSummary, isSlideFilm, targetPrint, scansFilm, hasSpatialEffects } from './spectral/params.js';
 import { buildAdvanced, syncAdvanced } from './advanced-ui.js';
 
 const $ = selector => document.querySelector(selector);
@@ -109,7 +108,25 @@ function toggleFavorite() {
 }
 
 // ---------- My looks (saved Advanced settings) ----------
-function normalizeParams(params) { const base = defaultParams(); for (const key of Object.keys(base)) if (params && key in params && typeof params[key] === typeof base[key]) base[key] = Array.isArray(params[key]) ? [...params[key]] : params[key]; return base; }
+function normalizeParams(params) {
+  const base = defaultParams();
+  for (const key of Object.keys(base)) {
+    if (!params || !(key in params) || typeof params[key] !== typeof base[key]) continue;
+    const control = controlByPath[key];
+    if (control.kind === 'select' && !control.options.includes(params[key])) continue; // stock no longer offered
+    base[key] = Array.isArray(params[key]) ? [...params[key]] : params[key];
+  }
+  return base;
+}
+// Small square JPEG of the current preview, stored with a saved look as its thumbnail.
+function previewThumbnail() {
+  if (!state.editedCanvas) return null;
+  try {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 160;
+    drawCover(canvas.getContext('2d'), state.editedCanvas, 160, 160, .3);
+    return canvas.toDataURL('image/jpeg', .8);
+  } catch { return null; }
+}
 function loadMyLooks() {
   try {
     const value = JSON.parse(localStorage.getItem(MY_LOOKS_KEY) || '[]');
@@ -124,14 +141,13 @@ function buildMyLookTiles() {
   for (const look of myLooks) {
     const tile = document.createElement('button');
     tile.className = 'look-tile'; tile.type = 'button'; tile.dataset.mine = look.id; tile.setAttribute('aria-pressed', 'false');
-    tile.innerHTML = '<span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name"></span>';
+    tile.innerHTML = '<span class="look-thumb" aria-hidden="true"><img alt=""></span><span class="look-tile-name"></span>';
     tile.querySelector('.look-tile-name').textContent = look.name;
+    if (typeof look.thumb === 'string' && look.thumb.startsWith('data:image/jpeg')) {
+      tile.querySelector('img').src = look.thumb;
+      tile.querySelector('.look-thumb').classList.add('has-preview');
+    }
     elements.lookGrid.prepend(tile);
-    loadSampleImage().then(image => {
-      const canvas = tile.querySelector('canvas');
-      drawCover(canvas.getContext('2d'), renderImage(image, stubAdjustments(look.params), 'none', 260), canvas.width, canvas.height, .3);
-      canvas.closest('.look-thumb').classList.add('has-preview');
-    }).catch(() => {});
   }
 }
 function pickMyLook(id) {
@@ -142,7 +158,7 @@ function saveAsMyLook() {
   const suggested = `My look ${myLooks.length + 1}`;
   const name = prompt('Name this look', currentMyLook()?.name || suggested);
   if (name === null) return;
-  const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, params: cloneParams(state.advanced) };
+  const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, params: cloneParams(state.advanced), thumb: previewThumbnail() };
   myLooks = [...myLooks, look];
   const stored = saveMyLooks();
   buildMyLookTiles();
@@ -192,7 +208,7 @@ function syncLooks() {
     elements.lookGroup.textContent = 'Advanced · Spectral';
     elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Advanced film edit';
     elements.photoLookBadge.textContent = elements.lookName.textContent;
-    elements.lookDesc.textContent = `${optionLabel(state.advanced.film)} → ${state.advanced['io.scan_film'] ? 'negative scan' : optionLabel(state.advanced.print)}`;
+    elements.lookDesc.textContent = stockSummary(state.advanced);
     elements.strength.disabled = true;
     elements.strengthOutput.value = '—';
     return;
@@ -388,7 +404,20 @@ function buildFrames() {
 
 // ---------- Advanced (spectral) panel ----------
 const advancedRoots = { pipeline: elements.advPipeline, container: elements.advSections };
-function syncAdvancedPanel() { syncAdvanced(advancedRoots, state.advanced, { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches }); }
+function syncAdvancedPanel() {
+  syncAdvanced(advancedRoots, state.advanced, { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches });
+  // Slide film has no negative to print: it is always scanned directly.
+  const slide = isSlideFilm(state.advanced.film);
+  const scanSwitch = $('#adv-io-scan-film');
+  scanSwitch.setAttribute('aria-checked', scansFilm(state.advanced));
+  scanSwitch.disabled = slide;
+  $('#adv-print').disabled = scansFilm(state.advanced);
+  $('#adv-film-hint').textContent = slide ? 'Slide film is scanned directly, there is no print. Choose a negative film to print on paper.' : controlByPath.film.hint;
+  syncAdvancedNote();
+}
+function syncAdvancedNote() {
+  $('#advNote').hidden = !(state.mode === 'advanced' && state.renderQuality !== 'full' && hasSpatialEffects(state.advanced));
+}
 function setAdvancedValue(path, raw) {
   const control = controlByPath[path];
   if (control.kind === 'vec2') { const value = [...state.advanced[path]]; value[control.index] = Number(raw); state.advanced[path] = value; }
@@ -409,7 +438,17 @@ function buildAdvancedPanel() {
     const reset = event.target.closest('[data-reset]');
     if (reset) resetAdvanced(reset.dataset.reset);
   });
-  container.addEventListener('change', event => { const select = event.target.closest('select[data-path]'); if (select) change(() => setAdvancedValue(select.dataset.path, select.value)); });
+  container.addEventListener('change', event => {
+    const select = event.target.closest('select[data-path]'); if (!select) return;
+    change(() => {
+      if (select.dataset.path === 'film') {
+        const previousTarget = targetPrint(state.advanced.film);
+        const nextTarget = targetPrint(select.value);
+        if (nextTarget && (!previousTarget || state.advanced.print === previousTarget)) state.advanced.print = nextTarget;
+      }
+      setAdvancedValue(select.dataset.path, select.value);
+    });
+  });
   bindHistorySlider(container, 'input[type=range][data-path]', input => { setAdvancedValue(input.dataset.path, input.value); syncAdvancedPanel(); syncLooks(); scheduleRender(); });
   container.addEventListener('dblclick', event => { const input = event.target.closest('input[type=range][data-path]'); if (input) resetAdvanced(input.dataset.path); });
   elements.advPipeline.addEventListener('click', event => {
@@ -431,7 +470,7 @@ function setMode(mode) {
 function syncMode() {
   const advanced = state.mode === 'advanced';
   document.body.classList.toggle('is-advanced', advanced);
-  document.body.classList.toggle('no-paper', advanced && Boolean(state.advanced['io.scan_film']));
+  document.body.classList.toggle('no-paper', advanced && scansFilm(state.advanced));
   document.querySelectorAll('.mode-switch [data-mode]').forEach(button => {
     const checked = button.dataset.mode === state.mode;
     button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1;
@@ -509,14 +548,20 @@ async function runAdvancedPreview() {
   advancedBusy = true; advancedDirty = false;
   const imageId = state.imageId; const frame = state.frame;
   try {
-    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'preview' });
-    if (imageId === state.imageId && state.mode === 'advanced' && state.renderQuality === 'preview') presentAdvanced(bitmap, frame);
+    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'preview', onStatus: showPreviewStatus });
+    if (imageId === state.imageId && state.mode === 'advanced' && state.renderQuality === 'preview') { presentAdvanced(bitmap, frame); syncRenderStatus(); }
   } catch (error) {
-    if (error?.name !== 'AbortError') { console.error(error); toast('The film preview could not be rendered.'); }
+    if (error?.name !== 'AbortError') { console.error(error); toast('The film preview could not be rendered. Check your connection and try again.'); }
   } finally {
     advancedBusy = false;
+    if (state.renderQuality === 'preview') syncRenderStatus();
     if (advancedDirty && state.mode === 'advanced' && state.image) runAdvancedPreview();
   }
+}
+function showPreviewStatus(text) {
+  if (!text || state.renderQuality !== 'preview') return;
+  elements.renderText.textContent = text; elements.renderDetail.textContent = '';
+  $('#renderStatus').dataset.state = 'working';
 }
 function presentAdvanced(bitmap, frame) {
   state.editedCanvas = frameCanvas(bitmap, frame);
@@ -539,9 +584,10 @@ async function renderFullQuality() {
   syncRenderStatus(); setRenderProgress(0);
   const frame = state.frame;
   try {
-    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress });
+    const bitmap = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
     if (state.renderAbort !== controller) return;
     state.renderAbort = null; state.renderQuality = 'full';
+    state.fullRender = { key: JSON.stringify([state.imageId, state.advanced]), bitmap };
     presentAdvanced(bitmap, frame); syncRenderStatus();
   } catch (error) {
     if (state.renderAbort === controller) { state.renderAbort = null; state.renderQuality = 'preview'; syncRenderStatus(); }
@@ -561,6 +607,7 @@ function syncRenderStatus() {
   elements.renderFull.hidden = rendering || full;
   elements.renderCancel.hidden = !rendering;
   elements.renderProgress.hidden = !rendering;
+  syncAdvancedNote();
   if (rendering) return;
   elements.renderText.textContent = full ? 'Full quality' : engineInfo.previewLabel;
   elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${engineInfo.previewDetail}`;
@@ -598,7 +645,7 @@ async function loadFile(file) {
     state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
     exportCanvas = { key: '', canvas: null }; preparedExport = null;
     if (state.renderAbort) cancelFullRender();
-    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview';
+    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview'; state.fullRender = null;
     document.body.classList.add('has-image');
     elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
     elements.fileName.textContent = file.name;
@@ -711,8 +758,12 @@ const canShareFiles = (() => {
   try { return Boolean(navigator.canShare?.({ files: [new File([new Blob(['x'], { type: 'image/jpeg' })], 'test.jpg', { type: 'image/jpeg' })] })); } catch { return false; }
 })();
 
-function exportEdge(size = state.exportSize) {
+function exportDimensions() {
   const { naturalWidth: width, naturalHeight: height } = state.image;
+  return state.mode === 'advanced' ? fullRenderSize(width, height) : { width, height, capped: false };
+}
+function exportEdge(size = state.exportSize) {
+  const { width, height } = exportDimensions();
   const full = Math.max(width, height);
   if (size === 'share' && width > SHARE_WIDTH) return Math.round(SHARE_WIDTH * full / width);
   return full;
@@ -721,7 +772,10 @@ function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportE
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
 async function renderAdvancedExport(edge) {
   const frame = state.frame;
-  const full = await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full' });
+  const key = JSON.stringify([state.imageId, state.advanced]);
+  const full = state.fullRender?.key === key ? state.fullRender.bitmap
+    : await renderSpectral(await ensureBitmap(), cloneParams(state.advanced), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
+  if (state.fullRender?.key !== key) state.fullRender = { key, bitmap: full };
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   if (scale === 1) return frameCanvas(full, frame);
   const scaled = document.createElement('canvas');
@@ -734,7 +788,7 @@ function exportSummary() {
   const frameName = state.frame === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame).name} frame`;
   if (state.mode === 'advanced') {
     const look = currentMyLook()?.name || 'Advanced';
-    return [look, `${optionLabel(state.advanced.film)} → ${state.advanced['io.scan_film'] ? 'negative scan' : optionLabel(state.advanced.print)}`, frameName].join(' · ');
+    return [look, stockSummary(state.advanced), frameName].join(' · ');
   }
   const preset = currentPreset();
   const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;
@@ -750,7 +804,8 @@ function syncExportOptions() {
   document.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === state.exportSize));
   const shareButton = document.querySelector('[data-size="share"]');
   shareButton.disabled = !canShrink;
-  elements.fullSizeDetail.textContent = `${width} × ${height}`;
+  const target = exportDimensions();
+  elements.fullSizeDetail.textContent = target.capped ? `${target.width} × ${target.height} · film engine limit` : `${width} × ${height}`;
   elements.shareSizeDetail.textContent = canShrink ? `${SHARE_WIDTH} px wide` : 'Already small';
   elements.qualityGroup.hidden = state.exportFormat === 'image/png';
   elements.qualityOutput.value = `${qualityWord(Number(elements.quality.value))} · ${elements.quality.value}%`;
@@ -827,7 +882,7 @@ function closePhoto() {
   setHolding(false);
   if (state.renderAbort) cancelFullRender();
   clearTimeout(advancedTimer);
-  state.imageBitmap?.close?.(); state.imageBitmap = null;
+  state.imageBitmap?.close?.(); state.imageBitmap = null; state.fullRender = null;
   state.image = null; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
   exportCanvas = { key: '', canvas: null }; preparedExport = null;
   document.body.classList.remove('has-image');

@@ -208,6 +208,8 @@ body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); }
 .look-thumb { position:relative; display:block; aspect-ratio:1/1; overflow:hidden; border-radius:var(--radius); box-shadow:0 0 0 1px var(--line); background:linear-gradient(145deg,#e9b56d 0 33%,#63806f 33% 62%,#273c37 62%); }
 .look-thumb canvas { display:block; width:100%; height:100%; opacity:0; transition:opacity .2s ease; }
 .look-thumb.has-preview canvas { opacity:1; }
+.look-thumb img { display:none; width:100%; height:100%; object-fit:cover; }
+.look-thumb.has-preview img { display:block; }
 .look-tile[aria-pressed=true] .look-thumb { box-shadow:var(--ring-selected); }
 .look-tile-name { display:block; margin-top:6px; font-size:var(--fs-sm); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .look-tile[aria-pressed=true] .look-tile-name { font-weight:700; }
@@ -273,6 +275,7 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .button-xl { min-height:52px; border-radius:var(--radius-lg); font-size:15px; gap:10px; }
 .dialog-card>p.export-status { margin:-8px 0 0; min-height:1.2em; font-size:var(--fs-sm); color:var(--text-muted); text-align:center; }
 .sheet-handle { display:none; }
+.about-links { display:flex; flex-wrap:wrap; gap:8px 18px; }
 .about-card a { display:inline-flex; align-items:center; gap:5px; color:var(--accent); font-weight:600; }
 
 /* Camera */
@@ -306,7 +309,7 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .mode-row + .control-tabs { margin-top:12px; }
 
 /* Advanced (spectral) panel */
-.advanced-panel { display:none; flex:1; min-height:0; flex-direction:column; }
+.advanced-panel { position:relative; display:none; flex:1; min-height:0; flex-direction:column; }
 body.is-advanced .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
 body.is-advanced .control-tabs,body.is-advanced .panel-body { display:none; }
 body.is-advanced .advanced-panel { display:flex; }
@@ -317,6 +320,7 @@ body.is-advanced .advanced-panel { display:flex; }
 .pipeline-dot { display:none; position:absolute; top:4px; right:2px; width:5px; height:5px; border-radius:3px; background:var(--accent); }
 .pipeline-step.is-edited .pipeline-dot { display:block; }
 .pipeline-arrow { color:var(--text-disabled); }
+.adv-note { flex:none; margin:2px 20px 4px; padding:8px 10px; border-radius:var(--radius-sm); background:var(--raised); font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
 .adv-scroll { flex:1; min-height:0; overflow-y:auto; padding:6px 12px 12px; scrollbar-color:var(--line-strong) transparent; }
 .adv-section { border-bottom:1px solid var(--line); }
 .adv-heading { margin:0; font:inherit; }
@@ -373,7 +377,9 @@ body.is-advanced .render-divider { display:block; }
 body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
 .render-state { display:flex; align-items:center; gap:8px; font-size:var(--fs-md); color:var(--text-2); white-space:nowrap; }
 .render-dot { width:8px; height:8px; border-radius:4px; background:var(--ok); }
-[data-state=rendering] .render-dot { background:var(--accent); }
+[data-state=rendering] .render-dot,[data-state=working] .render-dot { background:var(--accent); }
+@media (prefers-reduced-motion:no-preference) { [data-state=working] .render-dot { animation:pulse 1s ease-in-out infinite alternate; } }
+@keyframes pulse { to { opacity:.3; } }
 .render-action { background:var(--control); color:var(--text); font-weight:600; }
 .render-action:hover { background:var(--line-strong); }
 .render-cancel { background:transparent; border:1px solid var(--line-strong); }
@@ -517,6 +523,7 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .adv-slider input[type=range] { height:30px; }
   .adv-footer { padding:8px 16px; }
   .adv-credit { padding:0 16px 16px; }
+  .adv-note { margin:0 16px 6px; }
 
   /* Render status floats on the print; hold-to-compare hidden in Advanced */
   body.is-advanced .view-pill { left:10px; right:10px; bottom:10px; justify-content:space-between; }

@@ -1,0 +1,252 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 6c92ef7..dac9291 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -17,7 +17,7 @@ rust-version = "1.85"
+ 
+ [workspace.dependencies]
+ spektrafilm-core = { path = "crates/spektrafilm-core" }
+-spektrafilm-gpu = { path = "crates/spektrafilm-gpu" }
++spektrafilm-gpu = { path = "crates/spektrafilm-gpu", default-features = false }
+ spektrafilm-math = { path = "crates/spektrafilm-math" }
+ spektrafilm-model = { path = "crates/spektrafilm-model" }
+ 
+diff --git a/crates/spektrafilm-cli/src/main.rs b/crates/spektrafilm-cli/src/main.rs
+index 33fc3e1..da5a7f1 100644
+--- a/crates/spektrafilm-cli/src/main.rs
++++ b/crates/spektrafilm-cli/src/main.rs
+@@ -62,6 +62,34 @@ enum Commands {
+         #[arg(long, default_value = "data")]
+         data_dir: PathBuf,
+     },
++    /// PhotoKamo: colour-only 3D LUT for fast previews. Uses the full spectral
++    /// path with every spatial effect (grain, halation, blur, glare, coupler
++    /// diffusion, sharpening) switched off, and evaluates the whole grid in one
++    /// batch. Auto-exposure is metered from `--meter` so the LUT matches a full
++    /// render of that image. Output: raw little-endian f32, size³ × RGB,
++    /// red fastest, input and output sRGB-encoded.
++    Lut {
++        #[arg(long)]
++        film: String,
++        #[arg(long)]
++        paper: Option<String>,
++        #[arg(long)]
++        scan_film: bool,
++        /// Path to JSON params file for overrides.
++        #[arg(long)]
++        params: Option<PathBuf>,
++        /// Image (PNG) to meter auto-exposure from.
++        #[arg(long)]
++        meter: Option<PathBuf>,
++        #[arg(long, default_value = "33")]
++        size: u32,
++        #[arg(short, long)]
++        output: PathBuf,
++        #[arg(long, default_value = "data")]
++        data_dir: PathBuf,
++    },
++    /// PhotoKamo: print the default runtime parameters as JSON.
++    Defaults,
+     /// Export a 3D CUBE LUT for use in other software.
+     ExportLut {
+         /// Film stock name.
+@@ -121,6 +149,12 @@ fn main() -> Result<()> {
+         Commands::ListProfiles { data_dir } => {
+             cmd_list_profiles(&data_dir);
+         }
++        Commands::Lut { film, paper, scan_film, params, meter, size, output, data_dir } => {
++            cmd_lut(&film, paper.as_deref(), scan_film, params.as_deref(), meter.as_deref(), size, &output, &data_dir)?;
++        }
++        Commands::Defaults => {
++            println!("{}", serde_json::to_string_pretty(&RuntimeParams::default())?);
++        }
+         Commands::ExportLut {
+             film,
+             paper,
+@@ -312,6 +346,99 @@ fn cmd_process(
+     Ok(())
+ }
+ 
++#[allow(clippy::too_many_arguments)]
++fn cmd_lut(
++    film_name: &str,
++    paper_name: Option<&str>,
++    scan_film: bool,
++    params_file: Option<&Path>,
++    meter: Option<&Path>,
++    size: u32,
++    output: &Path,
++    data_dir: &Path,
++) -> Result<()> {
++    use spektrafilm_core::stages::filming::{input_colorspace_to_xyz, measure_autoexposure_ev};
++    let start = Instant::now();
++    let film = profile::load_profile_by_name(data_dir, film_name)
++        .with_context(|| format!("loading film profile: {film_name}"))?;
++    let print_stock = if scan_film {
++        film_name.to_string()
++    } else if let Some(p) = paper_name {
++        p.to_string()
++    } else if let Some(ref target) = film.info.target_print {
++        target.clone()
++    } else {
++        bail!("no paper specified and film has no target_print");
++    };
++    let print = profile::load_profile_by_name(data_dir, &print_stock)
++        .with_context(|| format!("loading print profile: {print_stock}"))?;
++
++    let mut params: RuntimeParams = if let Some(pf) = params_file {
++        let f = std::fs::File::open(pf).with_context(|| format!("opening params file: {}", pf.display()))?;
++        serde_json::from_reader(std::io::BufReader::new(f)).with_context(|| "parsing params file")?
++    } else {
++        RuntimeParams::default()
++    };
++    params.io.scan_film = scan_film;
++
++    // Meter auto-exposure like a full render of the same image would. The filming
++    // stage applies it as a linear gain *before* exposure compensation (which the
++    // enlarger may compensate for), so bake it into the grid the same way.
++    let mut ae_gain = 1.0f32;
++    if params.camera.auto_exposure {
++        if let Some(m) = meter {
++            let image = load_image(m)?; // PNG → linear sRGB
++            let ev = measure_autoexposure_ev(&image, &input_colorspace_to_xyz("sRGB"), &params.camera.auto_exposure_method);
++            ae_gain = 2.0f32.powf(ev);
++            eprintln!("Auto exposure: {ev:+.4} EV");
++        }
++        params.camera.auto_exposure = false;
++    }
++
++    // Colour only: switch off everything spatial so grid samples don't mix.
++    params.film_render.grain.active = false;
++    params.film_render.halation.active = false;
++    params.film_render.glare.active = false;
++    params.film_render.dir_couplers.diffusion_size_um = 0.0;
++    params.film_render.dir_couplers.diffusion_tail_weight = 0.0;
++    params.camera.lens_blur_um = 0.0;
++    params.camera.diffusion_filter.active = false;
++    params.enlarger.lens_blur = 0.0;
++    params.enlarger.diffusion_filter.active = false;
++    params.scanner.lens_blur = 0.0;
++    params.scanner.unsharp_mask = [0.0, 0.0];
++    // Grid values are sRGB-encoded like browser pixels; decode them exactly as
++    // `load_png` does for `process`, so both paths see identical linear input.
++    params.io.input_color_space = "sRGB".to_string();
++    params.io.input_cctf_decoding = false;
++
++    let pipeline = Pipeline::new_with_spectral(film, print, params, data_dir)
++        .map_err(|e| anyhow::anyhow!("spectral pipeline: {e}"))?;
++    let s = size as usize;
++    let step = 1.0 / (s - 1) as f32;
++    let mut data = Vec::with_capacity(s * s * s * 3);
++    for bi in 0..s {
++        for gi in 0..s {
++            for ri in 0..s {
++                for v in [ri, gi, bi] {
++                    let linear = spektrafilm_math::precision::srgb_decode(spektrafilm_math::precision::from_f32(v as f32 * step));
++                    data.push(linear * spektrafilm_math::precision::from_f32(ae_gain));
++                }
++            }
++        }
++    }
++    let grid = ImageBuf::from_data((s * s) as _, s as _, data);
++    let backend = spektrafilm_gpu::select_backend();
++    let out = pipeline.process(grid, backend.as_ref());
++    let mut bytes = Vec::with_capacity(out.data.len() * 4);
++    for &v in out.data.iter() {
++        bytes.extend_from_slice(&(v as f32).to_le_bytes());
++    }
++    std::fs::write(output, &bytes).with_context(|| format!("writing LUT: {}", output.display()))?;
++    eprintln!("LUT {s}^3: {} ms", start.elapsed().as_millis());
++    Ok(())
++}
++
+ fn bytemuck_cast_f64_to_bytes(v: &[f64]) -> &[u8] {
+     unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, std::mem::size_of_val(v)) }
+ }
+diff --git a/crates/spektrafilm-core/Cargo.toml b/crates/spektrafilm-core/Cargo.toml
+index 40bfad9..840da2d 100644
+--- a/crates/spektrafilm-core/Cargo.toml
++++ b/crates/spektrafilm-core/Cargo.toml
+@@ -27,6 +27,6 @@ image.workspace = true
+ cblas = "0.4"
+ blas-src = { version = "0.10", features = ["accelerate"] }
+ 
+-[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
++[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows"), not(target_family = "wasm")))'.dependencies]
+ cblas = "0.4"
+ blas-src = { version = "0.10", features = ["openblas"] }
+diff --git a/crates/spektrafilm-core/src/spectral_service.rs b/crates/spektrafilm-core/src/spectral_service.rs
+index 314ef93..037c1d4 100644
+--- a/crates/spektrafilm-core/src/spectral_service.rs
++++ b/crates/spektrafilm-core/src/spectral_service.rs
+@@ -9,7 +9,7 @@ use spektrafilm_math::spectral::{self, N_WAVELENGTHS, TcLut};
+ 
+ // Pull in BLAS for the spectra→tc_lut contraction (matches Python's
+ // opt_einsum + numpy summation pattern bit-for-bit on macOS Accelerate).
+-#[cfg(not(target_os = "windows"))]
++#[cfg(not(any(target_os = "windows", target_family = "wasm")))]
+ #[allow(unused_imports)]
+ use blas_src as _;
+ 
+@@ -18,7 +18,7 @@ fn dgemm_no_transpose(a: &[f64], b: &[f64], c: &mut [f64], m: usize, n: usize, k
+     assert_eq!(b.len(), k * n, "dgemm_no_transpose: b.len() != k*n");
+     assert_eq!(c.len(), m * n, "dgemm_no_transpose: c.len() != m*n");
+ 
+-    #[cfg(not(target_os = "windows"))]
++    #[cfg(not(any(target_os = "windows", target_family = "wasm")))]
+     unsafe {
+         cblas::dgemm(
+             cblas::Layout::RowMajor,
+@@ -38,7 +38,7 @@ fn dgemm_no_transpose(a: &[f64], b: &[f64], c: &mut [f64], m: usize, n: usize, k
+         );
+     }
+ 
+-    #[cfg(target_os = "windows")]
++    #[cfg(any(target_os = "windows", target_family = "wasm"))]
+     {
+         for row in 0..m {
+             for col in 0..n {
+diff --git a/crates/spektrafilm-gpu/Cargo.toml b/crates/spektrafilm-gpu/Cargo.toml
+index 26ae41b..0c936bd 100644
+--- a/crates/spektrafilm-gpu/Cargo.toml
++++ b/crates/spektrafilm-gpu/Cargo.toml
+@@ -27,7 +27,7 @@ cblas = "0.4"
+ blas-src = { version = "0.10", features = ["accelerate"] }
+ accelerate-src = "0.3"
+ 
+-[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows")))'.dependencies]
++[target.'cfg(all(not(target_os = "macos"), not(target_os = "windows"), not(target_family = "wasm")))'.dependencies]
+ cblas = "0.4"
+ blas-src = { version = "0.10", features = ["openblas"] }
+ openblas-src = "0.10"
+diff --git a/crates/spektrafilm-gpu/src/cpu_backend.rs b/crates/spektrafilm-gpu/src/cpu_backend.rs
+index e4736d0..bc815ca 100644
+--- a/crates/spektrafilm-gpu/src/cpu_backend.rs
++++ b/crates/spektrafilm-gpu/src/cpu_backend.rs
+@@ -8,7 +8,7 @@ use crate::{ComputeBackend, Lut3D};
+ // Pull in BLAS-src so `cblas_dgemm` is available at link time. The
+ // provider crate (Accelerate on macOS, OpenBLAS elsewhere) is selected
+ // in this crate's Cargo.toml.
+-#[cfg(not(target_os = "windows"))]
++#[cfg(not(any(target_os = "windows", target_family = "wasm")))]
+ #[allow(unused_imports)]
+ use blas_src as _;
+ 
+@@ -47,7 +47,7 @@ fn dgemm_blas(
+ ) {
+     assert_eq!(a.len(), m * k, "dgemm_blas: a.len() != m*k");
+     assert_eq!(c.len(), m * n, "dgemm_blas: c.len() != m*n");
+-    #[cfg(not(target_os = "windows"))]
++    #[cfg(not(any(target_os = "windows", target_family = "wasm")))]
+     unsafe {
+         cblas::dgemm(
+             cblas::Layout::RowMajor,
+@@ -69,7 +69,7 @@ fn dgemm_blas(
+             n as i32,
+         );
+     }
+-    #[cfg(target_os = "windows")]
++    #[cfg(any(target_os = "windows", target_family = "wasm"))]
+     {
+         let _ = ldb;
+         c.par_chunks_exact_mut(n).enumerate().for_each(|(row, crow)| {

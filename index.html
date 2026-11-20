@@ -185,12 +185,13 @@
 
       <section class="advanced-panel" id="advancedPanel" aria-label="Advanced film controls">
         <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
+        <p class="adv-note" id="advNote" hidden>The fast preview shows colour. Grain, halation and blur appear when you render full quality.</p>
         <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
         <div class="adv-footer">
           <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
           <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
         </div>
-        <p class="adv-credit">Film modeling powered by <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm<span class="visually-hidden"> (opens in a new tab)</span></a> by Andrea Volpato.</p>
+        <p class="adv-credit">Film modeling powered by <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm<span class="visually-hidden"> (opens in a new tab)</span></a> by Andrea Volpato, running on your device via <a href="https://github.com/turbasvin/spektrafilm-rs" target="_blank" rel="noopener noreferrer">spektrafilm-rs<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
       </section>
     </aside>
   </main>
@@ -258,8 +259,9 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
       <p>PhotoKamo is a privacy-first photo playground. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
-      <p>All camera and film looks are creative approximations—not exact reproductions. The Spektrafilm-inspired family acknowledges the research and open-source work of Andrea Volpato.</p>
-      <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Visit the Spektrafilm project <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg></a>
+      <p>The Simple looks are creative approximations, not exact reproductions. Advanced mode runs a physical film model — spektrafilm by Andrea Volpato, ported to Rust as spektrafilm-rs — compiled to WebAssembly so it runs entirely in your browser. Spectral upsampling data courtesy of Johannes Hanatos.</p>
+      <p>PhotoKamo is free software under the GNU General Public License v3, as is the film engine it includes.</p>
+      <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
     </article>
   </dialog>
 

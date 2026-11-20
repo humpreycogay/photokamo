@@ -1,0 +1,19 @@
+{
+  "id": "spektrafilm-rs",
+  "name": "Spektrafilm",
+  "summary": "Spectral simulation of colour film, printing and scanning.",
+  "version": "spektrafilm-rs 9dd59b0 + PhotoKamo changes",
+  "licence": { "name": "GPL-3.0", "file": "LICENSE", "url": "https://www.gnu.org/licenses/gpl-3.0.html" },
+  "source": { "local": "engines/spektrafilm-rs/src/", "upstream": "https://github.com/turbasvin/spektrafilm-rs", "commit": "9dd59b0380194b93686aaa230a8bb9680aa270a4" },
+  "credits": [
+    { "name": "spektrafilm", "by": "Andrea Volpato", "role": "Film model, pipeline design, film and paper profiles", "url": "https://github.com/andreavolpato/spektrafilm" },
+    { "name": "spektrafilm-rs", "by": "turbasvin", "role": "Rust port, compiled to WebAssembly by PhotoKamo", "url": "https://github.com/turbasvin/spektrafilm-rs", "licence": "GPL-3.0" },
+    { "name": "hanatos2025 spectral upsampling LUT", "by": "Johannes Hanatos", "role": "RGB to spectrum conversion", "url": "https://github.com/hanatos/vkdt" },
+    { "name": "browser_wasi_shim", "by": "bjorn3", "role": "Runs the engine in the browser", "url": "https://github.com/bjorn3/browser_wasi_shim", "licence": "MIT OR Apache-2.0" }
+  ],
+  "changes": [
+    "Built for WebAssembly (wasm32-wasip1), GPU backend off",
+    "Added a colour-only 3D LUT command for fast previews",
+    "Added a command that prints default parameters"
+  ]
+}
