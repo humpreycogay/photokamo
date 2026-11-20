@@ -132,10 +132,51 @@ function drawCover(ctx, source, width, height, focusY = .5) {
   ctx.drawImage(source, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
 }
 
+// The bundled sample photo, loaded once and shared by the start screen and the look thumbnails.
+let sampleImagePromise;
+function loadSampleImage() {
+  sampleImagePromise ||= new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener('load', () => resolve(image), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Sample image could not be loaded from ${presetPreviewSource}.`)), { once: true });
+    image.src = presetPreviewSource;
+  });
+  return sampleImagePromise;
+}
+
+function renderStartPreview(image) {
+  document.querySelectorAll('[data-start-look]').forEach(canvas => {
+    const preset = presets.find(item => item.id === canvas.dataset.startLook);
+    try {
+      const preview = renderImage(image, preset.values, 'none', 900);
+      const ctx = canvas.getContext('2d');
+      const focusX = Number(canvas.dataset.focus);
+      const scale = Math.max(canvas.width / preview.width, canvas.height / preview.height);
+      const sourceWidth = canvas.width / scale, sourceHeight = canvas.height / scale;
+      ctx.drawImage(preview, (preview.width - sourceWidth) * focusX, (preview.height - sourceHeight) * .3, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+      canvas.classList.add('is-ready');
+    } catch (error) {
+      console.warn(`Could not render the ${preset.name} start preview.`, error);
+    }
+  });
+}
+
+async function loadSample() {
+  try {
+    const response = await fetch(presetPreviewSource);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    await loadFile(new File([blob], 'sample-portrait.jpg', { type: blob.type || 'image/jpeg' }));
+  } catch (error) {
+    console.error(error);
+    toast('The sample photo could not be loaded.');
+  }
+}
+
 function renderPresetPreviews() {
-  const image = new Image();
-  image.decoding = 'async';
-  image.addEventListener('load', () => {
+  loadSampleImage().then(image => {
+    renderStartPreview(image);
     let index = 0;
     const renderNext = () => {
       const preset = presets[index++];
@@ -151,9 +192,7 @@ function renderPresetPreviews() {
       setTimeout(renderNext, 0);
     };
     renderNext();
-  }, { once: true });
-  image.addEventListener('error', () => console.warn(`Preset preview image could not be loaded from ${presetPreviewSource}.`), { once: true });
-  image.src = presetPreviewSource;
+  }, error => console.warn(error.message));
 }
 
 // ---------- Adjust panel ----------
@@ -562,6 +601,8 @@ mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom(
 
 elements.fileInput.addEventListener('change', event => loadFile(event.target.files[0]));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
+$('#sampleButton').addEventListener('click', loadSample);
+$('#lookCount').textContent = presets.filter(preset => preset.id !== 'original').length;
 $('#cameraButton').addEventListener('click', openCamera);
 $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click());
 elements.fileMenu.addEventListener('click', event => {
