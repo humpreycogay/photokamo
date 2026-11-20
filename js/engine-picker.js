@@ -4,7 +4,7 @@
 // On phones the same popover is styled as a bottom sheet (css: .engine-list).
 //
 // createEnginePicker({ button, list, name, status, groups, onChoose, place })
-//   groups: [{ id, label, items: [{ id, name, icon }] }]. Rows show the name only; groups are
+//   groups: [{ id, label, items: [{ id, name }] }]. Rows show the name only; groups are
 //   split by a line, and their label is for screen readers.
 //   place(): false to skip positioning under the button (bottom sheet)
 // Returns { setValue(id), setStatus(text, tone) }.
@@ -17,7 +17,7 @@ export function createEnginePicker({ button, list, name, status, groups, onChoos
   let value = items[0].id;
   let active = value;
 
-  list.innerHTML = groups.map(group => `<div class="engine-group" role="group" aria-label="${group.label}">${group.items.map(item => `<div class="engine-option" role="option" id="${optionId(item.id)}" data-engine="${item.id}" aria-selected="false"><span class="engine-option-icon" aria-hidden="true">${item.icon}</span><span class="engine-option-name">${item.name}</span>${check}</div>`).join('')}</div>`).join('');
+  list.innerHTML = groups.map(group => `<div class="engine-group" role="group" aria-label="${group.label}">${group.items.map(item => `<div class="engine-option" role="option" id="${optionId(item.id)}" data-engine="${item.id}" aria-selected="false"><span class="engine-option-name">${item.name}</span>${check}</div>`).join('')}</div>`).join('');
   const option = id => list.querySelector(`[data-engine="${id}"]`);
 
   function setActive(id, scroll = true) {
@@ -70,7 +70,6 @@ export function createEnginePicker({ button, list, name, status, groups, onChoos
       value = id;
       const item = items.find(entry => entry.id === id);
       name.textContent = item.name;
-      button.querySelector('.engine-button-icon').innerHTML = item.icon;
       list.querySelectorAll('.engine-option').forEach(row => row.setAttribute('aria-selected', row.dataset.engine === id));
     },
     setStatus(text, tone = '') {

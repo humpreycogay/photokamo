@@ -55,7 +55,22 @@ export const frames = [
   { id: 'paper', name: 'Paper print', description: 'White print border' },
   { id: 'classic', name: 'Classic', description: '35mm black' },
   { id: 'instant', name: 'Instant', description: 'Wide paper' },
-  { id: 'sprocket', name: 'Film strip', description: 'Sprocket edge' }
+  { id: 'sprocket', name: 'Film strip', description: 'Sprocket edge' },
+  { id: 'gallery', name: 'Gallery mat', description: 'White mat, thin keyline' },
+  { id: 'floating', name: 'Floating', description: 'Soft shadow on paper' },
+  { id: 'filed', name: 'Filed edge', description: 'Rough black darkroom border' }
+];
+
+// Crop › Platform: recommended upload sizes (px). Choosing one sets the crop ratio, and
+// export's "For sharing" size becomes this size.
+export const platformSizes = [
+  { group: 'Instagram', items: [['ig-square', 'Post, square', 1080, 1080], ['ig-portrait', 'Post, portrait', 1080, 1350], ['ig-landscape', 'Post, landscape', 1080, 566], ['ig-story', 'Story / Reel', 1080, 1920]] },
+  { group: 'Facebook', items: [['fb-square', 'Post, square', 1080, 1080], ['fb-portrait', 'Post, portrait', 1080, 1350], ['fb-landscape', 'Post, landscape', 1200, 630], ['fb-story', 'Story', 1080, 1920], ['fb-cover', 'Page cover', 851, 315]] },
+  { group: 'TikTok', items: [['tt-post', 'Photo / video', 1080, 1920]] },
+  { group: 'X', items: [['x-landscape', 'Post, landscape', 1600, 900], ['x-square', 'Post, square', 1080, 1080], ['x-header', 'Header', 1500, 500]] },
+  { group: 'YouTube', items: [['yt-thumb', 'Thumbnail', 1280, 720], ['yt-banner', 'Channel banner', 2560, 1440]] },
+  { group: 'LinkedIn', items: [['li-landscape', 'Post, landscape', 1200, 627], ['li-square', 'Post, square', 1200, 1200], ['li-banner', 'Profile banner', 1584, 396]] },
+  { group: 'Pinterest', items: [['pin', 'Pin', 1000, 1500]] }
 ];
 
 // Paper print border (Frames): sizes are % of the photo's short edge.

@@ -83,6 +83,7 @@
       <div class="viewport" id="viewport" hidden>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="previewCanvas" aria-label="Edited photo preview"></canvas>
+          <canvas class="text-overlay" id="textCanvas" aria-label="Text on the photo. Arrow keys move the selected text, Shift for larger steps."></canvas>
           <span class="original-badge" id="originalBadge" hidden>Original</span>
           <div class="processing" id="processing" hidden><span></span> Developing…</div>
           <div class="render-progress" id="renderProgress" hidden><span id="renderProgressBar"></span></div>
@@ -140,6 +141,7 @@
       </div>
       <div class="strip-row">
         <div class="strip-list" id="stripList" role="listbox" aria-label="Open photos. Ctrl or Command click, or long-press, to select several; Shift click for a range" aria-multiselectable="true" aria-orientation="horizontal"></div>
+        <button class="strip-select mobile-only" id="stripSelectToggle" type="button" aria-label="Select all photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg></button>
         <button class="strip-add" id="stripAdd" type="button" aria-label="Add photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </section>
@@ -150,6 +152,7 @@
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="cropPanel" id="cropTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>Crop</button>
         <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10"/></svg>Frames</button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="textPanel" id="textTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>Text</button>
       </div>
 
       <div class="panel-body">
@@ -158,7 +161,6 @@
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
               <button class="engine-button" id="engineButton" type="button" popovertarget="engineList" aria-haspopup="listbox" aria-expanded="false" aria-controls="engineList" aria-labelledby="engineLabel engineButtonName engineButtonStatus">
-                <span class="engine-button-icon" aria-hidden="true"></span>
                 <span class="engine-button-text"><span class="engine-button-name" id="engineButtonName">Basic</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span>
                 <svg class="icon-sm engine-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </button>
@@ -209,6 +211,7 @@
             <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
             <div class="adv-footer">
               <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
+              <button class="button button-quiet" id="deleteMyLook" type="button" hidden>Delete look</button>
               <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
             </div>
             <p class="adv-credit" id="advCredit"></p>
@@ -234,6 +237,7 @@
         <section class="tab-panel scroll-panel crop-panel" id="cropPanel" role="tabpanel" aria-labelledby="cropTab" hidden>
           <div class="panel-heading"><h2 id="ratioTitle">Aspect ratio</h2><button class="button button-ghost" id="cropSwap" type="button"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="11" height="11" rx="1"/><path d="M9 4h8a3 3 0 0 1 3 3v8"/><path d="M17 1l3 3-3 3"/></svg> Swap W×H</button></div>
           <div class="ratio-grid" id="ratioGrid" role="radiogroup" aria-labelledby="ratioTitle"></div>
+          <div class="crop-platform"><label for="cropPlatform">Size for a platform</label><select id="cropPlatform" aria-describedby="cropOutput"></select></div>
           <p class="crop-output" id="cropOutput"></p>
           <div class="slider-row"><label class="slider-label" for="cropZoom"><span>Zoom</span><output id="cropZoomOutput" for="cropZoom">1×</output></label><input id="cropZoom" data-crop="zoom" type="range" min="1" max="3" step="0.01"></div>
           <div class="slider-row"><label class="slider-label" for="cropStraighten"><span>Straighten</span><output id="cropStraightenOutput" for="cropStraighten">0°</output></label><input id="cropStraighten" data-crop="straighten" type="range" min="-45" max="45" step="0.5"></div>
@@ -264,6 +268,39 @@
             <label class="check-row"><input type="checkbox" id="matchPaper" aria-describedby="matchPaperHint"> Match paper tint to the chosen print paper</label>
             <p class="border-hint" id="matchPaperHint"></p>
           </section>
+        </section>
+
+        <section class="tab-panel scroll-panel text-panel" id="textPanel" role="tabpanel" aria-labelledby="textTab" hidden>
+          <div class="panel-heading"><h2>Text</h2><button class="button button-ghost" id="addText" type="button"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Add text</button></div>
+          <p class="panel-intro" id="textEmpty">Add a caption, a date or a title. Drag it on the photo to place it.</p>
+          <div class="text-layers" id="textLayers" role="radiogroup" aria-label="Text layers"></div>
+          <div class="text-editor" id="textEditor" hidden>
+            <label class="text-label" for="textContent">Text</label>
+            <textarea id="textContent" data-text="content" rows="2" spellcheck="true"></textarea>
+            <label class="text-label" for="textFont">Font</label>
+            <select id="textFont"></select>
+            <div class="slider-row"><label class="slider-label" for="textSize"><span>Size</span><output id="textSizeOutput" for="textSize">8%</output></label><input id="textSize" data-text="size" type="range" min="2" max="30" step="0.5"></div>
+            <p class="text-label" id="textColorLabel">Colour</p>
+            <div class="text-colors">
+              <div class="paper-swatches" id="textColors" role="radiogroup" aria-labelledby="textColorLabel"></div>
+              <label class="text-custom-color" title="Custom colour"><input id="textColor" data-text="color" type="color" aria-label="Custom colour"></label>
+            </div>
+            <div class="text-styles" role="group" aria-label="Style">
+              <button class="button button-ghost" type="button" data-text-toggle="bold" aria-pressed="false"><strong>B</strong><span class="visually-hidden"> Bold</span></button>
+              <button class="button button-ghost" type="button" data-text-toggle="italic" aria-pressed="false"><em>I</em><span class="visually-hidden"> Italic</span></button>
+              <button class="button button-ghost" type="button" data-text-toggle="shadow" aria-pressed="false">Shadow</button>
+            </div>
+            <div class="segmented text-align" id="textAlign" role="radiogroup" aria-label="Alignment">
+              <button type="button" role="radio" data-align="left" aria-checked="false">Left</button>
+              <button type="button" role="radio" data-align="center" aria-checked="false">Center</button>
+              <button type="button" role="radio" data-align="right" aria-checked="false">Right</button>
+            </div>
+            <div class="slider-row"><label class="slider-label" for="textOpacity"><span>Opacity</span><output id="textOpacityOutput" for="textOpacity">100%</output></label><input id="textOpacity" data-text="opacity" type="range" min="10" max="100" step="1"></div>
+            <p class="text-label" id="textPlaceLabel">Position</p>
+            <div class="text-place" id="textPlace" role="group" aria-labelledby="textPlaceLabel"></div>
+            <p class="border-hint">Drag the text anywhere on the image, borders included, or click it there and use the arrow keys.</p>
+            <button class="button button-ghost text-delete" id="deleteText" type="button">Delete this text</button>
+          </div>
         </section>
       </div>
 
@@ -383,6 +420,7 @@
         <label class="apply-part"><input type="checkbox" name="look"><span><strong>Look</strong><small id="applySumLook"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="adjustments"><span><strong>Adjustments</strong><small id="applySumAdjustments"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="frame"><span><strong>Frame</strong><small id="applySumFrame"></small></span></label>
+        <label class="apply-part"><input type="checkbox" name="text"><span><strong>Text</strong><small id="applySumText"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="crop"><span><strong>Crop ratio</strong><small id="applySumCrop"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="exposure"><span><strong>Exposure &amp; white balance</strong><small id="applySumExposure"></small></span></label>
       </fieldset>
