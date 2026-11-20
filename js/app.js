@@ -4,6 +4,7 @@ import { renderImage, frameCanvas, applyAdjustments } from './renderer.js';
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
+import { createEnginePicker } from './engine-picker.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -23,7 +24,7 @@ const elements = {
   advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
   renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
-  engineSelect: $('#engineSelect'), engineDesc: $('#engineDesc'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
+  engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineProgress: $('#engineProgress'), engineProgressBar: $('#engineProgressBar'), engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView')
@@ -481,7 +482,26 @@ function buildEnginePanel() {
 }
 
 const MB = bytes => (bytes / 1048576).toFixed(1);
+const HAS_WEBGPU = 'gpu' in navigator;
+const ICONS = {
+  presets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>',
+  film: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18M16 3v18M4 8h4M4 13h4M4 18h4M16 8h4M16 13h4M16 18h4"/></svg>'
+};
+// Engine picker (js/engine-picker.js): Presets, then the film engines in registry order.
+const enginePicker = createEnginePicker({
+  button: elements.engineButton, list: elements.engineList, name: $('#engineButtonName'), status: $('#engineButtonStatus'),
+  groups: [
+    { id: 'quick', label: 'Quick', items: [{ id: PRESETS, name: 'Presets', description: `${presets.filter(preset => preset.id !== 'original').length} looks · instant · works everywhere`, icon: ICONS.presets }] },
+    { id: 'film', label: 'Film simulation · runs on your device', items: engines.map(entry => ({ id: entry.id, name: entry.label, description: entry.description, icon: ICONS.film })) }
+  ],
+  onChoose: id => switchEngine(id),
+  onOpen: syncSavedBadges,
+  place: () => !mobileQuery.matches
+});
+const engineNote = entry => (entry.slowWithoutWebGPU && !HAS_WEBGPU ? 'Slower here (no WebGPU)' : '');
+for (const entry of engines) enginePicker.setMeta(entry.id, { size: entry.approxDownload, note: engineNote(entry) });
 function setEngineStatus(status, error = null) {
+  if (status === 'ready' && engine.status !== 'ready') syncSavedBadges();
   engine.status = status; engine.error = error;
   if (status !== 'preparing') { elements.engineProgress.hidden = true; elements.engineProgressBar.style.width = '0%'; }
   syncEngineBar();
@@ -489,22 +509,27 @@ function setEngineStatus(status, error = null) {
 function showEngineDownload({ loaded, total, done }) {
   if (engine.status === 'ready' || engine.status === 'failed') return;
   if (engine.status !== 'preparing') { engine.status = 'preparing'; syncEngineBar(); }
-  if (done) { elements.engineStatusText.textContent = 'Preparing the engine…'; elements.engineProgress.hidden = true; return; }
+  if (done) { elements.engineStatusText.textContent = 'Preparing the engine…'; elements.engineProgress.hidden = true; enginePicker.setStatus('Preparing…'); return; }
   elements.engineStatusText.textContent = total ? `Downloading the engine… ${MB(loaded)} of ${MB(total)} MB` : `Downloading the engine… ${MB(loaded)} MB`;
+  enginePicker.setStatus(total ? `Downloading… ${Math.min(100, Math.round(loaded / total * 100))}%` : `Downloading… ${MB(loaded)} MB`);
   elements.engineProgress.hidden = !total;
   if (total) elements.engineProgressBar.style.width = `${Math.min(100, Math.round(loaded / total * 100))}%`;
 }
 function syncEngineBar() {
-  elements.engineSelect.value = state.engine;
+  enginePicker.setValue(state.engine);
   elements.engineAboutButton.hidden = !isFilm();
   if (!isFilm()) {
-    elements.engineDesc.textContent = `${presets.filter(preset => preset.id !== 'original').length} quick looks · instant · nothing to download`;
+    enginePicker.setStatus(`${presets.filter(preset => preset.id !== 'original').length} quick looks · instant · nothing to download`);
     elements.engineStatus.dataset.state = 'idle'; elements.engineStatusText.textContent = '';
     elements.engineProgress.hidden = true; elements.engineRetry.hidden = true;
     return;
   }
   const entry = engineById(state.engine);
-  elements.engineDesc.textContent = `${entry.description} · ${entry.licence}`;
+  const ready = !entry.slowWithoutWebGPU ? 'Ready · runs on this device' : HAS_WEBGPU ? 'Ready · WebGPU' : 'Ready · slower here (no WebGPU)';
+  if (engine.status !== 'preparing' || !elements.engineStatusText.textContent.startsWith('Downloading')) {
+    enginePicker.setStatus({ idle: 'Runs on this device', loading: 'Loading…', preparing: 'Preparing…', ready, failed: 'Could not load' }[engine.status],
+      { ready: 'ok', failed: 'error' }[engine.status]);
+  }
   const text = {
     idle: '',
     loading: `Loading ${entry.label}…`,
@@ -560,6 +585,11 @@ async function openEngineAbout() {
 
 // ---------- Engines saved on this device (Cache Storage; js/engines/engine-files.js, loaded on demand) ----------
 const savedEngineList = () => import('./engines/engine-files.js').then(module => module.savedEngines()).catch(() => []);
+/** Picker rows: download size, or "Downloaded" once the engine's files are saved here. */
+async function syncSavedBadges() {
+  const saved = new Set((await savedEngineList()).filter(item => item.bytes > 0).map(item => item.engineId));
+  for (const entry of engines) enginePicker.setMeta(entry.id, { size: entry.approxDownload, downloaded: saved.has(entry.id), note: engineNote(entry) });
+}
 async function syncEngineStorage() {
   const saved = (await savedEngineList()).filter(item => item.bytes > 0);
   const box = $('#engineStorage');
@@ -571,7 +601,7 @@ async function syncEngineStorage() {
 async function removeSavedEngines() {
   try { await (await import('./engines/engine-files.js')).removeSavedEngines(); toast('Saved film engines removed. They download again when you use them.'); }
   catch { toast('The saved film engines could not be removed.'); }
-  syncEngineStorage();
+  syncEngineStorage(); syncSavedBadges();
 }
 
 // ---------- Advanced panel ----------
@@ -604,16 +634,14 @@ function resetAdvanced(path) {
   change(() => { advParams()[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
 }
 function buildAdvancedPanel() {
-  elements.engineSelect.innerHTML = `<option value="${PRESETS}">Presets</option>` + engines.map(entry => `<option value="${entry.id}">${entry.label}</option>`).join('');
-  elements.engineSelect.addEventListener('change', () => switchEngine(elements.engineSelect.value));
-  // Desktop: reaching for the dropdown loads the other engines' code (tens of KB) so a switch
+  // Desktop: reaching for the picker loads the other engines' code (tens of KB) so a switch
   // starts at once; their large files still wait until the engine is chosen.
   const prefetchEngines = () => {
     if (!matchMedia('(pointer: fine)').matches) return;
     for (const entry of engines) if (entry.id !== state.engine) loadEngine(entry.id).catch(() => {});
   };
-  elements.engineSelect.addEventListener('pointerenter', prefetchEngines, { once: true });
-  elements.engineSelect.addEventListener('focus', prefetchEngines, { once: true });
+  elements.engineButton.addEventListener('pointerenter', prefetchEngines, { once: true });
+  elements.engineButton.addEventListener('focus', prefetchEngines, { once: true });
   elements.engineRetry.addEventListener('click', () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); });
   elements.engineAboutButton.addEventListener('click', openEngineAbout);
   $('#engineAboutClose').addEventListener('click', () => elements.engineAboutDialog.close());

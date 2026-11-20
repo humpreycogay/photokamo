@@ -26,6 +26,7 @@ export const engines = [
     description: 'Spectral film model on WebGPU · 52 films incl. B&W, 10 papers',
     licence: 'GPL-3.0',
     approxDownload: '≈ 15 MB',
+    slowWithoutWebGPU: true, // CPU fallback; the picker says so where WebGPU is missing
     credit: [
       'Film modelling by ', { text: 'negs', href: 'https://github.com/noahhaasis/negs' },
       ', built on ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
