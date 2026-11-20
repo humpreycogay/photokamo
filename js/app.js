@@ -2272,7 +2272,7 @@ elements.shareButton.addEventListener('click', sharePhoto);
 $('#formatOptions').addEventListener('click', event => { const button = event.target.closest('[data-format]'); if (!button) return; state.exportFormat = button.dataset.format; syncExportOptions(); schedulePrepare(); });
 $('#sizeOptions').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button || button.disabled) return; state.exportSize = button.dataset.size; syncExportOptions(); schedulePrepare(); });
 elements.quality.addEventListener('input', () => { syncExportOptions(); schedulePrepare(400); });
-$('#aboutButton').addEventListener('click', () => elements.aboutDialog.showModal()); $('#aboutClose').addEventListener('click', () => elements.aboutDialog.close());
+$('#aboutButton').addEventListener('click', () => elements.aboutDialog.showModal()); $('#startAbout').addEventListener('click', () => elements.aboutDialog.showModal()); $('#aboutClose').addEventListener('click', () => elements.aboutDialog.close());
 // Both About buttons open the same dialog; refresh the saved-engines line whenever it opens.
 new MutationObserver(() => { if (elements.aboutDialog.open) syncEngineStorage(); }).observe(elements.aboutDialog, { attributes: true, attributeFilter: ['open'] });
 $('#engineStorageRemove').addEventListener('click', removeSavedEngines);

@@ -18,8 +18,12 @@
   --text-disabled: #6d6c66;  /* disabled icons only, never body text */
 
   /* Brand */
-  --accent:        #f2774f;  /* accent TEXT, active tab, slider fill, edited values */
-  --accent-strong: #c94118;  /* primary BUTTON background with white text (5.6:1) */
+  /* Teal · cinema */
+  --accent:        #4fc4b4;  /* accent TEXT, active tab, slider fill, edited values (8.1:1 on --surface) */
+  --accent-strong: #0f766e;  /* primary BUTTON background with white text (5.5:1) */
+  --accent-strong-hover: #0c5e58; /* primary button hover (7.6:1 with white) */
+  --accent-hover:  #86dccf;  /* links and text buttons on hover */
+  --accent-tint:   #173a36;  /* small badges behind accent text (5.8:1) */
   --ok:            #8fbf86;  /* privacy lock, "fast preview" dot */
 
   /* Type */
@@ -59,7 +63,7 @@ button, input, select { font:inherit; }
 button, label[for] { -webkit-tap-highlight-color:transparent; }
 button:focus-visible, input:focus-visible, select:focus-visible, label[for]:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 a { color:var(--accent); }
-a:hover { color:#ff9b79; }
+a:hover { color:var(--accent-hover); }
 svg { flex:none; }
 .icon { width:18px; height:18px; }
 .icon-sm { width:14px; height:14px; }
@@ -93,7 +97,7 @@ body:not(.has-image) .editing-only { display:none!important; }
 .button,.icon-button,.text-button { border:0; cursor:pointer; font-weight:600; }
 .button { min-height:40px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:0 16px; border-radius:var(--radius); text-decoration:none; }
 .button-primary { background:var(--accent-strong); color:#fff; }
-.button-primary:hover:not(:disabled) { background:#b33a15; color:#fff; }
+.button-primary:hover:not(:disabled) { background:var(--accent-strong-hover); color:#fff; }
 .button-primary:disabled { background:var(--control); color:var(--text-disabled); cursor:not-allowed; }
 .button-secondary { background:var(--raised); color:var(--text); border:1px solid var(--line-strong); }
 .button-secondary:hover { background:var(--control); }
@@ -113,28 +117,37 @@ body:not(.has-image) .editing-only { display:none!important; }
 
 /* Layout */
 .app-shell { height:calc(100vh - var(--topbar-h)); height:calc(100dvh - var(--topbar-h)); display:grid; grid-template-columns:minmax(0,1fr) var(--panel-w); grid-template-rows:minmax(0,1fr) auto; }
-body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); }
+body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); height:100vh; height:100dvh; }
+/* Home screen: no top bar; the brand sits in the block itself */
+body:not(.has-image) .topbar { display:none; }
 .stage { position:relative; min-width:0; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:28px 24px; overflow:hidden; background:var(--stage); }
 
 /* Start screen (empty state) */
-.start { width:min(480px,100%); display:flex; flex-direction:column; gap:0; text-align:left; }
+/* --start-gap: the one gap between image strip, brand, headline and buttons */
+.start { --start-gap:24px; width:min(480px,100%); display:flex; flex-direction:column; gap:0; text-align:center; }
 .start-preview { position:relative; margin:0; height:300px; border-radius:20px; overflow:hidden; background:var(--raised); }
 .start-preview-strip { position:absolute; inset:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; background:var(--stage); }
 .start-preview-strip canvas { display:block; width:100%; height:100%; opacity:0; transition:opacity .3s ease; background:var(--raised); }
 .start-preview-strip canvas.is-ready { opacity:1; }
 .start-preview-labels { position:absolute; left:0; right:0; bottom:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:10px 0; background:rgba(12,12,11,.72); font-size:var(--fs-sm); font-weight:600; text-align:center; }
-.start-copy { padding:28px 8px 0; }
-.start-copy h1 { margin:0; font-size:40px; line-height:1.05; letter-spacing:-1.6px; font-weight:700; }
+.start-copy { padding:calc(var(--start-gap) + 4px) 8px 0; } /* strip → headline ≈ 28 px */
+.start-copy h1 { margin:0; font-size:40px; line-height:1.05; letter-spacing:-1.6px; font-weight:700; text-wrap:balance; }
+.start-nowrap { white-space:nowrap; }
 .start-copy h1 em { font-family:var(--font-display); font-style:italic; font-weight:600; letter-spacing:-.6px; color:var(--accent); }
-.start-copy .start-brand { margin:0 0 10px; font-size:19px; font-weight:700; letter-spacing:-.4px; color:var(--text); }
-.start-brand span { color:var(--accent); }
-.start-actions { display:flex; flex-direction:column; gap:10px; padding-top:24px; }
+/* Brand above the image strip, with the header's camera mark */
+.start-brand { display:flex; align-items:center; justify-content:center; gap:10px; margin:0 0 var(--start-gap); font-size:28px; font-weight:700; letter-spacing:-.6px; line-height:1.1; color:var(--text); }
+.start-brand .brand-mark { width:32px; height:32px; }
+.start-brand-name span { color:var(--accent); }
+.start-actions { display:flex; flex-direction:column; gap:10px; padding-top:var(--start-gap); }
 .start-actions .button-xl { min-height:54px; font-size:16px; }
 .start-actions .button-secondary { background:var(--surface); }
 .sample-button { min-height:var(--tap); font-size:15px; font-weight:600; }
-.start-formats { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin:10px 0 0; font-size:var(--fs-sm); color:var(--text-muted); text-align:center; }
+/* about ¾ of --start-gap from the sample link's text (its 44 px button adds ~14 px) */
+.start-formats { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin:max(-6px, calc(var(--start-gap) * .75 - 14px)) 0 0; font-size:var(--fs-sm); color:var(--text-muted); text-align:center; }
 .start-lock { display:inline-flex; color:var(--ok); }
 .start-drop { margin-left:-3px; }
+.text-button.start-about { align-self:center; min-height:var(--tap); margin-top:2px; padding:0 8px; color:var(--text-muted); font-size:var(--fs-sm); text-decoration:underline; text-underline-offset:3px; }
+.text-button.start-about:hover { color:var(--text); }
 
 /* Photo viewport */
 .viewport { flex:1 1 auto; min-height:0; width:100%; display:flex; overflow:hidden; }
@@ -245,14 +258,16 @@ body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); }
 .control-tabs button { min-height:40px; border:0; border-radius:9px; background:transparent; color:var(--text-muted); font-weight:500; cursor:pointer; }
 .control-tabs button:hover { color:var(--text); }
 .control-tabs button[aria-selected=true] { background:var(--control); color:var(--text); font-weight:600; }
-.tab-badge { display:inline-block; margin-left:4px; min-width:18px; padding:1px 5px; border-radius:9px; background:#3a2a22; color:var(--accent); font-size:var(--fs-xs); font-weight:700; }
+.control-tabs button { position:relative; white-space:nowrap; }
+/* Edit count in the tab's corner, so five tabs keep their labels on one line */
+.tab-badge { position:absolute; top:2px; right:2px; display:inline-block; min-width:18px; padding:1px 5px; border-radius:9px; background:var(--accent-tint); color:var(--accent); font-size:var(--fs-xs); font-weight:700; }
 .panel-body { flex:1; min-height:0; display:flex; flex-direction:column; }
 .tab-panel { flex:1; min-height:0; }
 .scroll-panel { overflow-y:auto; padding:22px 20px 36px; scrollbar-color:var(--line-strong) transparent; }
 .panel-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
 .panel-heading h2,.dialog-card h2 { margin:0; font-size:var(--fs-xl); letter-spacing:-.4px; }
 .text-button { padding:6px 0; color:var(--accent); background:none; font-size:var(--fs-md); }
-.text-button:hover { color:#ff9b79; }
+.text-button:hover { color:var(--accent-hover); }
 .text-button:disabled { color:var(--text-disabled); cursor:default; }
 .panel-intro { color:var(--text-muted); font-size:var(--fs-md); line-height:1.5; margin:-8px 0 20px; }
 
@@ -760,11 +775,12 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
 
   /* Start screen: preview on top, actions near the thumb */
   body:not(.has-image) .stage { padding:8px 16px max(14px,env(safe-area-inset-bottom)); justify-content:flex-start; }
-  .start { width:100%; max-width:480px; min-height:100%; }
+  .start { --start-gap:clamp(16px,2.8dvh,24px); width:100%; max-width:480px; min-height:100%; justify-content:center; }
   .start-preview { flex:none; height:clamp(180px,36dvh,300px); }
-  .start-copy { flex:1; padding:clamp(16px,3.5dvh,28px) 8px 0; }
+  .start-copy { flex:none; }
+  .start-brand { font-size:24px; gap:9px; }
+  .start-brand .brand-mark { width:28px; height:28px; }
   .start-copy h1 { font-size:clamp(28px,8.7vw,34px); letter-spacing:-1.4px; }
-  .start-actions { padding-top:20px; }
   .start-drop { display:none; }
 
   /* Camera dialog as a sheet */
