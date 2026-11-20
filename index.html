@@ -158,6 +158,7 @@
 
       <div class="panel-body">
         <section class="tab-panel looks-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
+          <button class="sheet-grabber" id="sheetGrabber" type="button" aria-label="Expand controls"><span aria-hidden="true"></span></button>
           <div class="engine-bar">
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
@@ -167,6 +168,7 @@
               </button>
               <button class="button button-secondary engine-apply mobile-only" id="mobileApplyButton" type="button" hidden>Apply</button>
               <span class="engine-look-name mobile-only" id="engineLookName" aria-hidden="true"></span>
+              <button class="sheet-render" id="sheetRenderButton" type="button">Render HQ</button>
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
             </div>
             <div class="engine-menu" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>

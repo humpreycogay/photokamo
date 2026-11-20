@@ -24,7 +24,7 @@ const elements = {
   cameraDialog: $('#cameraDialog'), cameraPreview: $('#cameraPreview'), cameraStatus: $('#cameraStatus'),
   capturePhoto: $('#capturePhoto'), switchCamera: $('#switchCamera'), aboutDialog: $('#aboutDialog'), toast: $('#toast'),
   advancedPanel: $('#advancedPanel'), advPipeline: $('#advPipeline'), advSections: $('#advSections'),
-  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'),
+  renderText: $('#renderText'), renderDetail: $('#renderDetail'), renderFull: $('#renderFullButton'), renderCancel: $('#renderCancelButton'), sheetRender: $('#sheetRenderButton'), sheetGrabber: $('#sheetGrabber'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
   engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineRetry: $('#engineRetry'),
@@ -1317,7 +1317,7 @@ function presentAdvanced(bitmap, frame) {
 function setRenderProgress(value) {
   const percent = Math.round(value * 100);
   elements.renderProgressBar.style.width = `${percent}%`;
-  if (state.renderQuality === 'rendering') elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
+  if (state.renderQuality === 'rendering') { elements.renderText.textContent = `Developing full-quality scan… ${percent}%`; elements.sheetRender.textContent = `Cancel · ${percent}%`; }
 }
 // The full render holds the engine output with Adjust edits applied.
 const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams(), state.edits]);
@@ -1356,8 +1356,11 @@ function syncRenderStatus() {
   elements.renderCancel.hidden = !rendering;
   elements.renderProgress.hidden = !rendering;
   syncAdvancedNote();
-  if (rendering) return;
   const info = activeModule()?.engineInfo;
+  // Phones ≤600px: the chips leave the photo; this button in the film sheet renders / cancels.
+  elements.sheetRender.textContent = rendering ? 'Cancel' : full ? 'Full quality' : 'Render HQ';
+  elements.sheetRender.disabled = full || (!rendering && !info);
+  if (rendering) return;
   elements.renderFull.disabled = !info;
   if (!info) { elements.renderText.textContent = 'Loading the film engine…'; elements.renderDetail.textContent = ''; return; }
   elements.renderText.textContent = full ? 'Full quality' : info.previewLabel;
@@ -2187,6 +2190,21 @@ $('#saveButton').addEventListener('click', openSave);
 mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); });
 elements.renderFull.addEventListener('click', renderFullQuality);
 elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
+elements.sheetRender.addEventListener('click', () => { if (state.renderQuality === 'rendering') elements.renderCancel.click(); else renderFullQuality(); });
+
+// Film sheet (phones ≤600px): preview collapsed (larger photo) or expanded (more controls). UI state, not undo.
+// Remembered on this device; the first time, short screens (<700px) start expanded.
+const SHEET_KEY = 'photokamo:film-sheet';
+let sheetExpanded = (() => { try { const value = localStorage.getItem(SHEET_KEY); if (value) return value === 'expanded'; } catch { /* storage unavailable */ } return innerHeight < 700; })();
+function syncSheet() {
+  document.body.classList.toggle('sheet-expanded', sheetExpanded);
+  elements.sheetGrabber.setAttribute('aria-label', sheetExpanded ? 'Collapse controls' : 'Expand controls');
+}
+elements.sheetGrabber.addEventListener('click', () => {
+  sheetExpanded = !sheetExpanded; syncSheet();
+  try { localStorage.setItem(SHEET_KEY, sheetExpanded ? 'expanded' : 'collapsed'); } catch { /* remembered for this visit only */ }
+});
+syncSheet();
 
 elements.fileInput.addEventListener('change', event => addFiles(event.target.files));
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
