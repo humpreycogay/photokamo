@@ -3,8 +3,8 @@
   /* Surfaces */
   --bg:            #121210;  /* app background, top bar */
   --stage:         #0c0c0b;  /* behind the photo in Simple mode */
-  --stage-print:   #5c5c58;  /* mid-grey behind the paper print in Advanced mode */
-  --paper:         #f7f6f2;  /* print border in Advanced mode */
+  --stage-print:   #5c5c58;  /* mid-grey behind frame samples */
+  --paper:         #f7f6f2;  /* print paper white (for the Paper print frame) */
   --surface:       #1b1b19;  /* side panel, bottom nav, sheets */
   --raised:        #242421;  /* cards, inputs */
   --control:       #2e2e2a;  /* selected segment, hover */
@@ -31,14 +31,14 @@
   --radius-sm: 8px; --radius: 10px; --radius-lg: 14px; --radius-sheet: 22px;
   --tap: 44px;            /* minimum touch target */
   --topbar-h: 64px;       /* desktop; 56px on mobile */
-  --panel-w: 360px;       /* Simple; Advanced uses 380px */
+  --panel-w: 360px;       /* Presets; film engines use 380px */
   --bottom-nav-h: 68px;
 
   /* Effects */
   --shadow-photo: 0 20px 60px rgba(0,0,0,.55);
   --ring-selected: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
-  /* Color filter slider tracks (Advanced) */
+  /* Color filter slider tracks (film engines) */
   --track-y: linear-gradient(90deg,#5d7cff,#9a9a94,#f2d23a);
   --track-m: linear-gradient(90deg,#4fbf6a,#9a9a94,#e04fb0);
   --track-exposure: linear-gradient(90deg,#f1efe8,#1a1a18);
@@ -298,18 +298,9 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .shutter-button:disabled { opacity:.35; cursor:not-allowed; }
 .camera-help { margin:0; padding:0 22px 17px; color:var(--text-muted); text-align:center; font-size:var(--fs-sm); }
 
-/* Simple / Advanced mode switch */
-.mode-row { flex:none; display:flex; align-items:center; gap:10px; margin:14px 20px 0; }
-.mode-switch { flex:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; padding:4px; border-radius:12px; background:var(--bg); }
-.mode-switch button { min-height:38px; padding:0 10px; border:0; border-radius:9px; background:transparent; color:var(--text-muted); font-weight:500; white-space:nowrap; cursor:pointer; }
-.mode-switch button:hover { color:var(--text); }
-.mode-switch button[aria-checked=true] { background:var(--control); color:var(--text); font-weight:600; }
-.mode-row .icon-button { border-color:var(--line-strong); }
-.mode-row .mode-switch button { padding:0 6px; font-size:var(--fs-md); }
-.mode-row + .control-tabs { margin-top:12px; }
-
-/* Advanced panel */
-.advanced-panel { position:relative; display:none; flex:1; min-height:0; flex-direction:column; }
+/* Looks tab: Presets view or the film engine's controls, under the Engine bar */
+.presets-view { flex:1; min-height:0; display:flex; flex-direction:column; }
+.advanced-panel { position:relative; display:flex; flex:1; min-height:0; flex-direction:column; }
 /* Engine bar: dropdown + About + load status */
 .engine-bar { flex:none; padding:14px 20px 10px; border-bottom:1px solid var(--line); }
 .engine-label { display:block; margin-bottom:6px; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
@@ -336,9 +327,7 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-role,.engine-licence { color:var(--text-muted); font-size:var(--fs-sm); }
 .engine-storage { margin:14px 0 0; font-size:var(--fs-md); color:var(--text-2); }
 .engine-storage .text-button { font-weight:600; }
-body.is-advanced .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
-body.is-advanced .control-tabs,body.is-advanced .panel-body { display:none; }
-body.is-advanced .advanced-panel { display:flex; }
+body.is-film .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
 .pipeline { flex:none; display:flex; align-items:center; gap:2px; margin:14px 20px 4px; overflow-x:auto; scrollbar-width:none; font-size:var(--fs-sm); }
 .pipeline-step { position:relative; flex:none; min-height:32px; padding:0 9px; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); font-weight:600; cursor:pointer; }
 .pipeline-step:hover { color:var(--text); }
@@ -387,23 +376,15 @@ body.is-advanced .advanced-panel { display:flex; }
 .adv-save { flex:1; min-height:var(--tap); }
 .adv-credit { margin:0; padding:0 20px 14px; font-size:var(--fs-xs); line-height:1.45; color:var(--text-muted); }
 
-/* Print view (Advanced): mid-grey surround, photo on a paper border */
-body.is-advanced { --print-border:22px; }
-body.is-advanced.has-image .stage { background:var(--stage-print); }
-body.is-advanced .viewport { container-type:size; }
-body.is-advanced .canvas-wrap { padding:var(--print-border); background:var(--paper); border-radius:0; box-shadow:0 18px 50px rgba(0,0,0,.35); }
-body.is-advanced.no-paper .canvas-wrap { padding:0; background:transparent; }
-body.is-advanced .canvas-wrap canvas { max-width:calc(100cqw - 2 * var(--print-border) - 8px); max-height:calc(100cqh - 2 * var(--print-border) - 8px); border-radius:0; }
-body.is-advanced.no-paper .canvas-wrap canvas { max-width:100cqw; max-height:100cqh; }
-.render-progress { position:absolute; left:var(--print-border,0); right:var(--print-border,0); bottom:var(--print-border,0); height:4px; background:rgba(0,0,0,.35); }
-body.no-paper .render-progress { left:0; right:0; bottom:0; }
+/* Render progress bar along the bottom of the photo */
+.render-progress { position:absolute; left:0; right:0; bottom:0; height:4px; background:rgba(0,0,0,.35); }
 .render-progress span { display:block; width:0; height:100%; background:var(--accent); transition:width .2s ease; }
 
-/* Render status (Advanced) in the view pill */
+/* Render status (film engines) in the view pill */
 .render-status,.render-divider { display:none; }
-body.is-advanced .render-status { display:flex; align-items:center; gap:10px; padding-left:10px; }
-body.is-advanced .render-divider { display:block; }
-body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
+body.is-film .render-status { display:flex; align-items:center; gap:10px; padding-left:10px; }
+body.is-film .render-divider { display:block; }
+body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
 .render-state { display:flex; align-items:center; gap:8px; font-size:var(--fs-md); color:var(--text-2); white-space:nowrap; }
 .render-dot { width:8px; height:8px; border-radius:4px; background:var(--ok); }
 [data-state=rendering] .render-dot,[data-state=working] .render-dot { background:var(--accent); }
@@ -442,7 +423,7 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .canvas-wrap { position:absolute; inset:0; margin:0; max-width:none; box-shadow:none; border-radius:0; }
   .canvas-wrap canvas,.viewport.is-actual canvas { width:100%!important; height:100%; max-width:none; max-height:none; object-fit:contain; border-radius:0; background:transparent; }
   .original-badge,.photo-look-badge { top:12px; left:12px; }
-  body.is-advanced .photo-look-badge { display:none!important; }
+  body.is-film .photo-look-badge { display:none!important; }
   body[data-tab=adjust].has-image .photo-look-badge { display:block; position:absolute; z-index:2; padding:6px 10px; border-radius:var(--radius-sm); background:rgba(12,12,11,.78); font-size:var(--fs-sm); font-weight:600; pointer-events:none; }
   .stage:has(.is-holding) .photo-look-badge { display:none!important; }
 
@@ -513,24 +494,12 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .frame-sample { height:60px; margin-bottom:6px; }
   .frame-card small { display:none; }
 
-  /* Advanced mode on mobile: compact switch in the top bar while on the Adjust tab */
+  /* Film engine on mobile: its controls live in the Looks tab, under a shorter photo */
   .topbar { gap:0; }
-  .mode-row { display:none; }
-  body:not([data-tab=adjust]) .mode-switch-compact { display:none!important; }
-  .mode-switch-compact { flex:none; padding:2px; gap:2px; border-radius:10px; background:var(--surface); font-size:var(--fs-md); }
-  .mode-switch-compact button { min-height:40px; padding:0 9px; border-radius:8px; }
-  body[data-tab=adjust].has-image .history-actions .icon-button { width:40px; }
   .save-pill { padding:0 14px; }
-  body.is-advanced { --print-border:12px; }
-  body.is-advanced .canvas-wrap { position:relative; inset:auto; margin:auto; box-shadow:0 10px 30px rgba(0,0,0,.35); }
-  body.is-advanced .canvas-wrap canvas,body.is-advanced .viewport.is-actual canvas { width:auto!important; height:auto; object-fit:fill; }
-  body.is-advanced.has-image[data-tab=adjust] .stage { flex:none; height:46dvh; min-height:220px; }
-  body.is-advanced[data-tab=adjust] .controls { flex:1; min-height:0; }
-  body.is-advanced .control-tabs { display:grid; }
-  body.is-advanced .panel-body { display:flex; }
-  body.is-advanced[data-tab=adjust] .panel-body { display:none; }
-  body.is-advanced .advanced-panel { display:none; }
-  body.is-advanced[data-tab=adjust] .advanced-panel { display:flex; order:1; overflow-y:auto; }
+  body.is-film.has-image[data-tab=looks] .stage { flex:none; height:46dvh; min-height:220px; }
+  body.is-film[data-tab=looks] .controls { flex:1; min-height:0; }
+  .advanced-panel { overflow-y:auto; }
   .advanced-panel .adv-scroll { flex:none; overflow:visible; padding:0; }
   .pipeline { position:sticky; top:0; z-index:1; gap:6px; margin:0; padding:12px 16px 8px; background:var(--bg); font-size:var(--fs-md); }
   .pipeline-arrow { display:none; }
@@ -560,10 +529,10 @@ body.is-advanced .view-zoom,body.is-advanced .zoom-divider { display:none; }
   .engine-row select { min-height:46px; border-radius:12px; background:var(--surface); font-size:15px; }
   .engine-row .icon-button { width:46px; height:46px; }
 
-  /* Render status floats on the print; hold-to-compare hidden in Advanced */
-  body.is-advanced .view-pill { left:10px; right:10px; bottom:10px; justify-content:space-between; }
-  body.is-advanced .hold-button,body.is-advanced .render-divider { display:none; }
-  body.is-advanced .render-status { flex:1; justify-content:space-between; padding:0; }
+  /* Render status floats on the print; hold-to-compare hidden for film engines */
+  body.is-film .view-pill { left:10px; right:10px; bottom:10px; justify-content:space-between; }
+  body.is-film .hold-button,body.is-film .render-divider { display:none; }
+  body.is-film .render-status { flex:1; justify-content:space-between; padding:0; }
   .render-state { padding:6px 10px; border-radius:var(--radius-sm); background:rgba(12,12,11,.8); font-size:var(--fs-sm); font-weight:600; color:var(--text); }
   .render-detail { display:none; }
   .render-action { min-height:40px; padding:0 12px; border-radius:var(--radius-sm); background:rgba(12,12,11,.8); font-size:var(--fs-sm); }

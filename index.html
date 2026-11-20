@@ -43,11 +43,6 @@
       <button class="button button-quiet" id="revertButton" type="button">Revert to original</button>
     </div>
 
-    <div class="mode-switch mode-switch-compact mobile-only editing-only" role="radiogroup" aria-label="Editor mode">
-      <button type="button" role="radio" aria-checked="true" data-mode="simple">Simple</button>
-      <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced</button>
-    </div>
-
     <div class="topbar-actions">
       <span class="privacy-pill editing-only"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Stays on your device</span>
       <button class="icon-button" id="aboutButton" type="button" aria-label="About PhotoKamo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
@@ -118,13 +113,6 @@
     </section>
 
     <aside class="controls editing-only" aria-label="Editing controls">
-      <div class="mode-row">
-        <div class="mode-switch" role="radiogroup" aria-label="Editor mode">
-          <button type="button" role="radio" aria-checked="true" data-mode="simple">Simple</button>
-          <button type="button" role="radio" aria-checked="false" data-mode="advanced" tabindex="-1">Advanced</button>
-        </div>
-        <button class="icon-button" id="advancedInfo" type="button" aria-label="How the film simulation works"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
-      </div>
       <div class="control-tabs" role="tablist" aria-label="Editor panels">
         <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg>Looks</button>
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Adjust <span class="tab-badge" id="adjustBadge" hidden></span></button>
@@ -133,6 +121,21 @@
 
       <div class="panel-body">
         <section class="tab-panel looks-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
+          <div class="engine-bar">
+            <label class="engine-label" for="engineSelect">Engine</label>
+            <div class="engine-row">
+              <select id="engineSelect" aria-describedby="engineDesc engineStatus"></select>
+              <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
+            </div>
+            <p class="engine-desc" id="engineDesc"></p>
+            <div class="engine-status" id="engineStatus" role="status" data-state="idle">
+              <span class="engine-status-text" id="engineStatusText"></span>
+              <span class="engine-progress" id="engineProgress" hidden><span id="engineProgressBar"></span></span>
+              <button class="text-button" id="engineRetry" type="button" hidden>Retry</button>
+            </div>
+          </div>
+
+          <div class="presets-view" id="presetsView">
           <article class="look-card" aria-live="polite">
             <div class="look-card-head">
               <div class="look-card-text">
@@ -159,6 +162,18 @@
           <div class="look-grid-scroll">
             <div class="look-grid" id="lookGrid"></div>
           </div>
+          </div>
+
+          <section class="advanced-panel" id="advancedPanel" aria-label="Film engine controls" hidden>
+            <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
+            <p class="adv-note" id="advNote" hidden></p>
+            <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
+            <div class="adv-footer">
+              <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
+              <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
+            </div>
+            <p class="adv-credit" id="advCredit"></p>
+          </section>
         </section>
 
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
@@ -182,30 +197,6 @@
           <div class="frame-grid" id="frameGrid"></div>
         </section>
       </div>
-
-      <section class="advanced-panel" id="advancedPanel" aria-label="Advanced film controls">
-        <div class="engine-bar">
-          <label class="engine-label" for="engineSelect">Engine</label>
-          <div class="engine-row">
-            <select id="engineSelect" aria-describedby="engineDesc engineStatus"></select>
-            <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
-          </div>
-          <p class="engine-desc" id="engineDesc"></p>
-          <div class="engine-status" id="engineStatus" role="status" data-state="idle">
-            <span class="engine-status-text" id="engineStatusText"></span>
-            <span class="engine-progress" id="engineProgress" hidden><span id="engineProgressBar"></span></span>
-            <button class="text-button" id="engineRetry" type="button" hidden>Retry</button>
-          </div>
-        </div>
-        <nav class="pipeline" id="advPipeline" aria-label="Film pipeline"></nav>
-        <p class="adv-note" id="advNote" hidden></p>
-        <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
-        <div class="adv-footer">
-          <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
-          <button class="button button-quiet" id="advResetAll" type="button">Reset all</button>
-        </div>
-        <p class="adv-credit" id="advCredit"></p>
-      </section>
     </aside>
   </main>
 
@@ -272,8 +263,8 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
       <p>PhotoKamo is a privacy-first photo playground. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
-      <p>The Simple looks are creative approximations, not exact reproductions. Advanced mode runs real film engines entirely in your browser, downloaded only when you choose one: Spektrafilm (spektrafilm by Andrea Volpato, via the Rust port spektrafilm-rs), Negs (the spektrafilm model on WebGPU) and DuXun (a DaVinci Resolve film plugin, ported to JavaScript).</p>
-      <p>PhotoKamo is free software under the GNU General Public License v3. Each film engine keeps its own licence and credits (open Advanced and use ⓘ next to the engine).</p>
+      <p>The Presets are creative approximations, not exact reproductions. The film engines run real film simulations entirely in your browser, downloaded only when you choose one: Spektrafilm (spektrafilm by Andrea Volpato, via the Rust port spektrafilm-rs), Negs (the spektrafilm model on WebGPU) and DuXun (a DaVinci Resolve film plugin, ported to JavaScript).</p>
+      <p>PhotoKamo is free software under the GNU General Public License v3. Each film engine keeps its own licence and credits (choose it under Engine in Looks and use ⓘ next to it).</p>
       <h3 class="engine-sub">Licences</h3>
       <ul class="engine-list" id="licenceList">
         <li>PhotoKamo · <a href="LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>

@@ -1,8 +1,8 @@
 import { presets, frames, adjustmentSections, defaultAdjustments } from './presets.js';
-import { renderImage, frameCanvas } from './renderer.js';
-// Advanced engines are NOT imported here: registry.js is a tiny list, and an engine's code,
-// worker and data load only when Advanced mode needs it (activateEngine).
-import { engines, defaultEngineId, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
+import { renderImage, frameCanvas, applyAdjustments } from './renderer.js';
+// Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
+// worker and data load only when it is chosen as the engine (activateEngine).
+import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml } from './advanced-ui.js';
 
 const $ = selector => document.querySelector(selector);
@@ -26,7 +26,7 @@ const elements = {
   engineSelect: $('#engineSelect'), engineDesc: $('#engineDesc'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineProgress: $('#engineProgress'), engineProgressBar: $('#engineProgressBar'), engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
-  advCredit: $('#advCredit'), advNote: $('#advNote')
+  advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView')
 };
 
 // Look state: the effective value of each adjustment is
@@ -36,8 +36,8 @@ const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: 'none',
   filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
-  // Advanced mode: the selected engine and each engine's own settings ({ [engineId]: params }).
-  mode: 'simple', engine: defaultEngineId, engineParams: {}, myLookId: null, imageBitmap: null,
+  // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
+  engine: 'presets', engineParams: {}, myLookId: null, imageBitmap: null,
   advOpen: new Set(), advStep: null,
   renderQuality: 'preview', renderAbort: null,
   undo: [], redo: [], editedCanvas: null, originalCanvas: null, originalKey: '', renderToken: 0
@@ -59,6 +59,8 @@ const mobileQuery = matchMedia('(max-width: 900px)');
 const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Film stocks': 'Film', 'Creative styles': 'Creative' };
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
 
+const PRESETS = 'presets';
+const isFilm = () => state.engine !== PRESETS;
 const currentPreset = () => presets.find(item => item.id === state.presetId) || presets[0];
 function groupLabel(preset) {
   if (preset.group === 'Utility') return 'Utility';
@@ -68,8 +70,10 @@ function groupLabel(preset) {
 }
 
 // ---------- Values ----------
+// On a film engine the look is the engine's output, so Adjust edits sit on the defaults.
 function baseValue(key) {
   const original = defaultAdjustments[key];
+  if (isFilm()) return original;
   return original + (currentPreset().values[key] - original) * state.strength / 100;
 }
 function roundToStep(key, value) { const step = controlSpec[key].step; return Math.round(value / step) * step; }
@@ -81,11 +85,21 @@ const editCount = () => Object.keys(state.edits).length;
 // ---------- History ----------
 const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
 const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id, params]) => [id, cloneParams(params)]));
-function snapshot() { return { presetId: state.presetId, strength: state.strength, edits: { ...state.edits }, frame: state.frame, mode: state.mode, engine: state.engine, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }; }
+// A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
+function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, frame: state.frame }; }
+// Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
+function migrateSnapshot(value) {
+  if (value.look) return value;
+  const { presetId = 'original', strength = 100, engineParams = {}, myLookId = null, edits = {}, frame = 'none' } = value;
+  const engineId = value.mode === 'advanced' && engineById(value.engine) ? value.engine : PRESETS;
+  return { look: { engine: engineId, presetId, strength, engineParams, myLookId }, edits, frame };
+}
 function restore(value) {
-  state.presetId = value.presetId; state.strength = value.strength; state.edits = { ...value.edits }; state.frame = value.frame;
-  state.mode = value.mode; state.engine = value.engine; state.engineParams = cloneEngineParams(value.engineParams); state.myLookId = value.myLookId;
-  syncControls(); scheduleRender(); // syncControls loads the engine if Advanced needs a different one
+  const { look, edits, frame } = migrateSnapshot(value);
+  state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
+  state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
+  state.edits = { ...edits }; state.frame = frame;
+  syncControls(); scheduleRender(); // syncControls loads the engine if the restored one isn't active
 }
 function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function commit(previous = snapshot()) { if (!sameSnapshot(previous, snapshot())) { state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons(); } }
@@ -95,9 +109,7 @@ function updateButtons() { elements.undo.disabled = !state.undo.length; elements
 function toast(message) { clearTimeout(toastTimer); elements.toast.textContent = message; elements.toast.classList.add('show'); toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600); }
 function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
 function pickLook(id) {
-  const wasAdvanced = state.mode === 'advanced';
-  change(() => { state.presetId = id; state.edits = {}; state.mode = 'simple'; state.myLookId = null; });
-  if (wasAdvanced) toast('Switched to Simple mode.');
+  change(() => { state.presetId = id; state.edits = {}; state.engine = PRESETS; state.myLookId = null; });
 }
 
 // ---------- Favorites ----------
@@ -154,7 +166,7 @@ async function pickMyLook(id) {
   let module;
   try { module = await loadEngine(look.engine); }
   catch (error) { console.error(error); toast(`The ${engineById(look.engine).label} engine could not be loaded. Check your connection and try again.`); return; }
-  change(() => { state.mode = 'advanced'; state.engine = look.engine; state.engineParams[look.engine] = module.normalizeParams(look.params); state.myLookId = id; });
+  change(() => { state.engine = look.engine; state.engineParams[look.engine] = module.normalizeParams(look.params); state.myLookId = id; });
 }
 function saveAsMyLook() {
   const params = advParams(); if (!params) return;
@@ -192,7 +204,7 @@ function filterMatches(preset) {
 function syncLooks() {
   const preset = currentPreset();
   const filters = ['All', 'Camera', 'Film', 'Creative', ...(myLooks.length ? ['Mine'] : []), ...(favorites.length ? ['Favorites'] : [])];
-  const advanced = state.mode === 'advanced';
+  const advanced = isFilm();
   if (!filters.includes(state.filter)) state.filter = 'All';
   elements.lookFilters.innerHTML = filters.map(filter => `<button class="chip" type="button" data-filter="${filter}" aria-pressed="${filter === state.filter}">${filter}</button>`).join('');
   elements.lookGrid.querySelectorAll('[data-preset]').forEach(tile => {
@@ -209,8 +221,8 @@ function syncLooks() {
     const mine = currentMyLook();
     const module = activeModule(); const params = advParams();
     const edited = mine && module && JSON.stringify(module.normalizeParams(mine.params)) !== JSON.stringify(params);
-    elements.lookGroup.textContent = `Advanced · ${engineById(state.engine).label}`;
-    elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Advanced film edit';
+    elements.lookGroup.textContent = engineById(state.engine).label;
+    elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Film edit';
     elements.photoLookBadge.textContent = elements.lookName.textContent;
     elements.lookDesc.textContent = module ? module.stockSummary(params) : 'Loading the film engine…';
     elements.strength.disabled = true;
@@ -437,7 +449,7 @@ function activateEngine(id = state.engine) {
     buildEnginePanel();
     warmEngine();
     syncControls();
-    if (state.mode === 'advanced') scheduleRender();
+    scheduleRender();
     return module;
   }, error => {
     if (state.engine === id) setEngineStatus('failed', error);
@@ -451,7 +463,7 @@ function warmEngine() {
   const module = activeModule(); if (!module?.warm) { setEngineStatus('ready'); return; }
   setEngineStatus('preparing');
   module.warm(cloneParams(advParams())).then(
-    () => { if (activeModule() === module) { setEngineStatus('ready'); if (state.mode === 'advanced' && state.renderQuality === 'preview') syncRenderStatus(); } },
+    () => { if (activeModule() === module) { setEngineStatus('ready'); if (state.renderQuality === 'preview') syncRenderStatus(); } },
     error => {
       if (activeModule() !== module) return;
       if (error?.name === 'AbortError') setEngineStatus('idle'); // a cancelled render restarted the worker
@@ -483,8 +495,15 @@ function showEngineDownload({ loaded, total, done }) {
   if (total) elements.engineProgressBar.style.width = `${Math.min(100, Math.round(loaded / total * 100))}%`;
 }
 function syncEngineBar() {
-  const entry = engineById(state.engine);
   elements.engineSelect.value = state.engine;
+  elements.engineAboutButton.hidden = !isFilm();
+  if (!isFilm()) {
+    elements.engineDesc.textContent = `${presets.filter(preset => preset.id !== 'original').length} quick looks · instant · nothing to download`;
+    elements.engineStatus.dataset.state = 'idle'; elements.engineStatusText.textContent = '';
+    elements.engineProgress.hidden = true; elements.engineRetry.hidden = true;
+    return;
+  }
+  const entry = engineById(state.engine);
   elements.engineDesc.textContent = `${entry.description} · ${entry.licence}`;
   const text = {
     idle: '',
@@ -497,9 +516,11 @@ function syncEngineBar() {
   if (engine.status !== 'preparing' || !elements.engineStatusText.textContent.startsWith('Downloading')) elements.engineStatusText.textContent = text;
   elements.engineRetry.hidden = engine.status !== 'failed';
 }
-/** Engine dropdown: keeps each engine's own settings and carries over the shared ones (film, exposure, grain, halation). */
+/** Engine dropdown: keeps each engine's own settings and carries over the shared ones (film, exposure, grain, halation).
+ *  Adjust edits and the frame stay. One undo step. */
 async function switchEngine(id) {
-  if (id === state.engine || !engineById(id)) return;
+  if (id === state.engine || (id !== PRESETS && !engineById(id))) return;
+  if (id === PRESETS) { change(() => { state.engine = PRESETS; state.myLookId = null; }); return; }
   const previous = snapshot();
   const fromModule = activeModule(); const fromParams = advParams();
   state.engine = id; state.myLookId = null;
@@ -565,7 +586,7 @@ function syncAdvancedPanel() {
 }
 function syncAdvancedNote() {
   const module = activeModule();
-  elements.advNote.hidden = !(state.mode === 'advanced' && module && state.renderQuality !== 'full' && module.hasSpatialEffects(advParams()));
+  elements.advNote.hidden = !(module && state.renderQuality !== 'full' && module.hasSpatialEffects(advParams()));
 }
 function setAdvancedValue(path, raw) {
   const module = activeModule(); const params = advParams(); if (!module) return;
@@ -583,7 +604,7 @@ function resetAdvanced(path) {
   change(() => { advParams()[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
 }
 function buildAdvancedPanel() {
-  elements.engineSelect.innerHTML = engines.map(entry => `<option value="${entry.id}">${entry.label}</option>`).join('');
+  elements.engineSelect.innerHTML = `<option value="${PRESETS}">Presets</option>` + engines.map(entry => `<option value="${entry.id}">${entry.label}</option>`).join('');
   elements.engineSelect.addEventListener('change', () => switchEngine(elements.engineSelect.value));
   // Desktop: reaching for the dropdown loads the other engines' code (tens of KB) so a switch
   // starts at once; their large files still wait until the engine is chosen.
@@ -632,28 +653,20 @@ function buildAdvancedPanel() {
   $('#saveMyLook').addEventListener('click', saveAsMyLook);
 }
 
-// ---------- Mode: Simple / Advanced ----------
-function setMode(mode) {
-  if (mode === state.mode) return;
-  change(() => { state.mode = mode; });
-}
-function syncMode() {
-  const advanced = state.mode === 'advanced';
-  // Advanced needs its engine: load it now (download + compile start right away, before any render).
-  if (advanced) activateEngine().catch(error => console.error(error));
+// ---------- Engine view: Presets or a film engine, inside the Looks tab ----------
+function syncEngineView() {
+  const film = isFilm();
+  // A film engine is loaded as soon as it is chosen (download + compile start before any render).
+  if (film) activateEngine().catch(error => console.error(error));
   const module = activeModule();
-  document.body.classList.toggle('is-advanced', advanced);
-  document.body.classList.toggle('no-paper', Boolean(advanced && module && module.showsPaper && !module.showsPaper(advParams())));
-  document.querySelectorAll('.mode-switch [data-mode]').forEach(button => {
-    const checked = button.dataset.mode === state.mode;
-    button.setAttribute('aria-checked', checked); button.tabIndex = checked ? 0 : -1;
-  });
-  if (advanced && state.zoom !== 'fit') { state.zoom = 'fit'; applyZoom(); }
+  document.body.classList.toggle('is-film', film);
+  elements.presetsView.hidden = film; elements.advancedPanel.hidden = !film;
+  if (film && state.zoom !== 'fit') { state.zoom = 'fit'; applyZoom(); }
   syncRenderStatus();
 }
 
 function syncControls() {
-  syncMode();
+  syncEngineView();
   syncAdvancedPanel();
   syncAdjustments();
   document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === state.frame));
@@ -667,7 +680,7 @@ function renderEdge() {
 }
 function scheduleRender() {
   if (!state.image) return;
-  if (state.mode === 'advanced') { scheduleAdvancedRender(); return; }
+  if (isFilm()) { scheduleAdvancedRender(); return; }
   if (state.renderAbort) cancelFullRender();
   clearTimeout(advancedTimer);
   const token = ++state.renderToken;
@@ -701,10 +714,37 @@ function drawPreview() {
   ctx.drawImage(source, 0, 0, elements.canvas.width, elements.canvas.height);
 }
 
-// ---------- Advanced rendering (the active engine's render(), in its own Web Worker) ----------
+// ---------- Film engine rendering (the active engine's render(), in its own Web Worker) ----------
+// Then Adjust edits on top: on the main thread for the preview (like Presets), in
+// js/adjust-worker.js for full-size renders.
 let advancedTimer;
 let advancedBusy = false;
 let advancedDirty = false;
+// Last engine preview, so Adjust and Frames changes don't run the engine again.
+let enginePreview = { key: '', bitmap: null };
+const enginePreviewKey = () => JSON.stringify([state.imageId, state.engine, advParams()]);
+const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
+let adjustWorker = null, adjustJobId = 0;
+const adjustJobs = new Map();
+/** Applies `adjustments` to a full-size bitmap off the main thread (the bitmap is transferred). */
+function adjustFull(bitmap, adjustments) {
+  if (!adjustments) return Promise.resolve(bitmap);
+  if (!adjustWorker) {
+    adjustWorker = new Worker(new URL('./adjust-worker.js', import.meta.url), { type: 'module' });
+    adjustWorker.onmessage = ({ data }) => {
+      const job = adjustJobs.get(data.id); adjustJobs.delete(data.id);
+      if (data.error) job?.reject(new Error(data.error)); else job?.resolve(data.bitmap);
+    };
+    adjustWorker.onerror = event => {
+      for (const job of adjustJobs.values()) job.reject(new Error(event.message || 'Adjust worker failed'));
+      adjustJobs.clear(); adjustWorker.terminate(); adjustWorker = null;
+    };
+  }
+  return new Promise((resolve, reject) => {
+    const id = ++adjustJobId; adjustJobs.set(id, { resolve, reject });
+    adjustWorker.postMessage({ id, bitmap, adjustments }, [bitmap]);
+  });
+}
 async function ensureBitmap() {
   if (!state.imageBitmap) state.imageBitmap = await createImageBitmap(state.image);
   return state.imageBitmap;
@@ -721,17 +761,25 @@ async function runAdvancedPreview() {
   if (!module) return; // the engine is still loading; activateEngine renders once it's ready
   if (advancedBusy) { advancedDirty = true; return; }
   advancedBusy = true; advancedDirty = false;
-  const imageId = state.imageId; const frame = state.frame; const engineId = state.engine;
+  const imageId = state.imageId; const engineId = state.engine; const key = enginePreviewKey();
   try {
-    const bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
+    let bitmap = enginePreview.key === key ? enginePreview.bitmap : null;
+    if (!bitmap) {
+      bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
+      enginePreview = { key, bitmap };
+    }
     if (engine.status === 'idle' || engine.status === 'preparing') setEngineStatus('ready');
-    if (imageId === state.imageId && engineId === state.engine && state.mode === 'advanced' && state.renderQuality === 'preview') { presentAdvanced(bitmap, frame); syncRenderStatus(); }
+    if (imageId === state.imageId && engineId === state.engine && state.renderQuality === 'preview') {
+      const edits = engineEdits();
+      presentAdvanced(edits ? applyAdjustments(bitmap, edits) : bitmap, state.frame);
+      syncRenderStatus();
+    }
   } catch (error) {
     if (error?.name !== 'AbortError') { console.error(error); toast('The film preview could not be rendered. Check your connection and try again.'); }
   } finally {
     advancedBusy = false;
     if (state.renderQuality === 'preview') syncRenderStatus();
-    if (advancedDirty && state.mode === 'advanced' && state.image) runAdvancedPreview();
+    if (advancedDirty && isFilm() && state.image) runAdvancedPreview();
   }
 }
 function showPreviewStatus(text) {
@@ -753,17 +801,20 @@ function setRenderProgress(value) {
   elements.renderProgressBar.style.width = `${percent}%`;
   if (state.renderQuality === 'rendering') elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
 }
-const fullRenderKey = () => JSON.stringify([state.imageId, state.engine, advParams()]);
+// The full render holds the engine output with Adjust edits applied.
+const fullRenderKey = () => JSON.stringify([state.imageId, state.engine, advParams(), state.edits]);
 async function renderFullQuality() {
   const module = activeModule();
-  if (state.mode !== 'advanced' || !state.image || !module) return;
+  if (!isFilm() || !state.image || !module) return;
   clearTimeout(advancedTimer);
   const controller = new AbortController();
   state.renderAbort = controller; state.renderQuality = 'rendering';
   syncRenderStatus(); setRenderProgress(0);
-  const frame = state.frame; const key = fullRenderKey();
+  const frame = state.frame; const key = fullRenderKey(); const edits = engineEdits();
   try {
-    const bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
+    const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', signal: controller.signal, onProgress: setRenderProgress, onStatus: text => { if (text && state.renderQuality === 'rendering') elements.renderText.textContent = text; } });
+    if (state.renderAbort !== controller) return;
+    const bitmap = await adjustFull(raw, edits);
     if (state.renderAbort !== controller) return;
     state.renderAbort = null; state.renderQuality = 'full';
     state.fullRender = { key, bitmap };
@@ -827,7 +878,7 @@ async function loadFile(file) {
     state.originalKey = ''; state.holding = false; elements.originalBadge.hidden = true; state.imageId++;
     exportCanvas = { key: '', canvas: null }; preparedExport = null;
     if (state.renderAbort) cancelFullRender();
-    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview'; state.fullRender = null;
+    state.imageBitmap?.close?.(); state.imageBitmap = null; state.renderQuality = 'preview'; state.fullRender = null; enginePreview = { key: '', bitmap: null };
     document.body.classList.add('has-image');
     elements.emptyState.hidden = true; elements.viewport.hidden = false; elements.viewPill.hidden = false;
     elements.fileName.textContent = file.name;
@@ -943,7 +994,7 @@ const canShareFiles = (() => {
 function exportDimensions() {
   const { naturalWidth: width, naturalHeight: height } = state.image;
   const module = activeModule();
-  return state.mode === 'advanced' && module ? module.fullRenderSize(width, height) : { width, height, capped: false };
+  return module ? module.fullRenderSize(width, height) : { width, height, capped: false };
 }
 function exportEdge(size = state.exportSize) {
   const { width, height } = exportDimensions();
@@ -956,10 +1007,13 @@ function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Mediu
 async function renderAdvancedExport(edge) {
   const frame = state.frame;
   const module = await activateEngine();
-  const key = fullRenderKey();
-  const full = state.fullRender?.key === key ? state.fullRender.bitmap
-    : await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
-  if (state.fullRender?.key !== key) state.fullRender = { key, bitmap: full };
+  const key = fullRenderKey(); const edits = engineEdits();
+  let full = state.fullRender?.key === key ? state.fullRender.bitmap : null;
+  if (!full) {
+    const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
+    full = await adjustFull(raw, edits);
+    state.fullRender = { key, bitmap: full };
+  }
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   if (scale === 1) return frameCanvas(full, frame);
   const scaled = document.createElement('canvas');
@@ -970,14 +1024,14 @@ async function renderAdvancedExport(edge) {
 }
 function exportSummary() {
   const frameName = state.frame === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame).name} frame`;
-  if (state.mode === 'advanced') {
-    const look = currentMyLook()?.name || 'Advanced';
+  const count = editCount();
+  if (isFilm()) {
+    const look = currentMyLook()?.name || engineById(state.engine).label;
     const module = activeModule();
-    return [look, module ? module.stockSummary(advParams()) : engineById(state.engine).label, frameName].join(' · ');
+    return [look, module ? module.stockSummary(advParams()) : null, count ? `${count} adjustment${count === 1 ? '' : 's'}` : null, frameName].filter(Boolean).join(' · ');
   }
   const preset = currentPreset();
   const look = preset.id !== 'original' && state.strength < 100 ? `${preset.name} ${state.strength}%` : preset.name;
-  const count = editCount();
   const frame = frames.find(item => item.id === state.frame);
   return [look, count ? `${count} adjustment${count === 1 ? '' : 's'}` : null, state.frame === 'none' ? 'no frame' : `${frame.name} frame`].filter(Boolean).join(' · ');
 }
@@ -1006,7 +1060,7 @@ function prepareExport() {
     await new Promise(resolve => setTimeout(resolve, 30));
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: state.mode === 'advanced' ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(state.image, effectiveAdjustments(), state.frame, edge) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -1067,7 +1121,7 @@ function closePhoto() {
   setHolding(false);
   if (state.renderAbort) cancelFullRender();
   clearTimeout(advancedTimer);
-  state.imageBitmap?.close?.(); state.imageBitmap = null; state.fullRender = null;
+  state.imageBitmap?.close?.(); state.imageBitmap = null; state.fullRender = null; enginePreview = { key: '', bitmap: null };
   state.image = null; state.imageId++; state.editedCanvas = null; state.originalCanvas = null; state.originalKey = ''; state.undo = []; state.redo = [];
   exportCanvas = { key: '', canvas: null }; preparedExport = null;
   document.body.classList.remove('has-image');
@@ -1081,17 +1135,6 @@ document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
 mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); });
-document.querySelectorAll('.mode-switch').forEach(group => {
-  group.addEventListener('click', event => { const button = event.target.closest('[data-mode]'); if (button) setMode(button.dataset.mode); });
-  group.addEventListener('keydown', event => {
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-    event.preventDefault();
-    const next = state.mode === 'simple' ? 'advanced' : 'simple';
-    setMode(next);
-    group.querySelector(`[data-mode="${next}"]`).focus();
-  });
-});
-$('#advancedInfo').addEventListener('click', () => elements.aboutDialog.showModal());
 elements.renderFull.addEventListener('click', renderFullQuality);
 elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
 
@@ -1162,7 +1205,7 @@ window.addEventListener('blur', () => setHolding(false));
 document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => setZoom(button.dataset.zoom)));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.presetId = 'original'; state.strength = 100; state.edits = {}; state.frame = 'none'; }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.frame = 'none'; }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', () => {
   const options = presets.filter(p => p.id !== state.presetId && p.id !== 'original' && filterMatches(p));

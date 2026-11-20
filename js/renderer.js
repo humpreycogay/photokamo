@@ -130,6 +130,18 @@ export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400) 
   return frameCanvas(photo, frame);
 }
 
+// Adjust on top of an engine's output. Returns `source` itself when every value is 0,
+// so engine output without edits stays byte-identical.
+export function applyAdjustments(source, adjustments) {
+  if (!hasAdjustments(adjustments)) return source;
+  const { width, height } = source;
+  const output = createCanvas(width, height);
+  const ctx = output.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0);
+  processPixels(ctx, width, height, adjustments);
+  return output;
+}
+
 // Puts a finished photo (canvas or ImageBitmap) into a presentation frame.
 export function frameCanvas(photo, frame = 'none') {
   const { width, height } = photo;
