@@ -129,7 +129,7 @@ export function buildSections(catalog) {
         slider('Yellow', 'film_render.base.yellow', 0, 2, 0.01)
       ])
     ] },
-    { id: 'print', step: 'Print', title: 'Print', openByDefault: true, controls: [
+    { id: 'print', step: 'Darkroom', title: 'Darkroom', openByDefault: true, controls: [
       { kind: 'note', id: 'print-skipped', label: 'Printing is skipped while scanning film directly.' },
       heading('Enlarger'),
       slider('Print exposure', 'enlarger.print_exposure', 0.1, 5, 0.01),

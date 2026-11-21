@@ -71,7 +71,7 @@ export const sections = [
     ]
   },
   {
-    id: 'enlarger', step: 'Enlarger', title: 'Enlarger & print', openByDefault: true,
+    id: 'enlarger', step: 'Enlarger', title: 'Enlarger', openByDefault: true,
     controls: [
       { path: 'enlarger.print_exposure', label: 'Print exposure', kind: 'float', min: 0.2, max: 3, step: 0.02, unit: '×', default: 1, track: '--track-exposure', lo: 'Lighter print', hi: 'Darker print' },
       { path: 'enlarger.y_filter_shift', label: 'Yellow filter', kind: 'float', min: -60, max: 60, step: 1, signed: true, default: 0, track: '--track-y', lo: 'Bluer', hi: 'Yellower' },

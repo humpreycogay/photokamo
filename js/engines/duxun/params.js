@@ -51,7 +51,7 @@ export const sections = [
       slider('Yellow', 'colorHeadYellow', -1, 1, 0.01, 0, { signed: true, track: '--track-y', lo: 'Bluer', hi: 'Yellower' })
     ])
   ] },
-  { id: 'print', step: 'Print', title: 'Print contrast', controls: [
+  { id: 'print', step: 'Print Look', title: 'Print Look', controls: [
     effect('Print', 'printEnabled'),
     ...group('printEnabled', [
       choice('Print stock', 'printStock', [[0, 'Linear'], [1, 'Cineon Film Log'], [2, 'Kodak 2383'], [3, 'Fuji 3513'], [4, 'Kodak Endura'], [5, 'Bromportrait BW']], 2, { hint: 'Choosing a print stock sets its strength, contrast, colour density and vibrance.' }),
