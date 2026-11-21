@@ -20,7 +20,7 @@ ES modules + WebAssembly need HTTP; opening index.html from disk does not work. 
 - `tools/engine-manifests.mjs` – regenerates `engines/*/manifest.json` (sizes + sha256). Run with Node after changing runtime files.
 
 ## Current redesign
-Follow `docs/handover/SPEC.md` and do tasks from `docs/handover/TASKS.md` **one at a time**. Mockups are in `docs/handover/mockups/`. Show a short plan before editing, then stop after the task's Check list and tell me what to verify.
+Follow `plan_v2.md` (one-tap film looks in the Looks grid, engine panel as Expert) and do its tasks **one at a time**. Show a short plan before editing, then stop after the task's Check list and tell me what to verify. Finished plans are archived in `docs/archive/` (the mobile film-panel handover there has the per-engine param lists in `NOTES.md`).
 
 ## Rules
 - Nothing leaves the device: no fetch except engine files already in the repo; no analytics, no CDNs, no new runtime dependencies (write small helpers yourself, e.g. `js/zip.js`).

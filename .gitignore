@@ -1,5 +1,6 @@
 # Planning and private working notes
 plan.md
+plan_v*.md
 plans/
 *.plan.md
 *.notes.md
@@ -63,4 +64,5 @@ design-handoff/
 *handoff*.zip
 docs/handover/
 docs/handover-mobile-film-panel/
+docs/archive/
 photokamo-handover.zip
