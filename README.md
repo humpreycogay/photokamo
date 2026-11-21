@@ -41,7 +41,7 @@ Among the Basic looks, the **Spektrafilm-inspired** ones are approximations made
 
 ## Licence
 
-PhotoKamo is free software, licensed under the [GNU General Public License v3](LICENSE), because it includes GPL-3.0 film engines (spektrafilm-rs, negs) and DuXun (GPL-2.0-or-later, used under GPL-3.0). Credits: spektrafilm by Andrea Volpato; spektrafilm-rs; negs; spektrafilm and Fotufilm film profiles (CC BY-SA 4.0); spectral upsampling LUTs by Johannes Hanatos and others; rawler (LGPL-2.1, inside negs); [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) (MIT OR Apache-2.0); Inter and Playfair Display fonts (SIL Open Font License).
+PhotoKamo is free software, licensed under the [GNU General Public License v3](LICENSE), because it includes GPL-3.0 film engines (spektrafilm-rs, negs) and DuXun (GPL-2.0-or-later, used under GPL-3.0). Credits: spektrafilm by Andrea Volpato; spektrafilm-rs; negs; spektrafilm and Fotufilm film profiles (CC BY-SA 4.0); spectral upsampling LUTs by Johannes Hanatos and others; rawler (LGPL-2.1, inside negs); [browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim) (MIT OR Apache-2.0); Inter, Playfair Display and Caveat fonts (SIL Open Font License).
 
 ## Browser support
 
