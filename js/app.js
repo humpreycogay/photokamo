@@ -1639,7 +1639,7 @@ function pickPhoto(id) {
 function focusStripItem(id) { app.focusId = id; syncStrip(); photoById(id)?.el.focus(); photoById(id)?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
 function buildStrip() {
   const list = elements.stripList;
-  // Touch: long-press a thumb (or tap its check box) to add it to or remove it from the selection.
+  // Touch: a tap always opens the photo; long-press adds it to or removes it from the selection.
   let press = null, pressed = false;
   list.addEventListener('pointerdown', event => {
     const item = event.target.closest('[data-photo]'); if (!item || event.pointerType === 'mouse') return;
@@ -1655,7 +1655,7 @@ function buildStrip() {
     if (pressed) { pressed = false; return; } // the long-press already toggled it
     const id = Number(item.dataset.photo); app.focusId = id;
     if (event.shiftKey) selectRange(id);
-    else if (event.ctrlKey || event.metaKey || event.target.closest('.strip-check')) toggleSelected(id);
+    else if (event.ctrlKey || event.metaKey || (!mobileQuery.matches && event.target.closest('.strip-check'))) toggleSelected(id);
     else pickPhoto(id);
     syncStrip(); item.focus();
   });

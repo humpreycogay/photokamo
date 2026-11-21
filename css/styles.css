@@ -89,8 +89,6 @@ svg { flex:none; }
 .file-menu-item:hover,.file-menu-item:focus-visible { background:var(--control); }
 .history-actions { display:flex; align-items:center; gap:6px; }
 .topbar-actions { display:flex; align-items:center; gap:10px; }
-.privacy-pill { display:flex; align-items:center; gap:6px; color:var(--text-muted); font-size:var(--fs-md); margin-right:4px; white-space:nowrap; }
-.privacy-pill svg { width:16px; height:16px; color:var(--ok); }
 body:not(.has-image) .editing-only { display:none!important; }
 
 /* Buttons */
@@ -592,7 +590,7 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   .topbar { flex:none; gap:8px; padding:0 max(8px,env(safe-area-inset-right)) 0 max(8px,env(safe-area-inset-left)); }
   .icon-button { width:var(--tap); height:var(--tap); }
   .button { min-height:var(--tap); }
-  .privacy-pill,.topbar-divider,.file-chip,#revertButton,#exportButton { display:none!important; }
+  .topbar-divider,.file-chip,#revertButton,#exportButton { display:none!important; }
   body.has-image .brand,body.has-image #aboutButton { display:none; }
   .topbar-start { gap:10px; }
   .brand { font-size:17px; gap:8px; }
@@ -687,13 +685,13 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   .strip-list { gap:8px; padding:4px 4px 8px; scrollbar-width:none; }
   .strip-item,.strip-add { width:52px; height:52px; }
   .strip-add { margin-top:4px; }
-  .strip-check { top:3px; left:3px; width:14px; height:14px; border-radius:4px; }
+  .strip-check { top:3px; left:3px; width:14px; height:14px; border-radius:4px; pointer-events:none; }
   .strip-item[aria-selected=true] .strip-check::after { left:3px; top:0; width:3px; height:7px; }
   .strip-label { display:none!important; }
   .apply-bar { display:none!important; } /* phones: "Apply to N" is in the engine row, live is in the dialog */
   .strip-bar { min-height:var(--tap); }
   .strip-actions .text-button { min-width:var(--tap); min-height:var(--tap); padding:0 4px; }
-  .strip-check::before { inset:-10px; }
+  .strip-check::before { content:none; }
   .controls input[type=range],.dialog-card input[type=range] { height:var(--tap); }
   #cropSwap { min-height:var(--tap); }
   .scroll-panel { overscroll-behavior:contain; }
