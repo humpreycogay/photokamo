@@ -91,6 +91,8 @@
         </div>
       </div>
 
+      <button class="fullscreen-button editing-only" id="fullscreenButton" type="button" aria-label="Show full screen" title="Full screen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+
       <div class="crop-stage" id="cropStage" hidden>
         <div class="crop-view" id="cropView">
           <canvas id="cropCanvas" aria-hidden="true"></canvas>
@@ -160,7 +162,11 @@
         <section class="tab-panel looks-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
           <button class="sheet-grabber" id="sheetGrabber" type="button" aria-label="Expand controls"><span aria-hidden="true"></span></button>
           <button class="sheet-view" id="sheetViewToggle" type="button" aria-pressed="false" aria-label="Dial view"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 16h16M6 16v-3M10 16v-5M14 16v-3M18 16v-3"/><path d="M12 4v8"/></svg></button>
-          <button class="sheet-back" id="sheetBack" type="button" aria-label="Back to looks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <div class="expert-bar" id="expertBar">
+            <button class="button button-quiet expert-cancel" id="expertCancel" type="button">Cancel</button>
+            <h2 class="expert-title">Film settings</h2>
+            <button class="button button-primary expert-done" id="expertDone" type="button">Done</button>
+          </div>
           <div class="engine-bar">
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
@@ -239,6 +245,10 @@
             </div>
             <div class="adv-scroll"><div class="adv-sections" id="advSections"></div></div>
             <p class="adv-stage-hint" id="advStageHint" hidden><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span id="advStageHintText"></span></p>
+            <div class="adv-look" aria-live="polite">
+              <p class="adv-look-text"><span class="adv-look-name" id="advLookName"></span> <span class="adv-look-meta" id="advLookMeta"></span></p>
+              <button class="text-button" id="advBackToLook" type="button" hidden>Back to look</button>
+            </div>
             <div class="adv-footer">
               <button class="button button-ghost adv-save" id="saveMyLook" type="button">Save as my look</button>
               <button class="button button-quiet" id="deleteMyLook" type="button" hidden>Delete look</button>
@@ -287,6 +297,13 @@
           <p class="engine-wait-note" data-engine-wait hidden></p>
           <p class="panel-intro">Frames are independent from your color look and are included in export.</p>
           <div class="frame-grid" id="frameGrid"></div>
+          <section class="border-panel" id="frameColorPanel" aria-labelledby="frameColorLabel" hidden>
+            <p class="border-label" id="frameColorLabel">Border colour</p>
+            <div class="text-colors">
+              <div class="paper-swatches" id="frameColors" role="radiogroup" aria-labelledby="frameColorLabel"></div>
+              <label class="text-custom-color" title="Choose a custom border colour"><span class="text-custom-swatch" aria-hidden="true"></span><span>Custom</span><input id="frameColor" type="color" aria-label="Choose a custom border colour"></label>
+            </div>
+          </section>
           <section class="border-panel" id="borderPanel" aria-labelledby="borderTitle" hidden>
             <h3 id="borderTitle">Print border</h3>
             <p class="border-intro">The paper around the photo. Exported with it.</p>
@@ -298,6 +315,9 @@
             <label class="check-row"><input type="checkbox" id="matchPaper" aria-describedby="matchPaperHint"> Match paper tint to the chosen print paper</label>
             <p class="border-hint" id="matchPaperHint"></p>
           </section>
+          <div class="frame-apply-all" id="frameApplyAll" hidden>
+            <button class="button button-ghost" id="frameApplyAllButton" type="button">Apply frame to all photos</button>
+          </div>
         </section>
 
         <section class="tab-panel scroll-panel text-panel" id="textPanel" role="tabpanel" aria-labelledby="textTab" hidden>
@@ -326,10 +346,11 @@
               <button type="button" role="radio" data-align="right" aria-checked="false">Right</button>
             </div>
             <div class="slider-row"><label class="slider-label" for="textOpacity"><span>Opacity</span><output id="textOpacityOutput" for="textOpacity">100%</output></label><input id="textOpacity" data-text="opacity" type="range" min="10" max="100" step="1"></div>
-            <p class="text-label" id="textPlaceLabel">Position</p>
-            <div class="text-place" id="textPlace" role="group" aria-labelledby="textPlaceLabel"></div>
             <p class="border-hint">Drag the text anywhere on the image, borders included, or click it there and use the arrow keys.</p>
             <button class="button button-ghost text-delete" id="deleteText" type="button">Delete this text</button>
+          </div>
+          <div class="frame-apply-all" id="textApplyAll" hidden>
+            <button class="button button-ghost" id="textApplyAllButton" type="button">Apply text to all photos</button>
           </div>
         </section>
       </div>
@@ -461,6 +482,11 @@
         <button class="button button-primary" id="applyConfirm" type="submit">Apply</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="fullscreen-dialog" id="fullscreenDialog" aria-label="Full screen photo">
+    <canvas id="fullscreenCanvas" role="img" aria-label="Edited photo"></canvas>
+    <button class="fullscreen-close" id="fullscreenClose" type="button" aria-label="Close full screen" title="Close (Esc)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </dialog>
 
   <dialog id="aboutDialog">

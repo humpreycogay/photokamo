@@ -59,7 +59,12 @@ export const frames = [
   { id: 'sprocket', name: 'Film strip', description: 'Sprocket edge' },
   { id: 'gallery', name: 'Gallery mat', description: 'White mat, thin keyline' },
   { id: 'floating', name: 'Floating', description: 'Soft shadow on paper' },
-  { id: 'filed', name: 'Filed edge', description: 'Rough black darkroom border' }
+  { id: 'filed', name: 'Filed edge', description: 'Rough black darkroom border' },
+  // Fit frames: the whole photo, no crop, padded to a feed ratio (white or a blurred copy of the photo)
+  { id: 'fit-square', name: 'Square fit', description: 'White, 1:1, no crop' },
+  { id: 'fit-portrait', name: '4:5 fit', description: 'White, 4:5, no crop' },
+  { id: 'blur-square', name: 'Blur square', description: 'Blurred photo, 1:1' },
+  { id: 'blur-portrait', name: 'Blur 4:5', description: 'Blurred photo, 4:5' }
 ];
 
 // Crop › Platform: recommended upload sizes (px). Choosing one sets the crop ratio, and

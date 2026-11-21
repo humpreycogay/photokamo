@@ -4,6 +4,24 @@ const hasAdjustments = adjustments => Object.values(adjustments).some(value => v
 // `frame` is a frame id or { id, width, bottom, paper } (Paper print: % of the short edge + colour).
 const frameId = frame => (typeof frame === 'string' ? frame : frame?.id || 'none');
 
+// Fit frames: width / height of the result.
+const FIT_FRAMES = { 'fit-square': { ratio: 1 }, 'fit-portrait': { ratio: .8 }, 'blur-square': { ratio: 1, blur: true }, 'blur-portrait': { ratio: .8, blur: true } };
+/** Blur fill: the photo scaled to cover the whole frame, blurred and dimmed a little. A tiny copy scaled back up blurs
+ *  the same way on every browser and in Workers (canvas `filter` isn't everywhere yet). */
+function drawBlurFill(ctx, photo, W, H) {
+  const scale = Math.max(W / photo.width, H / photo.height), w = photo.width * scale, h = photo.height * scale;
+  const small = createCanvas(Math.max(1, Math.round(W / 24)), Math.max(1, Math.round(H / 24)));
+  const sctx = small.getContext('2d'); sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'high';
+  sctx.drawImage(photo, (W - w) / 2 / 24, (H - h) / 2 / 24, w / 24, h / 24);
+  ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(small, 0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/** Each frame's own border colour; a frame may carry { color } to override it (not Blur: it has none, not Paper: its own swatches). */
+export const FRAME_COLORS = { gallery: '#f3f1ec', floating: '#e6e3dc', filed: '#0e0e0d', classic: '#171715', instant: '#f7f3e8', sprocket: '#171715', 'fit-square': '#ffffff', 'fit-portrait': '#ffffff' };
+
 function frameLayout(width, height, frame) {
   if (frameId(frame) === 'paper') {
     const short = Math.min(width, height);
@@ -11,24 +29,32 @@ function frameLayout(width, height, frame) {
     const bottom = side + Math.round(short * (frame.bottom ?? 0) / 100);
     return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background: frame.paper || '#f4efe4' };
   }
+  const color = (typeof frame === 'object' && frame?.color) || null;
   frame = frameId(frame);
-  const short = Math.min(width, height);
-  if (frame === 'gallery') { const mat = Math.round(short * .1); return { width: width + mat * 2, height: height + mat * 2, x: mat, y: mat, background: '#f3f1ec' }; }
-  if (frame === 'floating') { const margin = Math.round(short * .09); return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background: '#e6e3dc' }; }
-  if (frame === 'filed') { const margin = Math.round(short * .045); return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background: '#0e0e0d' }; }
+  const short = Math.min(width, height), background = color || FRAME_COLORS[frame];
+  if (frame === 'gallery') { const mat = Math.round(short * .1); return { width: width + mat * 2, height: height + mat * 2, x: mat, y: mat, background }; }
+  if (frame === 'floating') { const margin = Math.round(short * .09); return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background }; }
+  if (frame === 'filed') { const margin = Math.round(short * .045); return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background }; }
   if (frame === 'classic') {
     const margin = Math.round(Math.min(width, height) * .035);
-    return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background: '#171715' };
+    return { width: width + margin * 2, height: height + margin * 2, x: margin, y: margin, background };
   }
   if (frame === 'instant') {
     const side = Math.round(Math.min(width, height) * .065);
     const bottom = Math.round(Math.min(width, height) * .19);
-    return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background: '#f7f3e8' };
+    return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background };
+  }
+  const fit = FIT_FRAMES[frame];
+  if (fit) { // pad to the ratio (white keeps a slim margin all round; blur lets the photo meet the edge)
+    const margin = fit.blur ? 0 : Math.round(short * .03);
+    let W = width + margin * 2, H = height + margin * 2;
+    if (W / H < fit.ratio) W = Math.round(H * fit.ratio); else H = Math.round(W / fit.ratio);
+    return { width: W, height: H, x: Math.round((W - width) / 2), y: Math.round((H - height) / 2), background: fit.blur ? '#171715' : background };
   }
   if (frame === 'sprocket') {
     const side = Math.round(Math.min(width, height) * .075);
     const vertical = Math.round(Math.min(width, height) * .12);
-    return { width: width + side * 2, height: height + vertical * 2, x: side, y: vertical, background: '#171715' };
+    return { width: width + side * 2, height: height + vertical * 2, x: side, y: vertical, background };
   }
   return { width, height, x: 0, y: 0, background: '#000' };
 }
@@ -270,6 +296,7 @@ export function frameCanvas(photo, frame = 'none', texts = []) {
   ctx.fillStyle = layout.background;
   ctx.fillRect(0, 0, output.width, output.height);
   const id = frameId(frame), short = Math.min(width, height);
+  if (FIT_FRAMES[id]?.blur) drawBlurFill(ctx, photo, output.width, output.height);
   if (id === 'floating') { // the shadow under the print
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,.38)'; ctx.shadowBlur = short * .035; ctx.shadowOffsetY = short * .014;

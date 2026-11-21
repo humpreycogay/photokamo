@@ -1,5 +1,5 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
-import { renderImage, frameCanvas, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
+import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
@@ -18,7 +18,7 @@ const elements = {
   lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
   lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
   strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), advancedOnly: $('#advancedOnly'), lookGrid: $('#lookGrid'),
-  filmSettings: [...document.querySelectorAll('[data-film-settings]')], sheetBack: $('#sheetBack'),
+  filmSettings: [...document.querySelectorAll('[data-film-settings]')], expertDone: $('#expertDone'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
   exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityGroup: $('#qualityGroup'),
@@ -109,7 +109,7 @@ const editCount = () => Object.keys(state.edits).length;
 const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
 const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id, params]) => [id, cloneParams(params)]));
 // Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
-const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder } } : { id: frame.id, border: { ...defaultBorder, ...frame.border } });
+const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder }, color: null } : { id: frame.id, border: { ...defaultBorder, ...frame.border }, color: frame.color ?? null });
 // A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
 function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, frame: cloneFrame(state.frame), text: cloneTexts(state.text) }; }
 // Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
@@ -311,7 +311,10 @@ function saveAsMyLook() {
   const stored = saveMyLooks();
   buildMyLookTiles();
   change(() => { state.myLookId = look.id; });
-  toast(stored ? `Saved “${look.name}”. Find it under Mine in Looks.` : `Saved “${look.name}” for this visit only (browser storage is unavailable).`);
+  // Back to the grid, on Mine, with the new tile in view.
+  state.filter = 'Mine'; setFilmExpert(false); syncLooks();
+  elements.lookGrid.querySelector(`[data-mine="${look.id}"]`)?.scrollIntoView({ block: 'nearest' });
+  toast(stored ? `Saved “${look.name}” to Mine.` : `Saved “${look.name}” for this visit only (browser storage is unavailable).`);
 }
 
 // ---------- Looks panel ----------
@@ -449,6 +452,10 @@ function syncLooks() {
     const showBack = Boolean(current?.builtIn && edited);
     elements.lookEdited.hidden = !showBack;
     if (showBack) elements.lookEditedText.textContent = `You changed ${plural(current.changed, 'setting')}.`;
+    // Film settings: the same, as one line at the bottom of the panel.
+    $('#advLookName').replaceChildren(name, ...(edited ? [Object.assign(document.createElement('span'), { className: 'look-edited-mark', textContent: ' · edited' })] : []));
+    $('#advLookMeta').textContent = `· ${elements.lookMeta.textContent}`;
+    $('#advBackToLook').hidden = !showBack;
     // Film looks have no Strength (SPEC §4.2): the row stays in place, inactive, so picking a film tile moves nothing.
     elements.strength.value = 100; elements.strength.disabled = true; elements.strengthOutput.value = '100%';
     return;
@@ -649,7 +656,18 @@ function buildFrames() {
     syncFrames(); scheduleRender();
   });
   $('#matchPaper').addEventListener('change', event => change(() => { state.frame.border.matchPaper = event.target.checked; }));
+  // Border colour (frames with a solid border): the frame's own colour, a swatch, or Custom (one undo step per pick).
+  $('#frameColors').innerHTML = [['default', 'Frame default'], ...FRAME_SWATCHES].map(([value, name]) => `<button type="button" role="radio" class="paper-swatch${value === 'default' ? ' frame-default-swatch' : ''}" data-frame-color="${value}" aria-checked="false" aria-label="${name}" title="${name}"${value === 'default' ? '' : ` style="--swatch:${value}"`}>${value === 'default' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>' : ''}</button>`).join('');
+  bindRadioGroup($('#frameColors'), '[data-frame-color]', button => change(() => { state.frame.color = button.dataset.frameColor === 'default' ? null : button.dataset.frameColor; }));
+  bindHistorySlider($('#frameColorPanel'), '#frameColor', input => { state.frame.color = input.value; syncFrames(); scheduleRender(); });
+  // Apply frame to all photos: the frame, its colour and print border settings; one undo step per photo.
+  $('#frameApplyAllButton').addEventListener('click', () => {
+    const others = app.photos.filter(photo => photo.id !== app.activeId);
+    const count = applyToPhotos(others, { look: false, adjustments: false, exposure: false, frame: true, text: false, crop: false });
+    toast(count ? `Frame applied to ${plural(count, 'other photo')}.` : 'All photos already have this frame.');
+  });
 }
+const FRAME_SWATCHES = [['#ffffff', 'White'], ['#f4efe4', 'Warm white'], ['#8c8c86', 'Grey'], ['#3a3a37', 'Charcoal'], ['#111110', 'Black']];
 /** Marks the radio whose `attribute` equals `value` as checked; it (or the first) is the one Tab reaches. */
 function syncRadios(group, attribute, value) {
   const buttons = [...group.querySelectorAll(`[${attribute}]`)];
@@ -675,8 +693,8 @@ function matchedPaper() {
 /** The frame as the renderer takes it: an id, or Paper print with its sizes and resolved colour. */
 function renderFrame() { return frameFor(state.frame, matchedPaper()); }
 /** `tint`: the print paper's tint for "Match paper tint", or null. */
-function frameFor({ id, border }, tint) {
-  if (id !== 'paper') return id;
+function frameFor({ id, border, color: borderColor }, tint) {
+  if (id !== 'paper') return borderColor && FRAME_COLORS[id] ? { id, color: borderColor } : id;
   const color = (border.matchPaper && tint) || border.color;
   return { id, width: border.width, bottom: border.bottom, paper: (paperColors.find(item => item.id === color) || paperColors[1]).hex };
 }
@@ -684,6 +702,18 @@ function syncFrames() {
   const { id, border } = state.frame;
   document.querySelectorAll('[data-frame]').forEach(card => card.setAttribute('aria-pressed', card.dataset.frame === id));
   elements.borderPanel.hidden = id !== 'paper';
+  const colorable = Boolean(FRAME_COLORS[id]), color = state.frame.color;
+  $('#frameColorPanel').hidden = !colorable;
+  if (colorable) {
+    $('#frameColors .frame-default-swatch').style.setProperty('--swatch', FRAME_COLORS[id]);
+    syncRadios($('#frameColors'), 'data-frame-color', color && FRAME_SWATCHES.some(([hex]) => hex === color) ? color : color ? '' : 'default');
+    const custom = $('#frameColor'), label = custom.closest('.text-custom-color');
+    if (document.activeElement !== custom) custom.value = color || FRAME_COLORS[id];
+    label.style.setProperty('--custom-color', custom.value);
+    label.classList.toggle('is-selected', Boolean(color) && !FRAME_SWATCHES.some(([hex]) => hex === color));
+  }
+  $('#frameApplyAll').hidden = app.photos.length < 2;
+  $('#frameApplyAllButton').textContent = `Apply frame to all ${app.photos.length} photos`;
   syncRadios($('#borderSizes'), 'data-border-size', border.size);
   for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
     const input = elements.borderPanel.querySelector(`[data-border="${key}"]`);
@@ -926,8 +956,7 @@ function syncCrop() {
 // state.text holds the photo's text layers (renderer.js drawTexts). The preview shows them on a
 // separate canvas over the photo (#textCanvas) so typing and dragging are instant; export,
 // batch export and thumbnails draw them into the image (frameCanvas(…, texts)).
-const TEXT_COLORS = [['#ffffff', 'White'], ['#111110', 'Black'], ['#f4efe4', 'Warm white'], ['#ffd25a', 'Gold'], ['#ff8a4c', 'Orange'], ['#e8473a', 'Red'], ['#e96ca5', 'Pink'], ['#a98be8', 'Purple'], ['#67b7e8', 'Sky blue'], ['#58b89c', 'Teal']];
-const TEXT_PLACES = [['Top left', .2, .12], ['Top', .5, .12], ['Top right', .8, .12], ['Left', .2, .5], ['Center', .5, .5], ['Right', .8, .5], ['Bottom left', .2, .88], ['Bottom', .5, .88], ['Bottom right', .8, .88]];
+const TEXT_COLORS = [['#ffffff', 'White'], ['#111110', 'Black'], ['#f4efe4', 'Warm white'], ['#ffd25a', 'Gold'], ['#ff8a4c', 'Orange'], ['#e8473a', 'Red'], ['#e96ca5', 'Pink'], ['#a98be8', 'Purple'], ['#1f3a68', 'Navy'], ['#67b7e8', 'Sky blue'], ['#58b89c', 'Teal'], ['#8c8c86', 'Grey']];
 const textUi = { selected: null, boxes: [], drag: null, start: null, timer: 0 };
 const cloneTexts = texts => (texts || []).map(text => ({ ...text }));
 // Text may sit anywhere on the framed image, borders included: positions stay relative to the
@@ -938,12 +967,6 @@ function textBounds() {
   return { x0: -rect.x / rect.width, x1: (canvas.width - rect.x) / rect.width, y0: -rect.y / rect.height, y1: (canvas.height - rect.y) / rect.height };
 }
 const clampText = text => { const b = textBounds(); text.x = Math.min(b.x1, Math.max(b.x0, text.x)); text.y = Math.min(b.y1, Math.max(b.y0, text.y)); };
-/** Middle of the frame's bottom border, or null when the frame has none. */
-function bottomBorderY() {
-  const canvas = state.editedCanvas, rect = canvas?.photoRect; if (!rect) return null;
-  const below = canvas.height - rect.y - rect.height;
-  return below > rect.height * .03 ? (rect.height + below / 2) / rect.height : null;
-}
 const selectedText = () => state.text.find(text => text.id === textUi.selected) || null;
 /** Waits for the fonts the layers use, so canvas text never falls back mid-render. */
 const ensureTextFonts = texts => Promise.all((texts || []).map(text => document.fonts.load(textFont(text, 32)).catch(() => {})));
@@ -964,10 +987,13 @@ function buildText() {
   fontPicker.innerHTML = textFonts.map(([id, name]) => `<button type="button" role="radio" class="text-font-option" data-font="${id}" aria-checked="false">${name}</button>`).join('');
   fontPicker.querySelectorAll('[data-font]').forEach((button, index) => { button.style.setProperty('--preview-font', textFonts[index][2]); });
   $('#textColors').innerHTML = TEXT_COLORS.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-color="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
-  $('#textPlace').innerHTML = TEXT_PLACES.map(([name, x, y]) => `<button type="button" class="text-place-button" data-x="${x}" data-y="${y}" aria-label="${name}" title="${name}"><span aria-hidden="true"></span></button>`).join('')
-    + '<button type="button" class="button button-ghost text-place-border" id="textOnBorder">On the bottom border</button>';
-  $('#textOnBorder').addEventListener('click', () => { const y = bottomBorderY(); if (y !== null) updateText(text => { text.x = .5; text.y = y; text.align = 'center'; }); });
   $('#addText').addEventListener('click', addText);
+  // Every other photo gets this photo's text layers (replacing theirs); one undo step per photo.
+  $('#textApplyAllButton').addEventListener('click', () => {
+    const others = app.photos.filter(photo => photo.id !== app.activeId);
+    const count = applyToPhotos(others, { look: false, adjustments: false, exposure: false, frame: false, text: true, crop: false });
+    toast(count ? `Text applied to ${plural(count, 'other photo')}.` : 'All photos already have this text.');
+  });
   $('#deleteText').addEventListener('click', () => {
     const index = state.text.findIndex(text => text.id === textUi.selected); if (index < 0) return;
     change(() => { state.text.splice(index, 1); });
@@ -984,9 +1010,7 @@ function buildText() {
   bindRadioGroup($('#textAlign'), '[data-align]', button => updateText(text => { text.align = button.dataset.align; }));
   elements.textPanel.addEventListener('click', event => {
     const toggle = event.target.closest('[data-text-toggle]');
-    if (toggle) { updateText(text => { text[toggle.dataset.textToggle] = !text[toggle.dataset.textToggle]; }); return; }
-    const place = event.target.closest('[data-x]');
-    if (place) updateText(text => { text.x = Number(place.dataset.x); text.y = Number(place.dataset.y); });
+    if (toggle) updateText(text => { text[toggle.dataset.textToggle] = !text[toggle.dataset.textToggle]; });
   });
 
   // On the photo: click to select, drag to move, arrow keys to nudge (Text tab only).
@@ -1039,7 +1063,6 @@ function drawTextOverlay() {
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   textUi.boxes = [];
-  $('#textOnBorder').hidden = bottomBorderY() === null; // only frames with a bottom border (Instant, Paper print…)
   if (!source?.photoRect || state.holding || !state.text.length) return;
   const scale = overlay.width / source.width, rect = source.photoRect;
   const scaled = { x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale };
@@ -1055,6 +1078,9 @@ function drawTextOverlay() {
 }
 function syncText() {
   if (!state.text.some(text => text.id === textUi.selected)) textUi.selected = state.text[state.text.length - 1]?.id || null;
+  // Apply text to all photos: only with text here, so it never clears the others by accident.
+  $('#textApplyAll').hidden = app.photos.length < 2 || !state.text.length;
+  $('#textApplyAllButton').textContent = `Apply text to all ${app.photos.length} photos`;
   const text = selectedText();
   const refocus = elements.textLayers.contains(document.activeElement);
   elements.textLayers.innerHTML = state.text.map((layer, index) => `<button type="button" role="radio" class="chip" data-layer="${layer.id}" aria-checked="${layer.id === textUi.selected}" tabindex="${layer.id === textUi.selected ? 0 : -1}"></button>`).join('');
@@ -1350,6 +1376,7 @@ function buildAdvancedPanel() {
   $('#advResetAll').addEventListener('click', () => { const module = activeModule(); if (module) change(() => { state.engineParams[state.engine] = module.defaultParams(); state.myLookId = null; }); });
   $('#saveMyLook').addEventListener('click', saveAsMyLook);
   $('#backToLook').addEventListener('click', backToLook);
+  $('#advBackToLook').addEventListener('click', backToLook);
   $('#deleteMyLook').addEventListener('click', () => { if (state.myLookId) deleteMyLook(state.myLookId); });
 }
 
@@ -1369,15 +1396,24 @@ function syncFilmPanel() {
   });
 }
 const shown = element => element.offsetParent !== null;
+let expertStart = null; // { photo, settings } when the settings opened, for Cancel
 function setFilmExpert(open) {
+  if (open && !filmExpert) expertStart = { photo: app.activeId, settings: snapshot() };
   filmExpert = open; syncFilmPanel();
   if (open) syncAdvancedPanel(); // the panel may have been built while hidden
-  // Phone sheet: the gear steps aside while open, so focus goes to Back (and returns to the gear).
-  const target = open ? elements.sheetBack : elements.filmSettings.find(shown);
+  // Phone sheet: the gear steps aside while open, so focus goes to Done (and returns to the gear).
+  const target = open ? elements.expertDone : elements.filmSettings.find(shown);
   if (document.activeElement && !shown(document.activeElement) && target && shown(target)) target.focus();
 }
+/** Cancel: the photo goes back to how it was when the settings opened (one undo step), then the Looks grid. */
+function cancelFilmExpert() {
+  const start = expertStart;
+  if (start && start.photo === app.activeId && !sameSnapshot(start.settings, snapshot())) change(() => applySettings(start.settings));
+  setFilmExpert(false);
+}
 elements.filmSettings.forEach(button => button.addEventListener('click', () => { if (isFilm()) setFilmExpert(!filmExpert); }));
-elements.sheetBack.addEventListener('click', () => setFilmExpert(false));
+elements.expertDone.addEventListener('click', () => setFilmExpert(false));
+$('#expertCancel').addEventListener('click', cancelFilmExpert);
 
 // ---------- Engine view: Presets or a film engine, inside the Looks tab ----------
 function syncEngineView() {
@@ -1610,6 +1646,23 @@ function applyZoom() {
   elements.canvas.style.width = actual ? `${elements.canvas.width}px` : '';
   document.querySelectorAll('[data-zoom]').forEach(button => button.setAttribute('aria-pressed', button.dataset.zoom === state.zoom));
 }
+// 100%: drag the photo to look around (mouse or pen; fingers already scroll it). Dragging text in the Text tab wins.
+let pan = null;
+elements.viewport.addEventListener('pointerdown', event => {
+  if (state.zoom !== '100' || event.pointerType === 'touch' || event.button !== 0 || event.defaultPrevented) return;
+  event.preventDefault(); // no text selection while dragging
+  const view = elements.viewport;
+  pan = { id: event.pointerId, x: event.clientX, y: event.clientY, left: view.scrollLeft, top: view.scrollTop };
+  view.setPointerCapture(event.pointerId); view.classList.add('is-panning');
+});
+elements.viewport.addEventListener('pointermove', event => {
+  if (!pan || pan.id !== event.pointerId) return;
+  elements.viewport.scrollLeft = pan.left - (event.clientX - pan.x);
+  elements.viewport.scrollTop = pan.top - (event.clientY - pan.y);
+});
+const endPan = event => { if (pan?.id === event.pointerId) { pan = null; elements.viewport.classList.remove('is-panning'); } };
+elements.viewport.addEventListener('pointerup', endPan);
+elements.viewport.addEventListener('pointercancel', endPan);
 function setZoom(zoom) {
   if (zoom === state.zoom) return;
   state.zoom = zoom; applyZoom(); scheduleRender();
@@ -2715,6 +2768,27 @@ elements.shareButton.addEventListener('click', sharePhoto);
 $('#formatOptions').addEventListener('click', event => { const button = event.target.closest('[data-format]'); if (!button) return; state.exportFormat = button.dataset.format; syncExportOptions(); schedulePrepare(); });
 $('#sizeOptions').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button || button.disabled) return; state.exportSize = button.dataset.size; syncExportOptions(); schedulePrepare(); });
 elements.quality.addEventListener('input', () => { syncExportOptions(); schedulePrepare(400); });
+// ---------- Full screen: the edited photo with its text (no selection box). Esc or ✕ closes. ----------
+// The dialog fills the window; where the browser allows it (desktop), it also goes truly full screen.
+const fullscreen = { dialog: $('#fullscreenDialog'), canvas: $('#fullscreenCanvas'), button: $('#fullscreenButton') };
+function openFullscreen() {
+  const source = state.editedCanvas; if (!source) return;
+  const canvas = fullscreen.canvas; canvas.width = source.width; canvas.height = source.height;
+  const ctx = canvas.getContext('2d'); ctx.drawImage(source, 0, 0);
+  if (source.photoRect && state.text.length) drawTexts(ctx, source.photoRect, state.text);
+  fullscreen.dialog.showModal();
+  fullscreen.dialog.requestFullscreen?.().catch(() => { /* window-sized is fine (iPhone, or not allowed) */ });
+}
+function closeFullscreen() { if (fullscreen.dialog.open) fullscreen.dialog.close(); }
+fullscreen.button.addEventListener('click', openFullscreen);
+$('#fullscreenClose').addEventListener('click', closeFullscreen);
+// In browser full screen, Esc leaves full screen first (no keydown reaches the page): close the dialog with it.
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) closeFullscreen(); });
+fullscreen.dialog.addEventListener('close', () => {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  fullscreen.button.focus();
+});
+
 $('#aboutButton').addEventListener('click', () => elements.aboutDialog.showModal()); $('#startAbout').addEventListener('click', () => elements.aboutDialog.showModal()); $('#aboutClose').addEventListener('click', () => elements.aboutDialog.close());
 // Both About buttons open the same dialog; refresh the saved-engines line whenever it opens.
 new MutationObserver(() => { if (elements.aboutDialog.open) syncEngineStorage(); }).observe(elements.aboutDialog, { attributes: true, attributeFilter: ['open'] });

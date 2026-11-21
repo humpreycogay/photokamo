@@ -149,7 +149,8 @@ body:not(.has-image) .topbar { display:none; }
 
 /* Photo viewport */
 .viewport { flex:1 1 auto; min-height:0; width:100%; display:flex; overflow:hidden; }
-.viewport.is-actual { overflow:auto; scrollbar-color:var(--line-strong) transparent; }
+.viewport.is-actual { overflow:auto; scrollbar-color:var(--line-strong) transparent; cursor:grab; }
+.viewport.is-panning { cursor:grabbing; user-select:none; -webkit-user-select:none; }
 .canvas-wrap { margin:auto; position:relative; max-width:100%; line-height:0; border-radius:4px; box-shadow:var(--shadow-photo); }
 .canvas-wrap canvas { display:block; max-width:100%; max-height:calc(100vh - var(--topbar-h) - 124px); max-height:calc(100dvh - var(--topbar-h) - 124px); width:auto; height:auto; border-radius:4px; background:var(--raised); }
 .viewport.is-actual .canvas-wrap { max-width:none; }
@@ -159,6 +160,17 @@ body:not(.has-image) .topbar { display:none; }
   .viewport:not(.is-actual) { container-type:size; }
   .viewport:not(.is-actual) .canvas-wrap canvas { max-width:100cqw; max-height:calc(100cqh - 4px); }
 }
+/* Full screen: button on the stage corner, then a dialog that fills the screen (Esc or ✕ closes it) */
+.fullscreen-button { position:absolute; top:12px; right:12px; z-index:3; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:22px; background:rgba(12,12,11,.78); color:var(--text); cursor:pointer; }
+.fullscreen-button:hover { background:rgba(12,12,11,.9); }
+.fullscreen-button:focus-visible,.fullscreen-close:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+body[data-tab=crop] .fullscreen-button { display:none; }
+.fullscreen-dialog { width:100vw; height:100vh; height:100dvh; max-width:none; max-height:none; margin:0; padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); background:var(--stage); }
+.fullscreen-dialog[open] { display:block; }
+.fullscreen-dialog::backdrop { background:var(--stage); backdrop-filter:none; }
+.fullscreen-dialog canvas { display:block; width:100%; height:100%; object-fit:contain; }
+.fullscreen-close { position:fixed; top:max(12px,env(safe-area-inset-top)); right:12px; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:22px; background:rgba(12,12,11,.78); color:var(--text); cursor:pointer; }
+.fullscreen-close:hover { background:rgba(12,12,11,.9); }
 .original-badge { position:absolute; top:14px; left:14px; padding:6px 10px; border-radius:var(--radius-sm); background:rgba(12,12,11,.8); color:var(--text); font-size:var(--fs-sm); font-weight:600; line-height:1.2; pointer-events:none; }
 .drop-overlay { display:none; position:absolute; inset:18px; border:2px dashed var(--accent); border-radius:var(--radius-lg); background:rgba(18,18,16,.92); z-index:5; place-items:center; color:var(--accent); font-weight:700; font-size:24px; }
 .stage.dragover .drop-overlay { display:grid; }
@@ -346,6 +358,10 @@ body:not(.has-image) .topbar { display:none; }
 .frame-card[data-frame=filed] i { border:7px solid #151514; border-radius:2px; }
 .frame-card[data-frame=instant] i { border:7px solid #faf8ed; border-bottom-width:19px; box-shadow:0 2px 4px #0003; }
 .frame-card[data-frame=sprocket] i { border:10px dotted #eee; outline:5px solid #171715; }
+/* Fit frames: a landscape photo padded to 1:1 or 4:5 (white, or a soft blur of itself) */
+.frame-card:is([data-frame^=fit-],[data-frame^=blur-]) i { box-sizing:border-box; width:62%; height:62%; border:solid #faf8ed; border-width:16px 4px; background-clip:content-box; }
+.frame-card:is([data-frame=fit-portrait],[data-frame=blur-portrait]) i { width:52%; height:66%; border-width:20px 3px; }
+.frame-card[data-frame^=blur-] i { border-color:transparent; background:linear-gradient(145deg,#e9b56d 0 38%,#526f61 38%) content-box, linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.35)) border-box, linear-gradient(160deg,#e9b56d,#526f61) border-box; }
 .frame-card strong { display:block; font-size:var(--fs-md); }
 .frame-card small { color:var(--text-muted); font-size:var(--fs-sm); }
 /* Crop tab */
@@ -402,6 +418,12 @@ body[data-tab=crop] .view-pill,body[data-tab=crop] .engine-wait,body[data-tab=cr
 .check-row input { width:18px; height:18px; margin:0; accent-color:var(--accent); }
 .check-row:has(input:disabled) { color:var(--text-muted); cursor:default; }
 .border-hint { margin:0; font-size:var(--fs-sm); color:var(--text-muted); }
+#frameColorPanel .text-colors { margin-top:4px; }
+.frame-default-swatch { display:grid; place-items:center; color:var(--text-muted); }
+.frame-default-swatch svg { width:18px; height:18px; mix-blend-mode:difference; color:var(--text-2); }
+.frame-apply-all { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
+.frame-apply-all .button { width:100%; min-height:var(--tap); }
+@media (max-width:900px) { #frameColorPanel,.frame-apply-all { margin:16px 16px 0; } #textApplyAll { margin-bottom:16px; } }
 .border-hint:empty { display:none; }
 /* Film engine not ready yet: dimmed photo + status pill; notes in Adjust / Frames */
 .engine-wait { position:absolute; left:50%; top:50%; z-index:4; transform:translate(-50%,-50%); display:flex; align-items:center; gap:12px; max-width:calc(100% - 32px); padding:12px 16px; border-radius:var(--radius-lg); background:rgba(12,12,11,.88); border:1px solid var(--line-strong); box-shadow:var(--shadow-photo); }
@@ -491,7 +513,22 @@ body:not(.film-expert) .engine-label,body:not(.film-expert) #engineButton,body:n
 .film-settings-button[aria-disabled=true]:hover { background:transparent; }
 .film-settings-button[aria-expanded=true] { border-color:var(--accent); color:var(--accent); }
 .film-settings-button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-body.film-expert .strength-row { display:none; }
+/* Film settings open: the look card steps aside; one line at the bottom of the panel names the look (and offers Back to look) */
+body.film-expert .look-card { display:none; }
+/* Behind the photo: a very faint checkerboard, so dark borders still show an edge */
+body.has-image .stage,.fullscreen-dialog { background:repeating-conic-gradient(var(--stage) 0 25%,color-mix(in srgb,var(--stage) 96.5%,var(--text)) 0 50%) 50% 50% / 24px 24px; }
+.adv-look { flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 20px; border-top:1px solid var(--line); }
+.adv-look-text { min-width:0; margin:0; font-size:var(--fs-sm); line-height:1.4; color:var(--text-2); }
+.adv-look-name { font-weight:700; color:var(--text); }
+.adv-look-name .look-edited-mark { color:var(--accent); }
+.adv-look .text-button { flex:none; min-height:var(--tap); font-size:var(--fs-sm); font-weight:600; }
+.adv-look + .adv-footer { border-top:0; padding-top:4px; }
+/* Film settings header: Cancel (back to how the look was when opened) · title · Done (keep, back to the Looks grid) */
+.expert-bar { display:none; }
+body.film-expert .expert-bar { flex:none; display:flex; align-items:center; gap:12px; padding:14px 20px 0; }
+.expert-title { flex:1; margin:0; font-size:var(--fs-lg); font-weight:700; text-align:center; }
+.expert-bar .button { min-height:var(--tap); min-width:84px; padding:0 16px; }
+.expert-bar .button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 /* Desktop look card: one compact row, Strength | heart · gear. The pressed tile names the look; the name, stock line and
    description stay in the card for screen readers (its aria-live announces look changes). */
 @media (min-width:901px) {
@@ -501,12 +538,6 @@ body.film-expert .strength-row { display:none; }
   .strength-row { grid-column:1; grid-row:1; }
   .strength-label { margin-top:0; }
   .look-edited:not([hidden]) { grid-column:1 / -1; grid-row:2; margin-top:6px; }
-  /* Film settings open: no tiles on screen, so the name and stock line take Strength's place (no description) */
-  body.film-expert .look-card-head { display:contents; }
-  body.film-expert .look-card-text { position:static; grid-column:1; grid-row:1; width:auto; height:auto; margin:0; overflow:visible; clip:auto; white-space:normal; }
-  body.film-expert .look-card-actions { grid-column:2; grid-row:1; }
-  body.film-expert .look-group,body.film-expert .look-desc { display:none; }
-  body.film-expert .look-name { margin:0; font-size:var(--fs-lg); }
 }
 .engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
@@ -859,11 +890,6 @@ body[data-tab=text] .text-overlay { pointer-events:auto; cursor:move; touch-acti
 .text-styles [aria-pressed=true] { border-color:var(--accent); color:var(--accent); }
 .text-styles .button:disabled { opacity:.4; cursor:not-allowed; }
 .text-align { margin-top:6px; }
-.text-place { display:grid; grid-template-columns:repeat(3,var(--tap)); gap:6px; }
-.text-place-button { display:grid; place-items:center; width:var(--tap); height:var(--tap); border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:transparent; cursor:pointer; }
-.text-place-border { grid-column:1 / -1; width:100%; min-height:var(--tap); margin-top:2px; }
-.text-place-button span { width:10px; height:10px; border-radius:5px; background:var(--text-muted); }
-.text-place-button:hover span { background:var(--accent); }
 .text-delete { width:100%; min-height:var(--tap); margin-top:18px; }
 
 /* Phones: the filmstrip is a column left of the photo, and the photo always keeps the larger share */
@@ -897,7 +923,7 @@ body.is-film {
   --pk-preview-collapsed: max(var(--pk-preview-min), 41.7dvh); /* 352px at 844 */
   --pk-preview-expanded: max(var(--pk-preview-min), 26.1dvh);  /* 220px at 844 */
 }
-.sheet-grabber,.sheet-back,.sheet-render,.sheet-view,.adv-chip,.adv-reset-icon,.adv-tick,.adv-select-row,.adv-stage-hint { display:none; }
+.sheet-grabber,.sheet-render,.sheet-view,.adv-chip,.adv-reset-icon,.adv-tick,.adv-select-row,.adv-stage-hint { display:none; }
 /* Option picker sheet (select rows in the film sheet, js/option-picker.js) */
 .option-sheet { position:fixed; inset:auto 0 0 0; width:100%; max-width:none; max-height:75dvh; margin:0; display:none; flex-direction:column; padding:8px 0 max(12px,env(safe-area-inset-bottom)); border:0; border-top:1px solid var(--line-strong); border-radius:var(--radius-sheet) var(--radius-sheet) 0 0; background:var(--raised); color:var(--text); }
 .option-sheet:popover-open { display:flex; }
@@ -1045,10 +1071,8 @@ body.is-film {
   body.film-expert .sheet-view svg { width:18px; height:18px; }
   body.film-expert .sheet-view[aria-pressed=true] { color:var(--pk-accent); }
   body.film-expert .sheet-view:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; }
-  /* Back to the Looks grid (top left of the sheet; the gear in the look-name row steps aside) */
-  body.film-expert .sheet-back { position:absolute; top:0; left:16px; z-index:2; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:var(--pk-radius-control); background:transparent; color:var(--pk-text-soft); cursor:pointer; }
-  body.film-expert .sheet-back svg { width:20px; height:20px; }
-  body.film-expert .sheet-back:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; }
+  /* Cancel · Film settings · Done under the grabber (clear of the dial toggle); the gear in the look-name row steps aside */
+  body.film-expert .expert-bar { padding:12px 16px 0; }
   body.film-expert .engine-row .film-settings-button { display:none; }
 
   /* Dial view: parameter chips, then big value and reset, then a ruler under a fixed needle */
