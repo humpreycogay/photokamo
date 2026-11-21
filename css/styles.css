@@ -483,6 +483,15 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-row { display:flex; gap:8px; }
 body:not(.is-film) .engine-label,body:not(.is-film) #engineButton { display:none; }
 @media (min-width:901px) { body:not(.is-film) .engine-bar { display:none; } }
+/* Film panel switch: Looks | Controls (SPEC §4.3). In the Looks view the engine picker steps aside (it sits on top of Controls). */
+.film-view-row:not([hidden]) { flex:none; display:flex; align-items:center; gap:12px; padding:14px 20px 0; }
+.film-view-switch { display:grid; grid-template-columns:1fr 1fr; flex:none; width:220px; gap:2px; padding:3px; border-radius:12px; background:var(--stage); }
+.film-view-switch button { min-height:var(--tap); padding:0 12px; border:0; border-radius:9px; background:transparent; color:var(--text-2); font:inherit; font-size:var(--fs-md); font-weight:600; cursor:pointer; }
+.film-view-switch button[aria-checked=true] { background:var(--text); color:var(--bg); }
+.film-view-switch button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.film-view-name { display:none; }
+body.film-looks-view .engine-label,body.film-looks-view #engineButton,body.film-looks-view #engineAboutButton,body.film-looks-view .sheet-view { display:none!important; }
+@media (min-width:901px) { body.film-looks-view .engine-bar { display:none; } }
 .engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
 .engine-button-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
@@ -914,6 +923,13 @@ body.is-film {
   body.is-film .sheet-grabber:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; border-radius:var(--pk-radius-sheet) var(--pk-radius-sheet) 0 0; }
   body.is-film[data-tab=looks] .engine-bar { padding-top:12px; }
   body.is-film[data-tab=looks] .pipeline { background:var(--pk-sheet); }
+  /* Looks | Controls on the look-name row, under the grabber */
+  body.is-film .film-view-row:not([hidden]) { padding:4px 16px 0; }
+  body.is-film .film-view-switch { width:176px; border-radius:var(--pk-radius-control); background:var(--pk-track); }
+  body.is-film .film-view-switch button { min-height:var(--tap); border-radius:var(--pk-radius-segment); color:var(--pk-text-soft); }
+  body.is-film .film-view-switch button[aria-checked=true] { background:var(--pk-text); color:var(--pk-text-on-light); }
+  body.is-film .film-view-name { display:block; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; color:var(--pk-text); }
+  body.film-looks-view[data-tab=looks] .engine-bar { padding-top:8px; }
 
   /* Nothing on the photo: render status lives in the sheet header */
   body.is-film[data-tab=looks] .view-pill { display:none!important; }

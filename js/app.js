@@ -18,7 +18,7 @@ const elements = {
   lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
   lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
   strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
-  filmGroupRow: $('#filmGroupRow'), filmGroupFilters: $('#filmGroupFilters'),
+  filmGroupRow: $('#filmGroupRow'), filmGroupFilters: $('#filmGroupFilters'), filmViewRow: $('#filmViewRow'), filmViewSwitch: $('#filmViewSwitch'), filmViewName: $('#filmViewName'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
   exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityGroup: $('#qualityGroup'),
@@ -445,7 +445,7 @@ function syncLooks() {
     const edited = Boolean(current?.edited);
     elements.lookGroup.textContent = current ? (current.builtIn ? 'Film look' : 'My look') : entry.label;
     setLookName(name, edited);
-    elements.photoLookBadge.textContent = elements.engineLookName.textContent = edited ? `${name} · edited` : name;
+    elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.filmViewName.textContent = edited ? `${name} · edited` : name;
     elements.engineCaption.textContent = current ? elements.engineLookName.textContent : 'Film engine'; // phone sheet: over the engine name
     // Stock names stay visible to experts: "Kodak Portra 400 → Kodak Portra Endura · Spektrafilm".
     elements.lookMeta.textContent = module ? `${module.stockSummary(params)} · ${entry.label}` : `Loading ${entry.label}…`;
@@ -1356,6 +1356,36 @@ function buildAdvancedPanel() {
   $('#deleteMyLook').addEventListener('click', () => { if (state.myLookId) deleteMyLook(state.myLookId); });
 }
 
+// ---------- Film panel: Looks | Controls (SPEC §4.3) ----------
+// A device preference, not part of the photo: no undo step, no re-render. First visit: Looks.
+// (photokamo:film-view already holds the phone sheet's list/dial choice, so this has its own key.)
+const FILM_PANEL_KEY = 'photokamo:film-panel';
+let filmPanel = (() => { try { return localStorage.getItem(FILM_PANEL_KEY) === 'controls' ? 'controls' : 'looks'; } catch { return 'looks'; } })();
+/** Shows the Looks grid or the engine controls while a film engine is active (Basic always shows the grid). */
+function syncFilmPanel() {
+  const film = isFilm(); const controls = film && filmPanel === 'controls';
+  elements.filmViewRow.hidden = !film;
+  document.body.classList.toggle('film-looks-view', film && !controls);
+  elements.presetsView.hidden = controls; elements.advancedPanel.hidden = !controls;
+  elements.filmViewSwitch.querySelectorAll('[role=radio]').forEach(radio => {
+    const checked = radio.dataset.filmPanel === filmPanel;
+    radio.setAttribute('aria-checked', checked); radio.tabIndex = checked ? 0 : -1;
+  });
+}
+function setFilmPanel(value, focus = false) {
+  filmPanel = value;
+  try { localStorage.setItem(FILM_PANEL_KEY, value); } catch { /* remembered for this visit only */ }
+  syncFilmPanel();
+  if (focus) elements.filmViewSwitch.querySelector(`[data-film-panel="${value}"]`).focus();
+  if (value === 'controls') syncAdvancedPanel(); // the panel may have been built while hidden
+}
+elements.filmViewSwitch.addEventListener('click', event => { const radio = event.target.closest('[data-film-panel]'); if (radio) setFilmPanel(radio.dataset.filmPanel); });
+elements.filmViewSwitch.addEventListener('keydown', event => {
+  const next = { ArrowLeft: 'looks', ArrowUp: 'looks', ArrowRight: 'controls', ArrowDown: 'controls', Home: 'looks', End: 'controls' }[event.key];
+  if (!next) return;
+  event.preventDefault(); setFilmPanel(next, true);
+});
+
 // ---------- Engine view: Presets or a film engine, inside the Looks tab ----------
 function syncEngineView() {
   const film = isFilm();
@@ -1363,7 +1393,7 @@ function syncEngineView() {
   if (film) activateEngine().catch(error => console.error(error));
   const module = activeModule();
   document.body.classList.toggle('is-film', film);
-  elements.presetsView.hidden = film; elements.advancedPanel.hidden = !film;
+  syncFilmPanel();
   if (film && state.zoom !== 'fit') { state.zoom = 'fit'; applyZoom(); }
   syncRenderStatus();
 }
