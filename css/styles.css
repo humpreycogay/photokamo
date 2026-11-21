@@ -360,7 +360,11 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .frame-card[data-frame=floating] i { width:66%; height:56%; box-shadow:0 6px 10px rgba(0,0,0,.45); }
 .frame-card[data-frame=filed] i { border:7px solid #151514; border-radius:2px; }
 .frame-card[data-frame=instant] i { border:7px solid #faf8ed; border-bottom-width:19px; box-shadow:0 2px 4px #0003; }
-.frame-card[data-frame=sprocket] i { border:10px dotted #eee; outline:5px solid #171715; }
+.frame-card:is([data-frame=sprocket],[data-frame=film-worn],[data-frame=film-leak]) i { --film:#171715; --next:#3a3936; width:86%; height:66%; padding:11px 14px; background:linear-gradient(145deg,#e9b56d 0 38%,#526f61 38%) content-box, repeating-linear-gradient(90deg,transparent 0 3px,#eee 3px 7px) 0 3px / 100% 4px no-repeat, repeating-linear-gradient(90deg,transparent 0 3px,#eee 3px 7px) 0 calc(100% - 3px) / 100% 4px no-repeat, linear-gradient(90deg,var(--next) 0 10px,var(--film) 10px calc(100% - 10px),var(--next) 0) padding-box; }
+.frame-card[data-frame=film-worn] i { --next:#eee; }
+.frame-card[data-frame=film-leak] i { --next:#e98a2c; padding-inline:18px; }
+.frame-card[data-frame=film-collage] .frame-sample { background:var(--paper); }
+.frame-card[data-frame=film-collage] i { width:56%; height:48%; outline:7px dashed #171715; outline-offset:2px; box-shadow:0 0 0 2px #171715, 3px -12px 0 -4px #6f6e69, -4px 12px 0 -4px #6f6e69; }
 /* Fit frames: a landscape photo padded to 1:1 or 4:5 (white, or a soft blur of itself) */
 .frame-card:is([data-frame^=fit-],[data-frame^=blur-]) i { box-sizing:border-box; width:62%; height:62%; border:solid #faf8ed; border-width:16px 4px; background-clip:content-box; }
 .frame-card:is([data-frame=fit-portrait],[data-frame=blur-portrait]) i { width:52%; height:66%; border-width:20px 3px; }
@@ -745,9 +749,8 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   .ma-tool-value.is-edited { color:var(--accent); }
   .ma-dot { position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:3px; background:var(--accent); }
 
-  /* Frames: one horizontal row */
+  /* Frames: a wrapping grid that scrolls down, like the Text editor */
   #framePanel .panel-heading,#framePanel .panel-intro { display:none; }
-  #framePanel { padding:14px 0 12px; }
   #cropPanel { padding:12px 16px; }
   /* Filmstrip between the photo and the tool sheet */
   .filmstrip { flex:none; padding:6px 0 0; border-top:0; background:var(--bg); }
@@ -793,7 +796,7 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   .border-intro { display:none; }
   .engine-wait-note { margin:0 16px 10px; }
   .engine-wait { top:auto; bottom:64px; transform:translateX(-50%); width:max-content; }
-  .frame-grid { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:112px; gap:10px; overflow-x:auto; padding:2px 16px; scrollbar-width:none; }
+  .frame-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:2px 16px; }
   .frame-card { padding:6px; }
   .frame-sample { height:60px; margin-bottom:6px; }
   .frame-card small { display:none; }
@@ -909,9 +912,10 @@ body[data-tab=text] .text-overlay { pointer-events:auto; cursor:move; touch-acti
   .strip-select { display:grid; place-items:center; border:1px solid var(--line-strong); border-radius:8px; background:transparent; color:var(--text-2); cursor:pointer; }
   .strip-select[aria-pressed=true] { border-color:var(--accent); color:var(--accent); }
   .control-tabs button { font-size:var(--fs-xs); }
-  /* `.scroll-panel` is overflow:visible above for compact tool tabs. Text is intentionally the
-     exception: its complete editor must own the scroll area, especially in iOS Safari. */
-  #textPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
+  /* `.scroll-panel` is overflow:visible above for compact tool tabs. Text and Frames are the
+     exceptions: their full option lists must own the scroll area, especially in iOS Safari. */
+  #textPanel,#framePanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
+  #framePanel { padding:14px 0 max(36px,env(safe-area-inset-bottom)); }
 }
 
 /* Film engine sheet on phones (docs/handover-mobile-film-panel). Tokens alias the app's own;

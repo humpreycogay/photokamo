@@ -20,7 +20,7 @@ function drawBlurFill(ctx, photo, W, H) {
 }
 
 /** Each frame's own border colour; a frame may carry { color } to override it (not Blur: it has none, not Paper: its own swatches). */
-export const FRAME_COLORS = { gallery: '#f3f1ec', floating: '#e6e3dc', filed: '#0e0e0d', classic: '#171715', instant: '#f7f3e8', sprocket: '#171715', 'fit-square': '#ffffff', 'fit-portrait': '#ffffff' };
+export const FRAME_COLORS = { gallery: '#f3f1ec', floating: '#e6e3dc', filed: '#0e0e0d', classic: '#171715', instant: '#f7f3e8', sprocket: '#171715', 'film-worn': '#171715', 'fit-square': '#ffffff', 'fit-portrait': '#ffffff' };
 
 function frameLayout(width, height, frame) {
   if (frameId(frame) === 'paper') {
@@ -51,11 +51,14 @@ function frameLayout(width, height, frame) {
     if (W / H < fit.ratio) W = Math.round(H * fit.ratio); else H = Math.round(W / fit.ratio);
     return { width: W, height: H, x: Math.round((W - width) / 2), y: Math.round((H - height) / 2), background: fit.blur ? '#171715' : background };
   }
-  if (frame === 'sprocket') {
-    const side = Math.round(Math.min(width, height) * .075);
-    const vertical = Math.round(Math.min(width, height) * .12);
-    return { width: width + side * 2, height: height + vertical * 2, x: side, y: vertical, background };
+  const film = FILM_FRAMES[frame];
+  if (film) { // 35 mm: the photo is the 24 mm side across the film; portrait photos get an upright strip
+    const land = width >= height, mm = (land ? height : width) / 24;
+    const edge = Math.round(mm * 5.5), side = Math.round(mm * film.side);
+    return land ? { width: width + side * 2, height: height + edge * 2, x: side, y: edge, background: background || '#171715' }
+      : { width: width + edge * 2, height: height + side * 2, x: edge, y: side, background: background || '#171715' };
   }
+  if (frame === 'film-collage') { const m = Math.round(short * .2); return { width: width + m * 2, height: height + m * 2, x: m, y: m, background: '#f5f3ee' }; }
   return { width, height, x: 0, y: 0, background: '#000' };
 }
 
@@ -144,17 +147,160 @@ function roughEdges(ctx, x, y, width, height, short, color) {
   edge(height, (t, d) => [x + width - d, y + t], 15000);
 }
 
-function addSprockets(ctx, layout, imageWidth, imageHeight) {
-  const holeWidth = Math.max(5, Math.round(layout.x * .42));
-  const holeHeight = Math.max(9, Math.round(layout.y * .28));
-  const gap = holeWidth * .8;
-  ctx.fillStyle = '#e9e5d9';
-  ctx.beginPath();
-  for (let x = layout.x / 2 - holeWidth / 2; x < layout.width; x += holeWidth + gap) {
-    ctx.roundRect(x, layout.y * .23, holeWidth, holeHeight, 2);
-    ctx.roundRect(x, layout.y + imageHeight + layout.y * .49, holeWidth, holeHeight, 2);
+// ---------- Film frames ----------
+// Real 35 mm geometry, in mm of film: a 24 mm tall image on 35 mm film, frames 38 mm apart (2 mm gap),
+// 8 perforations of 2.8 × 1.98 mm per frame (4.75 mm pitch) set 2 mm in from each edge.
+// `side`: film shown left and right of the photo (the gap plus a sliver of the next frame).
+// Every mark is seeded and sized in mm, so the preview and the full-size export match.
+const FILM_FRAMES = { sprocket: { side: 5.5, wear: .3 }, 'film-worn': { side: 6, wear: 1 }, 'film-leak': { side: 14, wear: .45 } };
+const rnd = i => (seededNoise(i) + 1) / 2;
+const HOLE_LIGHT = '#f4f2ec';
+
+/** Perforation holes as subpaths of the current path, along a strip of length L and width A (film mm = mm). */
+function perforations(ctx, L, A, mm, phase) {
+  const pitch = 4.75 * mm, w = 2.8 * mm, h = 1.98 * mm, inset = 2.01 * mm, r = .5 * mm;
+  for (let x = phase % pitch - pitch; x < L; x += pitch) {
+    ctx.roundRect(x, inset, w, h, r);
+    ctx.roundRect(x, A - inset - h, w, h, r);
   }
-  ctx.fill();
+}
+
+/** Dust and scratches inside the current clip: light marks show on the black film, dark ones on clear film. */
+function filmWear(ctx, L, A, mm, amount, seed) {
+  ctx.lineCap = 'round';
+  const lines = Math.round(12 + 110 * amount), specks = Math.round(40 + 320 * amount);
+  for (let i = 0; i < lines; i++) {
+    const k = seed + i * 13, long = rnd(k + 2) < .35;
+    const x = rnd(k) * L, y = rnd(k + 1) * A;
+    const len = (long ? 6 + rnd(k + 3) * 26 : .8 + rnd(k + 3) * 5) * mm * (.55 + amount * .45);
+    const angle = long ? (rnd(k + 4) < .6 ? 0 : Math.PI / 2) + (rnd(k + 5) - .5) * .3 : rnd(k + 4) * Math.PI * 2;
+    const dx = Math.cos(angle) * len, dy = Math.sin(angle) * len, bend = (rnd(k + 6) - .5) * len * .25;
+    const light = rnd(k + 7) < .8;
+    ctx.strokeStyle = light ? `rgba(236,233,224,${(.12 + rnd(k + 8) * .5) * (.5 + amount * .5)})` : `rgba(24,24,22,${.15 + rnd(k + 8) * .45})`;
+    ctx.lineWidth = (.04 + rnd(k + 9) ** 2 * (.12 + .2 * amount)) * mm;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + dx / 2 - dy / len * bend, y + dy / 2 + dx / len * bend, x + dx, y + dy);
+    ctx.stroke();
+  }
+  for (let i = 0; i < specks; i++) {
+    const k = seed + 50000 + i * 7;
+    ctx.fillStyle = rnd(k + 3) < .75 ? `rgba(236,233,224,${.2 + rnd(k + 4) * .6})` : `rgba(24,24,22,${.3 + rnd(k + 4) * .5})`;
+    ctx.beginPath();
+    ctx.ellipse(rnd(k) * L, rnd(k + 1) * A, (.04 + rnd(k + 2) ** 4 * .4) * mm, (.03 + rnd(k + 5) ** 4 * .3) * mm, rnd(k + 6) * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Single 35 mm frame on its strip (sprocket / film-worn / film-leak), drawn around the already placed photo. */
+function drawFilmStrip(ctx, layout, photo, kind) {
+  const spec = FILM_FRAMES[kind], film = layout.background;
+  let L = layout.width, A = layout.height, px = layout.x, py = layout.y, pw = photo.width, ph = photo.height;
+  ctx.save();
+  if (pw < ph) { // portrait: draw the strip lying down in a turned space
+    ctx.translate(layout.width, 0); ctx.rotate(Math.PI / 2);
+    [L, A, px, py, pw, ph] = [layout.height, layout.width, layout.y, layout.width - layout.x - photo.width, photo.height, photo.width];
+  }
+  const mm = ph / 24, gap = 2 * mm, r = .7 * mm;
+  const neighbours = [[px - gap - pw, py], [px + pw + gap, py]];
+  // Next frames on the roll: a dim, out-of-focus shot / clear (unexposed) film / burnt by a light leak
+  if (kind === 'sprocket') {
+    const small = createCanvas(Math.max(1, Math.round(pw / 28)), Math.max(1, Math.round(ph / 28)));
+    const sctx = small.getContext('2d'); sctx.translate(small.width, 0); sctx.scale(-1, 1);
+    sctx.drawImage(photo, 0, 0, small.width, small.height);
+    ctx.save(); ctx.beginPath();
+    for (const [x, y] of neighbours) ctx.roundRect(x, y, pw, ph, r);
+    ctx.clip(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    for (const [x, y] of neighbours) ctx.drawImage(small, x, y, pw, ph);
+    ctx.fillStyle = 'rgba(10,10,9,.55)'; ctx.fillRect(0, 0, L, A);
+    ctx.restore();
+  } else if (kind === 'film-worn') {
+    ctx.fillStyle = '#efede6'; ctx.beginPath();
+    for (const [x, y] of neighbours) ctx.roundRect(x, y, pw, ph, r);
+    ctx.fill();
+  } else {
+    const end = px - gap * .6;
+    for (const flip of [false, true]) {
+      ctx.save();
+      if (flip) { ctx.translate(L, 0); ctx.scale(-1, 1); } // the right end mirrors the left
+      const burn = ctx.createLinearGradient(0, 0, end, 0);
+      burn.addColorStop(0, '#f2ebdc'); burn.addColorStop(.38, '#f0dcb4'); burn.addColorStop(.66, '#e98a2c');
+      burn.addColorStop(.84, '#b8410f'); burn.addColorStop(.95, '#4a1606'); burn.addColorStop(1, film);
+      ctx.fillStyle = burn; ctx.fillRect(0, 0, end, A);
+      const glow = ctx.createRadialGradient(end, A / 2, 0, end, A / 2, A * .55); // hottest beside the frame
+      glow.addColorStop(0, 'rgba(255,120,30,.55)'); glow.addColorStop(1, 'rgba(255,120,30,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, end, A);
+      ctx.restore();
+    }
+  }
+  // Rounded corners of the film gate
+  ctx.fillStyle = film; ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.roundRect(px, py, pw, ph, r); ctx.fill('evenodd');
+  if (kind === 'film-worn') roughEdges(ctx, px, py, pw, ph, ph * .7, film);
+  // Dust and scratches everywhere but on the photo
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, L, A); ctx.rect(px, py, pw, ph); ctx.clip('evenodd');
+  filmWear(ctx, L, A, mm, spec.wear, kind === 'film-leak' ? 9000 : 0);
+  ctx.restore();
+  // Perforations: light through the holes, lined up with the frame
+  ctx.fillStyle = HOLE_LIGHT; ctx.beginPath(); perforations(ctx, L, A, mm, px + pw / 2 - 1.4 * mm); ctx.fill();
+  // Edge print: frame numbers above, numbers and the half-frame arrow below
+  const ink = kind === 'film-leak' ? '#ef9a3c' : kind === 'film-worn' ? 'rgba(242,240,232,.9)' : 'rgba(228,222,206,.72)';
+  ctx.fillStyle = ink; ctx.font = `700 ${1.5 * mm}px Helvetica, Arial, sans-serif`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const top = 1.05 * mm, bottom = A - 1.05 * mm, mid = px + pw / 2;
+  ctx.fillText('24', mid, top); ctx.fillText('24', mid, bottom);
+  ctx.fillText('▸24A', px + pw + gap / 2, bottom); ctx.fillText('23A', px - gap / 2, bottom);
+  ctx.textAlign = 'left'; ctx.fillText('▸', px + 2 * mm, top);
+  ctx.restore();
+}
+
+/** One strip lying at (cx, cy), turned by `angle`: real holes (an even-odd path), grey frames, a soft shadow. */
+function collageStrip(ctx, cx, cy, length, across, angle, seed) {
+  const mm = across / 35, half = length / 2, pitch = 38 * mm;
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle); ctx.translate(-half, -across / 2);
+  ctx.beginPath(); ctx.rect(0, 0, length, across); perforations(ctx, length, across, mm, rnd(seed) * pitch);
+  ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = mm * 1.5; ctx.shadowOffsetY = mm * .3;
+  ctx.fillStyle = '#141413'; ctx.fill('evenodd');
+  ctx.shadowColor = 'transparent';
+  for (let x = rnd(seed + 1) * pitch - pitch, i = 0; x < length; x += pitch, i++) {
+    const g = 70 + rnd(seed + 2 + i) * 95, lift = rnd(seed + 40 + i) * 50;
+    const tone = ctx.createLinearGradient(x, 0, x + 36 * mm, across);
+    tone.addColorStop(0, `rgb(${g},${g},${g - 2})`); tone.addColorStop(1, `rgb(${g + lift},${g + lift},${g + lift - 2})`);
+    ctx.fillStyle = tone; ctx.beginPath(); ctx.roundRect(x, 5.5 * mm, 36 * mm, 24 * mm, .7 * mm); ctx.fill();
+  }
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, length, across); ctx.clip();
+  filmWear(ctx, length, across, mm, .45, seed * 31);
+  ctx.restore();
+  ctx.restore();
+}
+
+/** "Film strips": loose strips overlapping around the photo on paper, with ink splatter at the edges. */
+function drawFilmCollage(ctx, layout, w, h) {
+  const W = layout.width, H = layout.height, m = layout.x, s = m * .74, deg = Math.PI / 180;
+  // [side, distance from the outer edge, width, length (× the side), shift along (× the side), angle°]
+  const strips = [];
+  for (let side = 0; side < 4; side++) {
+    const k = side * 97;
+    strips.push([side, m * (.44 + rnd(k) * .14), s * .8, .8, (rnd(k + 1) - .5) * .3, (rnd(k + 2) < .5 ? -1 : 1) * (1.5 + rnd(k + 3) * 2.5)]);
+  }
+  for (let side = 0; side < 4; side++) strips.push([side, m * .56, s, 1.15, 0, (rnd(side * 97 + 4) - .5) * .8]);
+  for (let side = 0; side < 4; side++) {
+    const k = side * 97 + 10;
+    strips.push([side, m * (.48 + rnd(k) * .1), s * .78, .42, (rnd(k + 1) < .5 ? -1 : 1) * .3, (rnd(k + 2) < .5 ? -1 : 1) * (4 + rnd(k + 3) * 4)]);
+  }
+  strips.forEach(([side, d, across, length, shift, angle], i) => {
+    const vertical = side % 2 === 1, along = vertical ? H : W;
+    const t = along / 2 + shift * along;
+    const [cx, cy] = side === 0 ? [t, d] : side === 1 ? [W - d, t] : side === 2 ? [t, H - d] : [d, t];
+    collageStrip(ctx, cx, cy, along * length, across, (vertical ? 90 : 0) * deg + angle * deg, 300 + i * 53);
+  });
+  // Grunge: ink splatter and paper chips, thickest at the outer edge
+  const short = Math.min(w, h);
+  for (let i = 0; i < 1400; i++) {
+    const k = 70000 + i * 9, side = Math.floor(rnd(k) * 4), along = rnd(k + 1), depth = rnd(k + 2) ** 3 * m * .8;
+    const x = side === 0 || side === 2 ? along * W : side === 1 ? W - depth : depth;
+    const y = side === 1 || side === 3 ? along * H : side === 0 ? depth : H - depth;
+    const ink = rnd(k + 4) < .8, radius = (.0006 + rnd(k + 3) ** 6 * .008) * short * (ink ? 1 : .45);
+    ctx.fillStyle = ink ? `rgba(20,20,18,${.45 + rnd(k + 5) * .5})` : layout.background;
+    ctx.beginPath(); ctx.ellipse(x, y, radius * (1 + rnd(k + 6) * .8), radius, rnd(k + 7) * Math.PI, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 // Works on the main thread (HTMLCanvasElement) and in a Worker (OffscreenCanvas).
@@ -303,6 +449,7 @@ export function frameCanvas(photo, frame = 'none', texts = []) {
     ctx.fillStyle = '#000'; ctx.fillRect(layout.x, layout.y, width, height);
     ctx.restore();
   }
+  if (id === 'film-collage') drawFilmCollage(ctx, layout, width, height);
   ctx.drawImage(photo, layout.x, layout.y);
 
   frame = id;
@@ -312,8 +459,11 @@ export function frameCanvas(photo, frame = 'none', texts = []) {
     ctx.strokeRect(layout.x - gap, layout.y - gap, width + gap * 2, height + gap * 2);
   } else if (frame === 'filed') {
     roughEdges(ctx, layout.x, layout.y, width, height, short, layout.background);
-  } else if (frame === 'sprocket') {
-    addSprockets(ctx, layout, width, height);
+  } else if (FILM_FRAMES[frame]) {
+    drawFilmStrip(ctx, layout, photo, frame);
+  } else if (frame === 'film-collage') {
+    ctx.strokeStyle = '#141413'; ctx.lineWidth = Math.max(1, short * .006);
+    ctx.strokeRect(layout.x, layout.y, width, height);
   }
   const photoRect = { x: layout.x, y: layout.y, width, height };
   if (texts.length) drawTexts(ctx, photoRect, texts);
