@@ -807,8 +807,11 @@ body[data-tab=text] .text-overlay { pointer-events:auto; cursor:move; touch-acti
 .text-layers .chip[aria-checked=true] { border-color:var(--accent); color:var(--text); }
 .text-colors { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
 .text-colors .paper-swatches { flex-wrap:wrap; margin:0; }
-.text-custom-color { display:grid; place-items:center; width:var(--tap); height:var(--tap); border:1px dashed var(--line-strong); border-radius:50%; cursor:pointer; }
-.text-custom-color input { width:30px; height:30px; padding:0; border:0; border-radius:50%; background:none; cursor:pointer; }
+.text-custom-color { position:relative; display:flex; align-items:center; gap:8px; min-height:var(--tap); padding:0 12px; border:1px solid var(--line-strong); border-radius:22px; color:var(--text-2); font-size:var(--fs-sm); cursor:pointer; overflow:hidden; }
+.text-custom-color:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+.text-custom-color.is-selected { border-color:var(--accent); color:var(--text); box-shadow:0 0 0 1px var(--accent); }
+.text-custom-swatch { width:24px; height:24px; border:1px solid var(--line-strong); border-radius:50%; background:var(--custom-color,#ffffff); }
+.text-custom-color input { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; border:0; opacity:0; cursor:pointer; }
 .text-styles { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:16px 0 10px; }
 .text-styles .button { min-height:var(--tap); }
 .text-styles [aria-pressed=true] { border-color:var(--accent); color:var(--accent); }
@@ -835,7 +838,9 @@ body[data-tab=text] .text-overlay { pointer-events:auto; cursor:move; touch-acti
   .strip-select { display:grid; place-items:center; border:1px solid var(--line-strong); border-radius:8px; background:transparent; color:var(--text-2); cursor:pointer; }
   .strip-select[aria-pressed=true] { border-color:var(--accent); color:var(--accent); }
   .control-tabs button { font-size:var(--fs-xs); }
-  #textPanel { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
+  /* `.scroll-panel` is overflow:visible above for compact tool tabs. Text is intentionally the
+     exception: its complete editor must own the scroll area, especially in iOS Safari. */
+  #textPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
 }
 
 /* Film engine sheet on phones (docs/handover-mobile-film-panel). Tokens alias the app's own;

@@ -758,7 +758,7 @@ function syncCrop() {
 // state.text holds the photo's text layers (renderer.js drawTexts). The preview shows them on a
 // separate canvas over the photo (#textCanvas) so typing and dragging are instant; export,
 // batch export and thumbnails draw them into the image (frameCanvas(…, texts)).
-const TEXT_COLORS = [['#ffffff', 'White'], ['#111110', 'Black'], ['#f4efe4', 'Warm white'], ['#ffd25a', 'Yellow'], ['#ff9a3c', 'Orange'], ['#e8473a', 'Red'], ['#7fc8f8', 'Sky blue']];
+const TEXT_COLORS = [['#ffffff', 'White'], ['#111110', 'Black'], ['#f4efe4', 'Warm white'], ['#ffd25a', 'Gold'], ['#ff8a4c', 'Orange'], ['#e8473a', 'Red'], ['#e96ca5', 'Pink'], ['#a98be8', 'Purple'], ['#67b7e8', 'Sky blue'], ['#58b89c', 'Teal']];
 const TEXT_PLACES = [['Top left', .2, .12], ['Top', .5, .12], ['Top right', .8, .12], ['Left', .2, .5], ['Center', .5, .5], ['Right', .8, .5], ['Bottom left', .2, .88], ['Bottom', .5, .88], ['Bottom right', .8, .88]];
 const textUi = { selected: null, boxes: [], drag: null, start: null, timer: 0 };
 const cloneTexts = texts => (texts || []).map(text => ({ ...text }));
@@ -902,6 +902,9 @@ function syncText() {
     const opacity = $('#textOpacity'); if (document.activeElement !== opacity) opacity.value = Math.round(text.opacity * 100);
     $('#textOpacityOutput').value = `${Math.round(text.opacity * 100)}%`;
     const color = $('#textColor'); if (document.activeElement !== color) color.value = text.color;
+    const customColor = color.closest('.text-custom-color'), isPresetColor = TEXT_COLORS.some(([hex]) => hex === text.color.toLowerCase());
+    customColor.style.setProperty('--custom-color', text.color);
+    customColor.classList.toggle('is-selected', !isPresetColor);
     syncRadios($('#textColors'), 'data-color', text.color);
     syncRadios($('#textAlign'), 'data-align', text.align);
     elements.textPanel.querySelectorAll('[data-text-toggle]').forEach(button => {

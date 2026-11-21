@@ -150,10 +150,14 @@ export const textFonts = [
   ['inter', 'Inter', 'Inter, system-ui, sans-serif'],
   ['playfair', 'Playfair Display (italic)', '"Playfair Display", Georgia, serif'],
   ['serif', 'Classic serif', 'Georgia, "Times New Roman", serif'],
+  ['modern-serif', 'Modern serif', 'Didot, "Bodoni 72", "Bodoni MT", Georgia, serif'],
   ['typewriter', 'Typewriter', '"Courier New", Courier, ui-monospace, monospace'],
   ['poster', 'Poster', 'Impact, Haettenschweiler, "Arial Narrow Bold", "Arial Black", sans-serif'],
   ['script', 'Script', '"Segoe Script", "Snell Roundhand", "Brush Script MT", cursive'],
-  ['rounded', 'Rounded', '"Arial Rounded MT Bold", "Varela Round", "Trebuchet MS", system-ui, sans-serif']
+  ['handwritten', 'Handwritten', 'Noteworthy, "Bradley Hand", "Segoe Print", cursive'],
+  ['rounded', 'Rounded', '"Arial Rounded MT Bold", "Varela Round", "Trebuchet MS", system-ui, sans-serif'],
+  ['condensed', 'Condensed', '"Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", sans-serif'],
+  ['clean', 'Clean sans', 'Avenir, "Avenir Next", Helvetica, Arial, sans-serif']
 ];
 const fontStack = id => (textFonts.find(([fontId]) => fontId === id) || textFonts[0])[2];
 /** The CSS font string for a text layer at `px` pixels (Playfair is bundled as 600 italic only). */
