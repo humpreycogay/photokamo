@@ -160,13 +160,7 @@
         <section class="tab-panel looks-panel" id="looksPanel" role="tabpanel" aria-labelledby="looksTab">
           <button class="sheet-grabber" id="sheetGrabber" type="button" aria-label="Expand controls"><span aria-hidden="true"></span></button>
           <button class="sheet-view" id="sheetViewToggle" type="button" aria-pressed="false" aria-label="Dial view"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 16h16M6 16v-3M10 16v-5M14 16v-3M18 16v-3"/><path d="M12 4v8"/></svg></button>
-          <div class="film-view-row" id="filmViewRow" hidden>
-            <div class="film-view-switch" id="filmViewSwitch" role="radiogroup" aria-label="Film look panel">
-              <button type="button" role="radio" aria-checked="true" data-film-panel="looks">Looks</button>
-              <button type="button" role="radio" aria-checked="false" tabindex="-1" data-film-panel="controls">Controls</button>
-            </div>
-            <span class="film-view-name" id="filmViewName" aria-hidden="true"></span>
-          </div>
+          <button class="sheet-back" id="sheetBack" type="button" aria-label="Back to looks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
           <div class="engine-bar">
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
@@ -176,6 +170,7 @@
               </button>
               <button class="button button-secondary engine-apply mobile-only" id="mobileApplyButton" type="button" hidden>Apply</button>
               <span class="engine-look-name mobile-only" id="engineLookName" aria-hidden="true"></span>
+              <button class="icon-button film-settings-button mobile-only" type="button" data-film-settings aria-controls="advancedPanel" aria-expanded="false" aria-disabled="true" aria-label="Film settings (choose a film look first)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
               <button class="sheet-render" id="sheetRenderButton" type="button" data-state="idle"><span class="sheet-render-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-sparkle" d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path class="icon-check" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="sheet-render-label">Render HQ</span></button>
               <span class="visually-hidden" id="sheetRenderLive" role="status"></span>
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
@@ -196,9 +191,12 @@
                 <p class="look-meta" id="lookMeta" hidden></p>
                 <p class="look-desc" id="lookDesc"></p>
               </div>
-              <button class="icon-button favorite-button" id="favoriteButton" type="button" aria-pressed="false" aria-label="Save look to favorites">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
-              </button>
+              <div class="look-card-actions">
+                <button class="icon-button favorite-button" id="favoriteButton" type="button" aria-pressed="false" aria-label="Save look to favorites">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+                </button>
+                <button class="icon-button film-settings-button" type="button" data-film-settings aria-controls="advancedPanel" aria-expanded="false" aria-disabled="true" aria-label="Film settings (choose a film look first)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+              </div>
             </div>
             <div class="look-edited" id="lookEdited" hidden><span id="lookEditedText"></span><button class="text-button" id="backToLook" type="button">Back to look</button></div>
             <div class="strength-row" id="strengthRow">
@@ -209,14 +207,12 @@
 
           <div class="presets-view" id="presetsView">
           <div class="look-filters">
-            <div class="chips" id="lookFilters" role="group" aria-label="Look types"></div>
+            <div class="chips" id="lookFilters" role="group" aria-label="Look styles"></div>
+            <label class="check-row advanced-only" title="Show only looks with film settings (the gear)"><input type="checkbox" id="advancedOnly"> Advanced only</label>
             <button class="text-button surprise-button" id="surpriseButton" type="button">
               <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
               Surprise me
             </button>
-          </div>
-          <div class="look-filters look-subfilters" id="filmGroupRow" hidden>
-            <div class="chips" id="filmGroupFilters" role="group" aria-label="Film type"></div>
           </div>
 
           <div class="look-grid-scroll">

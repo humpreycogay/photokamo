@@ -295,6 +295,9 @@ body:not(.has-image) .topbar { display:none; }
 .chip { min-height:34px; padding:0 12px; border-radius:17px; border:1px solid var(--line-strong); background:transparent; color:var(--text-2); font-size:var(--fs-md); font-weight:500; cursor:pointer; }
 .chip:hover { border-color:var(--text-muted); color:var(--text); }
 .chip[aria-pressed=true] { background:var(--text); border-color:var(--text); color:var(--bg); }
+.advanced-only { position:relative; min-height:34px; padding:0 4px; white-space:nowrap; }
+.advanced-only::before { content:""; position:absolute; inset:-5px 0; } /* 44px tap height */
+.advanced-only input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .surprise-button { margin-left:auto; display:flex; align-items:center; gap:6px; min-height:34px; padding:0 4px; font-weight:600; white-space:nowrap; }
 .look-grid-scroll { flex:1; min-height:0; overflow-y:auto; padding:4px 20px 20px; scrollbar-color:var(--line-strong) transparent; }
 .look-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 10px; }
@@ -309,8 +312,6 @@ body:not(.has-image) .topbar { display:none; }
 /* My looks: the tile plus a delete button in its corner */
 .look-badge { position:absolute; left:5px; bottom:5px; padding:2px 6px; border-radius:var(--radius-sm); background:rgba(12,12,11,.78); color:var(--text); font-size:var(--fs-xs); font-weight:600; line-height:16px; white-space:nowrap; }
 .look-badge[hidden] { display:none; }
-.look-subfilters { margin-top:0; }
-.look-subfilters[hidden] { display:none; }
 .look-tile-wrap { position:relative; min-width:0; }
 .look-tile-wrap .look-tile { width:100%; }
 .look-delete { position:absolute; top:4px; right:4px; display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; border-radius:13px; background:rgba(12,12,11,.78); color:var(--text); cursor:pointer; }
@@ -481,21 +482,32 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-bar { flex:none; padding:14px 20px 10px; border-bottom:1px solid var(--line); }
 .engine-label { display:block; margin-bottom:6px; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
 .engine-row { display:flex; gap:8px; }
-body:not(.is-film) .engine-label,body:not(.is-film) #engineButton { display:none; }
-@media (min-width:901px) { body:not(.is-film) .engine-bar { display:none; } }
-/* Film panel switch: Looks | Controls (SPEC §4.3). In the Looks view the engine picker steps aside (it sits on top of Controls). */
-.film-view-row:not([hidden]) { flex:none; display:flex; align-items:center; gap:12px; padding:14px 20px 0; }
-.film-view-switch { display:grid; grid-template-columns:1fr 1fr; flex:none; width:220px; gap:2px; padding:3px; border-radius:12px; background:var(--stage); }
-.film-view-switch button { min-height:var(--tap); padding:0 12px; border:0; border-radius:9px; background:transparent; color:var(--text-2); font:inherit; font-size:var(--fs-md); font-weight:600; cursor:pointer; }
-.film-view-switch button[aria-checked=true] { background:var(--text); color:var(--bg); }
-.film-view-switch button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.film-view-name { display:none; }
-body.film-looks-view .engine-label,body.film-looks-view #engineButton,body.film-looks-view #engineAboutButton,body.film-looks-view .sheet-view { display:none!important; }
-/* Film Looks view: the pressed tile shows the look, so the card keeps only "You changed N settings · Back to look" (when edited). Name, stock and heart are in Controls. */
-body.film-looks-view .look-card-head { display:none; }
-body.film-looks-view .look-card:not(:has(.look-edited:not([hidden]))) { display:none; }
-body.film-looks-view .look-edited { margin-top:0; }
-@media (min-width:901px) { body.film-looks-view .engine-bar { display:none; } }
+/* Film settings (gear): always in place, inactive for Basic looks; opening it shows the engine bar and controls (body.film-expert) */
+body:not(.film-expert) .engine-label,body:not(.film-expert) #engineButton,body:not(.film-expert) #engineAboutButton { display:none; }
+@media (min-width:901px) { body:not(.film-expert) .engine-bar { display:none; } }
+.look-card-actions { flex:none; display:flex; gap:8px; }
+.film-settings-button { border-color:var(--line-strong); }
+.film-settings-button[aria-disabled=true] { border-color:var(--line); color:var(--text-disabled); cursor:not-allowed; }
+.film-settings-button[aria-disabled=true]:hover { background:transparent; }
+.film-settings-button[aria-expanded=true] { border-color:var(--accent); color:var(--accent); }
+.film-settings-button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+body.film-expert .strength-row { display:none; }
+/* Desktop look card: one compact row, Strength | heart · gear. The pressed tile names the look; the name, stock line and
+   description stay in the card for screen readers (its aria-live announces look changes). */
+@media (min-width:901px) {
+  .look-card { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:16px; padding:12px 16px; }
+  .look-card-head { grid-column:2; grid-row:1; }
+  .look-card-text { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  .strength-row { grid-column:1; grid-row:1; }
+  .strength-label { margin-top:0; }
+  .look-edited:not([hidden]) { grid-column:1 / -1; grid-row:2; margin-top:6px; }
+  /* Film settings open: no tiles on screen, so the name and stock line take Strength's place (no description) */
+  body.film-expert .look-card-head { display:contents; }
+  body.film-expert .look-card-text { position:static; grid-column:1; grid-row:1; width:auto; height:auto; margin:0; overflow:visible; clip:auto; white-space:normal; }
+  body.film-expert .look-card-actions { grid-column:2; grid-row:1; }
+  body.film-expert .look-group,body.film-expert .look-desc { display:none; }
+  body.film-expert .look-name { margin:0; font-size:var(--fs-lg); }
+}
 .engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
 .engine-button-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
@@ -530,7 +542,7 @@ body.film-looks-view .look-edited { margin-top:0; }
 .engine-role,.engine-licence { color:var(--text-muted); font-size:var(--fs-sm); }
 .engine-storage { margin:14px 0 0; font-size:var(--fs-md); color:var(--text-2); }
 .engine-storage .text-button { font-weight:600; }
-body.is-film .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
+body.film-expert .app-shell { grid-template-columns:minmax(0,1fr) 380px; }
 .pipeline { flex:none; display:flex; align-items:center; gap:2px; margin:14px 20px 4px; overflow-x:auto; scrollbar-width:none; font-size:var(--fs-sm); }
 .pipeline-step { position:relative; flex:none; min-height:32px; padding:0 9px; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); font-weight:600; cursor:pointer; }
 .pipeline-step:hover { color:var(--text); }
@@ -655,6 +667,7 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   .look-group,.look-desc,.favorite-button,.surprise-button { display:none; }
   .look-filters { flex-wrap:nowrap; overflow-x:auto; margin:0; padding:5px 16px; scrollbar-width:none; overscroll-behavior-inline:contain; }
   .look-filters .chip { position:relative; flex:none; }
+  .look-filters .advanced-only { order:-1; flex:none; margin-right:4px; } /* first in the scrolling row, so it never scrolls out of reach */
   .look-filters .chip::before { content:""; position:absolute; inset:-5px 0; } /* 44px tap height */
   /* The look's name sits in the engine row (mockup E); the card keeps Strength */
   .look-card { padding:0 16px; }
@@ -884,7 +897,7 @@ body.is-film {
   --pk-preview-collapsed: max(var(--pk-preview-min), 41.7dvh); /* 352px at 844 */
   --pk-preview-expanded: max(var(--pk-preview-min), 26.1dvh);  /* 220px at 844 */
 }
-.sheet-grabber,.sheet-render,.sheet-view,.adv-chip,.adv-reset-icon,.adv-tick,.adv-select-row,.adv-stage-hint { display:none; }
+.sheet-grabber,.sheet-back,.sheet-render,.sheet-view,.adv-chip,.adv-reset-icon,.adv-tick,.adv-select-row,.adv-stage-hint { display:none; }
 /* Option picker sheet (select rows in the film sheet, js/option-picker.js) */
 .option-sheet { position:fixed; inset:auto 0 0 0; width:100%; max-width:none; max-height:75dvh; margin:0; display:none; flex-direction:column; padding:8px 0 max(12px,env(safe-area-inset-bottom)); border:0; border-top:1px solid var(--line-strong); border-radius:var(--radius-sheet) var(--radius-sheet) 0 0; background:var(--raised); color:var(--text); }
 .option-sheet:popover-open { display:flex; }
@@ -905,177 +918,174 @@ body.is-film {
 /* Film sheet: phones held upright (<=600px) and phones held sideways (right-hand panel, see below) */
 @media (max-width:600px), (max-width:900px) and (orientation:landscape) and (max-height:500px) {
   /* Rail: 48px thumbs, column 48 + 8 gap */
-  body.is-film.has-image .filmstrip { width:64px; padding:6px 0 6px 4px; }
-  body.is-film .strip-list { padding:4px; }
-  body.is-film .strip-item,body.is-film .strip-add { width:var(--pk-thumb); height:var(--pk-thumb); border-radius:10px; }
-  body.is-film .strip-item canvas { border-radius:10px; }
-  body.is-film .strip-item[aria-selected=true] canvas { box-shadow:0 0 0 2px var(--pk-accent); }
-  body.is-film .strip-item.is-active canvas { box-shadow:0 0 0 2px var(--pk-text); }
-  body.is-film .strip-item.is-active[aria-selected=true] canvas { box-shadow:0 0 0 2px var(--pk-text),0 0 0 4px var(--pk-accent); }
-  body.is-film .strip-item:focus-visible { outline-offset:2px; }
-  body.is-film .strip-add { border-radius:10px; }
-  body.is-film .strip-select { width:var(--pk-thumb); }
+  body.film-expert.has-image .filmstrip { width:64px; padding:6px 0 6px 4px; }
+  body.film-expert .strip-list { padding:4px; }
+  body.film-expert .strip-item,body.film-expert .strip-add { width:var(--pk-thumb); height:var(--pk-thumb); border-radius:10px; }
+  body.film-expert .strip-item canvas { border-radius:10px; }
+  body.film-expert .strip-item[aria-selected=true] canvas { box-shadow:0 0 0 2px var(--pk-accent); }
+  body.film-expert .strip-item.is-active canvas { box-shadow:0 0 0 2px var(--pk-text); }
+  body.film-expert .strip-item.is-active[aria-selected=true] canvas { box-shadow:0 0 0 2px var(--pk-text),0 0 0 4px var(--pk-accent); }
+  body.film-expert .strip-item:focus-visible { outline-offset:2px; }
+  body.film-expert .strip-add { border-radius:10px; }
+  body.film-expert .strip-select { width:var(--pk-thumb); }
 
   /* Looks tab: fixed preview row, the sheet takes the rest */
-  body.is-film.has-image[data-tab=looks] .app-shell { grid-template-rows:var(--pk-preview-collapsed) minmax(0,1fr); transition:grid-template-rows var(--pk-sheet-transition); }
-  body.is-film.has-image.sheet-expanded[data-tab=looks] .app-shell { grid-template-rows:var(--pk-preview-expanded) minmax(0,1fr); }
-  body.is-film.has-image[data-tab=looks] .controls { height:auto; max-height:none; background:var(--stage); }
-  body.is-film[data-tab=looks] .panel-body { background:var(--pk-sheet); border-top:1px solid var(--pk-sheet-border); border-radius:var(--pk-radius-sheet) var(--pk-radius-sheet) 0 0; }
-  body.is-film .sheet-grabber { position:relative; flex:none; display:flex; align-items:center; justify-content:center; width:100%; height:32px; padding:0; border:0; background:transparent; cursor:pointer; }
-  body.is-film .sheet-grabber::before { content:""; position:absolute; inset:0 0 -12px; } /* + the engine bar's 12px top padding = 44px tap height */
-  body.is-film .sheet-grabber span { width:36px; height:4px; border-radius:2px; background:var(--pk-slider-rest); }
-  body.is-film .sheet-grabber:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; border-radius:var(--pk-radius-sheet) var(--pk-radius-sheet) 0 0; }
-  body.is-film[data-tab=looks] .engine-bar { padding-top:12px; }
-  body.is-film[data-tab=looks] .pipeline { background:var(--pk-sheet); }
-  /* Looks | Controls on the look-name row, under the grabber */
-  body.is-film .film-view-row:not([hidden]) { padding:4px 16px 0; }
-  body.is-film .film-view-switch { width:176px; border-radius:var(--pk-radius-control); background:var(--pk-track); }
-  body.is-film .film-view-switch button { min-height:var(--tap); border-radius:var(--pk-radius-segment); color:var(--pk-text-soft); }
-  body.is-film .film-view-switch button[aria-checked=true] { background:var(--pk-text); color:var(--pk-text-on-light); }
-  body.is-film .film-view-name { display:block; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; color:var(--pk-text); }
-  body.film-looks-view[data-tab=looks] .engine-bar { padding-top:8px; }
-
+  body.film-expert.has-image[data-tab=looks] .app-shell { grid-template-rows:var(--pk-preview-collapsed) minmax(0,1fr); transition:grid-template-rows var(--pk-sheet-transition); }
+  body.film-expert.has-image.sheet-expanded[data-tab=looks] .app-shell { grid-template-rows:var(--pk-preview-expanded) minmax(0,1fr); }
+  body.film-expert.has-image[data-tab=looks] .controls { height:auto; max-height:none; background:var(--stage); }
+  body.film-expert[data-tab=looks] .panel-body { background:var(--pk-sheet); border-top:1px solid var(--pk-sheet-border); border-radius:var(--pk-radius-sheet) var(--pk-radius-sheet) 0 0; }
+  body.film-expert .sheet-grabber { position:relative; flex:none; display:flex; align-items:center; justify-content:center; width:100%; height:32px; padding:0; border:0; background:transparent; cursor:pointer; }
+  body.film-expert .sheet-grabber::before { content:""; position:absolute; inset:0 0 -12px; } /* + the engine bar's 12px top padding = 44px tap height */
+  body.film-expert .sheet-grabber span { width:36px; height:4px; border-radius:2px; background:var(--pk-slider-rest); }
+  body.film-expert .sheet-grabber:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; border-radius:var(--pk-radius-sheet) var(--pk-radius-sheet) 0 0; }
+  body.film-expert[data-tab=looks] .engine-bar { padding-top:12px; }
+  body.film-expert[data-tab=looks] .pipeline { background:var(--pk-sheet); }
   /* Nothing on the photo: render status lives in the sheet header */
-  body.is-film[data-tab=looks] .view-pill { display:none!important; }
+  body.film-expert[data-tab=looks] .view-pill { display:none!important; }
 
   /* Header row: [EngineSelect] [RenderButton] (i); "Apply to N" gets its own row above when several photos are selected */
-  body.is-film .engine-row { flex-wrap:wrap; gap:8px; }
-  body.is-film .engine-look-name { display:none; }
-  body.is-film .engine-button { order:0; flex:1; max-width:none; min-width:0; height:var(--tap); min-height:var(--tap); padding:0 12px 0 14px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); }
-  body.is-film .engine-button-caption { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; line-height:13px; color:var(--pk-text-muted); }
-  body.is-film .engine-button-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; line-height:19px; }
-  body.is-film .engine-button-text:has(.engine-button-status:not([hidden])) .engine-button-caption { display:none; }
-  body.is-film .engine-button-status { line-height:13px; font-size:11px; }
-  body.is-film .engine-chevron { width:16px; height:16px; }
-  body.is-film .engine-apply { order:-1; flex:1 0 100%; border-radius:var(--pk-radius-control); }
-  body.is-film .engine-row #engineAboutButton { order:2; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); color:var(--pk-text-muted); }
-  body.is-film .engine-button:focus-visible,body.is-film .engine-row #engineAboutButton:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .engine-row { flex-wrap:wrap; gap:8px; }
+  body.film-expert .engine-look-name { display:none; }
+  body.film-expert .engine-button { order:0; flex:1; max-width:none; min-width:0; height:var(--tap); min-height:var(--tap); padding:0 12px 0 14px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); }
+  body.film-expert .engine-button-caption { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; line-height:13px; color:var(--pk-text-muted); }
+  body.film-expert .engine-button-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; line-height:19px; }
+  body.film-expert .engine-button-text:has(.engine-button-status:not([hidden])) .engine-button-caption { display:none; }
+  body.film-expert .engine-button-status { line-height:13px; font-size:11px; }
+  body.film-expert .engine-chevron { width:16px; height:16px; }
+  body.film-expert .engine-apply { order:-1; flex:1 0 100%; border-radius:var(--pk-radius-control); }
+  body.film-expert .engine-row #engineAboutButton { order:2; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); color:var(--pk-text-muted); }
+  body.film-expert .engine-button:focus-visible,body.film-expert .engine-row #engineAboutButton:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
 
   /* RenderButton: idle (cream, sparkle) · rendering (progress ring, tap cancels) · done (green check) */
-  body.is-film .sheet-render { order:1; flex:none; display:flex; align-items:center; justify-content:center; gap:8px; width:128px; height:var(--tap); padding:0 10px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); color:var(--pk-text); font:inherit; font-size:14px; font-weight:600; white-space:nowrap; cursor:pointer; }
-  body.is-film .sheet-render[data-state=idle] { background:var(--pk-text); border-color:var(--pk-text); color:var(--pk-text-on-light); }
-  body.is-film .sheet-render[data-state=idle][aria-disabled=true] { background:var(--pk-control); border-color:var(--pk-control-border); color:var(--pk-text-muted); cursor:default; }
-  body.is-film .sheet-render[data-state=done] { cursor:default; }
-  body.is-film .sheet-render[data-state=rendering] { gap:6px; } /* same 128px in every state: the row never shifts */
-  body.is-film .sheet-render:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .sheet-render-icon { position:relative; display:grid; place-items:center; width:16px; height:16px; }
-  body.is-film .sheet-render-icon svg { width:16px; height:16px; }
-  body.is-film .sheet-render .icon-check,body.is-film .sheet-render[data-state=done] .icon-sparkle { display:none; }
-  body.is-film .sheet-render[data-state=done] .icon-check { display:inline; }
-  body.is-film .sheet-render[data-state=done] .sheet-render-icon { color:var(--pk-success); }
-  body.is-film .sheet-render[data-state=rendering] svg { display:none; }
-  body.is-film .sheet-render[data-state=rendering] .sheet-render-icon { border-radius:50%; background:conic-gradient(var(--pk-accent) calc(var(--progress,0) * 1%),var(--pk-slider-rest) 0); -webkit-mask:radial-gradient(circle,transparent 5px,#000 5.5px); mask:radial-gradient(circle,transparent 5px,#000 5.5px); }
+  body.film-expert .sheet-render { order:1; flex:none; display:flex; align-items:center; justify-content:center; gap:8px; width:128px; height:var(--tap); padding:0 10px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); color:var(--pk-text); font:inherit; font-size:14px; font-weight:600; white-space:nowrap; cursor:pointer; }
+  body.film-expert .sheet-render[data-state=idle] { background:var(--pk-text); border-color:var(--pk-text); color:var(--pk-text-on-light); }
+  body.film-expert .sheet-render[data-state=idle][aria-disabled=true] { background:var(--pk-control); border-color:var(--pk-control-border); color:var(--pk-text-muted); cursor:default; }
+  body.film-expert .sheet-render[data-state=done] { cursor:default; }
+  body.film-expert .sheet-render[data-state=rendering] { gap:6px; } /* same 128px in every state: the row never shifts */
+  body.film-expert .sheet-render:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .sheet-render-icon { position:relative; display:grid; place-items:center; width:16px; height:16px; }
+  body.film-expert .sheet-render-icon svg { width:16px; height:16px; }
+  body.film-expert .sheet-render .icon-check,body.film-expert .sheet-render[data-state=done] .icon-sparkle { display:none; }
+  body.film-expert .sheet-render[data-state=done] .icon-check { display:inline; }
+  body.film-expert .sheet-render[data-state=done] .sheet-render-icon { color:var(--pk-success); }
+  body.film-expert .sheet-render[data-state=rendering] svg { display:none; }
+  body.film-expert .sheet-render[data-state=rendering] .sheet-render-icon { border-radius:50%; background:conic-gradient(var(--pk-accent) calc(var(--progress,0) * 1%),var(--pk-slider-rest) 0); -webkit-mask:radial-gradient(circle,transparent 5px,#000 5.5px); mask:radial-gradient(circle,transparent 5px,#000 5.5px); }
 
   /* StageTabs: segmented, numbered, every stage visible (no scroll) */
-  body.is-film[data-tab=looks] .pipeline { display:block; padding:12px 16px 4px; overflow:visible; }
-  body.is-film .pipeline-track { display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); gap:2px; padding:3px; border-radius:var(--pk-radius-control); background:var(--pk-track); }
-  body.is-film .pipeline-step { display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:0; height:var(--tap); min-height:var(--tap); padding:0 2px; border:0; border-radius:var(--pk-radius-segment); background:transparent; color:var(--pk-text-soft); }
-  body.is-film .pipeline-step[aria-selected=true] { background:var(--pk-text); color:var(--pk-text-on-light); }
-  body.is-film .pipeline-num { display:block; font-size:10px; line-height:12px; font-weight:500; color:var(--pk-text-dim); }
-  body.is-film .pipeline-step[aria-selected=true] .pipeline-num { color:var(--pk-default-tick); }
-  body.is-film .pipeline-label { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; line-height:16px; font-weight:600; }
-  body.is-film .pipeline-track.is-dense .pipeline-label { font-size:12px; letter-spacing:-.1px; }
-  body.is-film .pipeline-dot { top:6px; right:6px; width:6px; height:6px; border-radius:3px; background:var(--pk-accent); }
-  body.is-film .pipeline-step[aria-selected=true] .pipeline-dot { background:var(--pk-accent-on-light); }
-  body.is-film .pipeline-step:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film[data-tab=looks] .engine-bar { padding-bottom:0; }
-  body.is-film[data-tab=looks] .adv-note { display:none!important; } /* replaced by the stage hint under the controls */
+  body.film-expert[data-tab=looks] .pipeline { display:block; padding:12px 16px 4px; overflow:visible; }
+  body.film-expert .pipeline-track { display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); gap:2px; padding:3px; border-radius:var(--pk-radius-control); background:var(--pk-track); }
+  body.film-expert .pipeline-step { display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:0; height:var(--tap); min-height:var(--tap); padding:0 2px; border:0; border-radius:var(--pk-radius-segment); background:transparent; color:var(--pk-text-soft); }
+  body.film-expert .pipeline-step[aria-selected=true] { background:var(--pk-text); color:var(--pk-text-on-light); }
+  body.film-expert .pipeline-num { display:block; font-size:10px; line-height:12px; font-weight:500; color:var(--pk-text-dim); }
+  body.film-expert .pipeline-step[aria-selected=true] .pipeline-num { color:var(--pk-default-tick); }
+  body.film-expert .pipeline-label { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; line-height:16px; font-weight:600; }
+  body.film-expert .pipeline-track.is-dense .pipeline-label { font-size:12px; letter-spacing:-.1px; }
+  body.film-expert .pipeline-dot { top:6px; right:6px; width:6px; height:6px; border-radius:3px; background:var(--pk-accent); }
+  body.film-expert .pipeline-step[aria-selected=true] .pipeline-dot { background:var(--pk-accent-on-light); }
+  body.film-expert .pipeline-step:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert[data-tab=looks] .engine-bar { padding-bottom:0; }
+  body.film-expert[data-tab=looks] .adv-note { display:none!important; } /* replaced by the stage hint under the controls */
 
   /* ParamRow: slider (label, reset, value chip; then the track with a default tick) */
-  body.is-film .adv-body { gap:0; padding:0 16px 4px; }
-  body.is-film .adv-slider { padding:1px 0 2px; border-bottom:1px solid var(--pk-row-divider); }
-  body.is-film .adv-slider-head { align-items:center; height:40px; gap:4px; }
-  body.is-film .adv-slider label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; color:var(--pk-text); }
-  body.is-film .adv-slider-meta { gap:4px; }
-  body.is-film .adv-value { display:none; }
-  body.is-film .adv-reset { position:relative; display:grid; place-items:center; width:36px; height:36px; min-height:36px; padding:0; border-radius:var(--pk-radius-chip); background:transparent; color:var(--pk-text-muted); }
-  body.is-film .adv-reset[hidden] { display:none; }
-  body.is-film .adv-reset::before { content:""; position:absolute; inset:-4px; } /* 44px tap target */
-  body.is-film .adv-reset-icon { display:block; width:16px; height:16px; }
-  body.is-film .adv-reset-text { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
-  body.is-film .adv-chip { position:relative; display:inline-flex; align-items:center; justify-content:center; min-width:60px; height:32px; padding:0 10px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-chip); background:var(--pk-control); color:var(--pk-text-muted); font:inherit; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:text; }
-  body.is-film .adv-chip::before { content:""; position:absolute; inset:-6px -2px; } /* 44px tap height */
-  body.is-film .adv-chip.is-edited { color:var(--pk-text); }
-  body.is-film .adv-chip-input { width:84px; height:32px; padding:0 8px; border:1px solid var(--pk-accent); border-radius:var(--pk-radius-chip); background:var(--pk-track); color:var(--pk-text); font:inherit; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; text-align:right; } /* 16px: iOS doesn't zoom */
-  body.is-film .adv-chip-input:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .adv-chip:focus-visible,body.is-film .adv-reset:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .adv-range { position:relative; display:flex; align-items:center; height:26px; margin:0 13px; } /* inset by half the thumb: fill and tick line up with its centre */
-  body.is-film .adv-tick { display:block; position:absolute; top:4px; width:2px; height:18px; margin-left:-1px; border-radius:1px; background:var(--pk-default-tick); pointer-events:none; }
-  body.is-film .adv-slider input[type=range] { -webkit-appearance:none; appearance:none; position:relative; flex:none; width:calc(100% + 26px); height:26px; margin:0 -13px; background:transparent; cursor:pointer; touch-action:pan-y; }
-  body.is-film .adv-slider input[type=range]::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(to right,var(--pk-accent) var(--fill,0%),var(--pk-slider-rest) var(--fill,0%)) center / calc(100% - 26px) 100% no-repeat; }
-  body.is-film .adv-slider input[type=range]::-moz-range-track { height:4px; border-radius:2px; background:linear-gradient(to right,var(--pk-accent) var(--fill,0%),var(--pk-slider-rest) var(--fill,0%)) center / calc(100% - 26px) 100% no-repeat; }
-  body.is-film .adv-slider .has-track input[type=range]::-webkit-slider-runnable-track { background:var(--track-bg) center / calc(100% - 26px) 100% no-repeat; }
-  body.is-film .adv-slider .has-track input[type=range]::-moz-range-track { background:var(--track-bg) center / calc(100% - 26px) 100% no-repeat; }
-  body.is-film .adv-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:26px; height:26px; margin-top:-11px; border:0; border-radius:50%; background:var(--pk-text); box-shadow:0 1px 4px rgba(0,0,0,.5); }
-  body.is-film .adv-slider input[type=range]::-moz-range-thumb { width:26px; height:26px; border:0; border-radius:50%; background:var(--pk-text); box-shadow:0 1px 4px rgba(0,0,0,.5); }
-  body.is-film .adv-slider input[type=range]:focus-visible { outline:none; }
-  body.is-film .adv-slider input[type=range]:focus-visible::-webkit-slider-thumb { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .adv-slider input[type=range]:focus-visible::-moz-range-thumb { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .adv-track { display:none; }
-  body.is-film .adv-slider .adv-hint,body.is-film .adv-track-labels { margin:2px 0 4px; }
+  body.film-expert .adv-body { gap:0; padding:0 16px 4px; }
+  body.film-expert .adv-slider { padding:1px 0 2px; border-bottom:1px solid var(--pk-row-divider); }
+  body.film-expert .adv-slider-head { align-items:center; height:40px; gap:4px; }
+  body.film-expert .adv-slider label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; color:var(--pk-text); }
+  body.film-expert .adv-slider-meta { gap:4px; }
+  body.film-expert .adv-value { display:none; }
+  body.film-expert .adv-reset { position:relative; display:grid; place-items:center; width:36px; height:36px; min-height:36px; padding:0; border-radius:var(--pk-radius-chip); background:transparent; color:var(--pk-text-muted); }
+  body.film-expert .adv-reset[hidden] { display:none; }
+  body.film-expert .adv-reset::before { content:""; position:absolute; inset:-4px; } /* 44px tap target */
+  body.film-expert .adv-reset-icon { display:block; width:16px; height:16px; }
+  body.film-expert .adv-reset-text { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  body.film-expert .adv-chip { position:relative; display:inline-flex; align-items:center; justify-content:center; min-width:60px; height:32px; padding:0 10px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-chip); background:var(--pk-control); color:var(--pk-text-muted); font:inherit; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:text; }
+  body.film-expert .adv-chip::before { content:""; position:absolute; inset:-6px -2px; } /* 44px tap height */
+  body.film-expert .adv-chip.is-edited { color:var(--pk-text); }
+  body.film-expert .adv-chip-input { width:84px; height:32px; padding:0 8px; border:1px solid var(--pk-accent); border-radius:var(--pk-radius-chip); background:var(--pk-track); color:var(--pk-text); font:inherit; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; text-align:right; } /* 16px: iOS doesn't zoom */
+  body.film-expert .adv-chip-input:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .adv-chip:focus-visible,body.film-expert .adv-reset:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .adv-range { position:relative; display:flex; align-items:center; height:26px; margin:0 13px; } /* inset by half the thumb: fill and tick line up with its centre */
+  body.film-expert .adv-tick { display:block; position:absolute; top:4px; width:2px; height:18px; margin-left:-1px; border-radius:1px; background:var(--pk-default-tick); pointer-events:none; }
+  body.film-expert .adv-slider input[type=range] { -webkit-appearance:none; appearance:none; position:relative; flex:none; width:calc(100% + 26px); height:26px; margin:0 -13px; background:transparent; cursor:pointer; touch-action:pan-y; }
+  body.film-expert .adv-slider input[type=range]::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(to right,var(--pk-accent) var(--fill,0%),var(--pk-slider-rest) var(--fill,0%)) center / calc(100% - 26px) 100% no-repeat; }
+  body.film-expert .adv-slider input[type=range]::-moz-range-track { height:4px; border-radius:2px; background:linear-gradient(to right,var(--pk-accent) var(--fill,0%),var(--pk-slider-rest) var(--fill,0%)) center / calc(100% - 26px) 100% no-repeat; }
+  body.film-expert .adv-slider .has-track input[type=range]::-webkit-slider-runnable-track { background:var(--track-bg) center / calc(100% - 26px) 100% no-repeat; }
+  body.film-expert .adv-slider .has-track input[type=range]::-moz-range-track { background:var(--track-bg) center / calc(100% - 26px) 100% no-repeat; }
+  body.film-expert .adv-slider input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:26px; height:26px; margin-top:-11px; border:0; border-radius:50%; background:var(--pk-text); box-shadow:0 1px 4px rgba(0,0,0,.5); }
+  body.film-expert .adv-slider input[type=range]::-moz-range-thumb { width:26px; height:26px; border:0; border-radius:50%; background:var(--pk-text); box-shadow:0 1px 4px rgba(0,0,0,.5); }
+  body.film-expert .adv-slider input[type=range]:focus-visible { outline:none; }
+  body.film-expert .adv-slider input[type=range]:focus-visible::-webkit-slider-thumb { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .adv-slider input[type=range]:focus-visible::-moz-range-thumb { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .adv-track { display:none; }
+  body.film-expert .adv-slider .adv-hint,body.film-expert .adv-track-labels { margin:2px 0 4px; }
 
   /* ParamRow: select, a 52px row that opens the option picker */
-  body.is-film .adv-select > label,body.is-film .adv-select select { display:none; }
-  body.is-film .adv-select-row { display:flex; align-items:center; gap:12px; width:100%; min-height:52px; padding:0; border:0; border-bottom:1px solid var(--pk-row-divider); background:transparent; color:var(--pk-text); font:inherit; text-align:left; cursor:pointer; }
-  body.is-film .adv-select-row-label { flex:none; max-width:45%; font-size:15px; }
-  body.is-film .adv-select-row-value { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; font-size:15px; font-weight:600; }
-  body.is-film .adv-row-chevron { flex:none; width:16px; height:16px; color:var(--pk-text-muted); }
-  body.is-film .adv-select-row:disabled { cursor:default; }
-  body.is-film .adv-select-row:disabled .adv-select-row-value,body.is-film .adv-select-row:disabled .adv-select-row-label { color:var(--pk-text-muted); }
-  body.is-film .adv-select-row:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; border-radius:var(--pk-radius-chip); }
-  body.is-film .adv-select .adv-hint { margin:6px 0 8px; }
-  body.is-film .adv-toggle,body.is-film .adv-effect { border-bottom:1px solid var(--pk-row-divider); padding:2px 0; }
-  body.is-film .adv-group-heading { margin:14px 0 2px; }
-  body.is-film .switch:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .adv-select > label,body.film-expert .adv-select select { display:none; }
+  body.film-expert .adv-select-row { display:flex; align-items:center; gap:12px; width:100%; min-height:52px; padding:0; border:0; border-bottom:1px solid var(--pk-row-divider); background:transparent; color:var(--pk-text); font:inherit; text-align:left; cursor:pointer; }
+  body.film-expert .adv-select-row-label { flex:none; max-width:45%; font-size:15px; }
+  body.film-expert .adv-select-row-value { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; font-size:15px; font-weight:600; }
+  body.film-expert .adv-row-chevron { flex:none; width:16px; height:16px; color:var(--pk-text-muted); }
+  body.film-expert .adv-select-row:disabled { cursor:default; }
+  body.film-expert .adv-select-row:disabled .adv-select-row-value,body.film-expert .adv-select-row:disabled .adv-select-row-label { color:var(--pk-text-muted); }
+  body.film-expert .adv-select-row:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; border-radius:var(--pk-radius-chip); }
+  body.film-expert .adv-select .adv-hint { margin:6px 0 8px; }
+  body.film-expert .adv-toggle,body.film-expert .adv-effect { border-bottom:1px solid var(--pk-row-divider); padding:2px 0; }
+  body.film-expert .adv-group-heading { margin:14px 0 2px; }
+  body.film-expert .switch:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
 
   /* ContextualHint: one muted line under the stage's controls, only while the fast preview shows */
-  body.is-film[data-tab=looks] .adv-stage-hint:not([hidden]) { display:flex; gap:8px; align-items:flex-start; margin:0; padding:10px 16px 4px; font-size:13px; line-height:18px; color:var(--pk-text-muted); }
-  body.is-film .adv-stage-hint svg { flex:none; width:16px; height:16px; margin-top:1px; }
-  body.is-film .adv-footer { border-top:0; }
+  body.film-expert[data-tab=looks] .adv-stage-hint:not([hidden]) { display:flex; gap:8px; align-items:flex-start; margin:0; padding:10px 16px 4px; font-size:13px; line-height:18px; color:var(--pk-text-muted); }
+  body.film-expert .adv-stage-hint svg { flex:none; width:16px; height:16px; margin-top:1px; }
+  body.film-expert .adv-footer { border-top:0; }
 
   /* Dial view toggle (top right of the sheet) */
-  body.is-film[data-tab=looks] .looks-panel { position:relative; }
-  body.is-film .sheet-grabber { width:calc(100% - 120px); margin:0 auto; }
-  body.is-film .sheet-view { position:absolute; top:0; right:16px; z-index:2; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:var(--pk-radius-control); background:transparent; color:var(--pk-text-muted); cursor:pointer; }
-  body.is-film .sheet-view svg { width:18px; height:18px; }
-  body.is-film .sheet-view[aria-pressed=true] { color:var(--pk-accent); }
-  body.is-film .sheet-view:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; }
+  body.film-expert[data-tab=looks] .looks-panel { position:relative; }
+  body.film-expert .sheet-grabber { width:calc(100% - 120px); margin:0 auto; }
+  body.film-expert .sheet-view { position:absolute; top:0; right:16px; z-index:2; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:var(--pk-radius-control); background:transparent; color:var(--pk-text-muted); cursor:pointer; }
+  body.film-expert .sheet-view svg { width:18px; height:18px; }
+  body.film-expert .sheet-view[aria-pressed=true] { color:var(--pk-accent); }
+  body.film-expert .sheet-view:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; }
+  /* Back to the Looks grid (top left of the sheet; the gear in the look-name row steps aside) */
+  body.film-expert .sheet-back { position:absolute; top:0; left:16px; z-index:2; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:var(--pk-radius-control); background:transparent; color:var(--pk-text-soft); cursor:pointer; }
+  body.film-expert .sheet-back svg { width:20px; height:20px; }
+  body.film-expert .sheet-back:focus-visible { outline:2px solid var(--pk-accent); outline-offset:-2px; }
+  body.film-expert .engine-row .film-settings-button { display:none; }
 
   /* Dial view: parameter chips, then big value and reset, then a ruler under a fixed needle */
   body.film-dial .adv-scroll { display:none; }
-  body.is-film .adv-dial:not([hidden]) { display:block; padding:4px 0 0; }
-  body.is-film .dial-chips { display:flex; gap:8px; overflow-x:auto; padding:6px 16px 8px; scrollbar-width:none; overscroll-behavior-inline:contain; }
-  body.is-film .dial-chip { position:relative; flex:none; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1px; min-width:72px; max-width:150px; height:48px; padding:0 12px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); color:var(--pk-text); font:inherit; text-align:left; cursor:pointer; }
-  body.is-film .dial-chip[aria-pressed=true] { border-color:var(--pk-text); background:var(--pk-text); color:var(--pk-text-on-light); }
-  body.is-film .dial-chip:disabled { cursor:default; }
-  body.is-film .dial-chip:disabled .dial-chip-value,body.is-film .dial-chip:disabled .dial-chip-name { color:var(--pk-text-muted); }
-  body.is-film .dial-chip-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--pk-text-muted); }
-  body.is-film .dial-chip[aria-pressed=true] .dial-chip-name { color:var(--pk-default-tick); }
-  body.is-film .dial-chip-value { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
-  body.is-film .dial-chip-dot { display:none; position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:3px; background:var(--pk-accent); }
-  body.is-film .dial-chip.is-edited .dial-chip-dot { display:block; }
-  body.is-film .dial-chip[aria-pressed=true] .dial-chip-dot { background:var(--pk-accent-on-light); }
-  body.is-film .dial-chip[role=switch][aria-checked=true] .dial-chip-value { color:var(--pk-accent); }
-  body.is-film .dial-chip:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .dial-body { padding:4px 16px 8px; }
-  body.is-film .dial-head { display:flex; align-items:center; gap:8px; min-height:44px; }
-  body.is-film .dial-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; color:var(--pk-text-soft); }
-  body.is-film .dial-value { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--pk-text-muted); }
-  body.is-film .dial-value.is-edited { color:var(--pk-text); }
-  body.is-film .dial-ruler { position:relative; height:56px; overflow:hidden; border-radius:var(--pk-radius-control); background:var(--pk-track); touch-action:none; cursor:ew-resize; }
-  body.is-film .dial-body:has(#dialInput:focus-visible) .dial-ruler { outline:2px solid var(--pk-accent); outline-offset:2px; }
-  body.is-film .dial-scale { position:absolute; top:0; bottom:0; left:0; will-change:transform; background-image:linear-gradient(90deg,var(--pk-text-muted) 0 2px,transparent 2px),linear-gradient(90deg,var(--pk-slider-rest) 0 1px,transparent 1px); background-size:var(--major,40px) 26px,var(--minor,8px) 14px; background-position:0 center,0 center; background-repeat:repeat-x; }
-  body.is-film .dial-default { position:absolute; bottom:6px; width:6px; height:6px; margin-left:-2px; border-radius:3px; background:var(--pk-text-soft); }
-  body.is-film .dial-needle { position:absolute; top:6px; bottom:6px; left:50%; width:2px; margin-left:-1px; border-radius:1px; background:var(--pk-accent); pointer-events:none; }
-  body.is-film .dial-empty { margin:8px 16px; font-size:13px; color:var(--pk-text-muted); }
+  body.film-expert .adv-dial:not([hidden]) { display:block; padding:4px 0 0; }
+  body.film-expert .dial-chips { display:flex; gap:8px; overflow-x:auto; padding:6px 16px 8px; scrollbar-width:none; overscroll-behavior-inline:contain; }
+  body.film-expert .dial-chip { position:relative; flex:none; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:1px; min-width:72px; max-width:150px; height:48px; padding:0 12px; border:1px solid var(--pk-control-border); border-radius:var(--pk-radius-control); background:var(--pk-control); color:var(--pk-text); font:inherit; text-align:left; cursor:pointer; }
+  body.film-expert .dial-chip[aria-pressed=true] { border-color:var(--pk-text); background:var(--pk-text); color:var(--pk-text-on-light); }
+  body.film-expert .dial-chip:disabled { cursor:default; }
+  body.film-expert .dial-chip:disabled .dial-chip-value,body.film-expert .dial-chip:disabled .dial-chip-name { color:var(--pk-text-muted); }
+  body.film-expert .dial-chip-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--pk-text-muted); }
+  body.film-expert .dial-chip[aria-pressed=true] .dial-chip-name { color:var(--pk-default-tick); }
+  body.film-expert .dial-chip-value { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+  body.film-expert .dial-chip-dot { display:none; position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:3px; background:var(--pk-accent); }
+  body.film-expert .dial-chip.is-edited .dial-chip-dot { display:block; }
+  body.film-expert .dial-chip[aria-pressed=true] .dial-chip-dot { background:var(--pk-accent-on-light); }
+  body.film-expert .dial-chip[role=switch][aria-checked=true] .dial-chip-value { color:var(--pk-accent); }
+  body.film-expert .dial-chip:focus-visible { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .dial-body { padding:4px 16px 8px; }
+  body.film-expert .dial-head { display:flex; align-items:center; gap:8px; min-height:44px; }
+  body.film-expert .dial-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; color:var(--pk-text-soft); }
+  body.film-expert .dial-value { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--pk-text-muted); }
+  body.film-expert .dial-value.is-edited { color:var(--pk-text); }
+  body.film-expert .dial-ruler { position:relative; height:56px; overflow:hidden; border-radius:var(--pk-radius-control); background:var(--pk-track); touch-action:none; cursor:ew-resize; }
+  body.film-expert .dial-body:has(#dialInput:focus-visible) .dial-ruler { outline:2px solid var(--pk-accent); outline-offset:2px; }
+  body.film-expert .dial-scale { position:absolute; top:0; bottom:0; left:0; will-change:transform; background-image:linear-gradient(90deg,var(--pk-text-muted) 0 2px,transparent 2px),linear-gradient(90deg,var(--pk-slider-rest) 0 1px,transparent 1px); background-size:var(--major,40px) 26px,var(--minor,8px) 14px; background-position:0 center,0 center; background-repeat:repeat-x; }
+  body.film-expert .dial-default { position:absolute; bottom:6px; width:6px; height:6px; margin-left:-2px; border-radius:3px; background:var(--pk-text-soft); }
+  body.film-expert .dial-needle { position:absolute; top:6px; bottom:6px; left:50%; width:2px; margin-left:-1px; border-radius:1px; background:var(--pk-accent); pointer-events:none; }
+  body.film-expert .dial-empty { margin:8px 16px; font-size:13px; color:var(--pk-text-muted); }
 }
 
 /* Phones held sideways: the film sheet is a 340px panel on the right, the photo fills the left. */
 @media (max-width:900px) and (orientation:landscape) and (max-height:500px) {
-  body.is-film.has-image[data-tab=looks] .app-shell,body.is-film.has-image.sheet-expanded[data-tab=looks] .app-shell { grid-template-columns:auto minmax(0,1fr) 340px; grid-template-rows:minmax(0,1fr); }
-  body.is-film.has-image[data-tab=looks] .filmstrip,body.is-film.has-image[data-tab=looks] .app-shell > .stage { grid-row:1; }
-  body.is-film.has-image[data-tab=looks] .controls { grid-column:3; grid-row:1; max-height:none; border-left:1px solid var(--pk-sheet-border); }
-  body.is-film[data-tab=looks] .panel-body { border-top:0; border-radius:0; }
-  body.is-film .sheet-grabber { visibility:hidden; } /* nothing to collapse; its row keeps room for the dial toggle */
+  body.film-expert.has-image[data-tab=looks] .app-shell,body.film-expert.has-image.sheet-expanded[data-tab=looks] .app-shell { grid-template-columns:auto minmax(0,1fr) 340px; grid-template-rows:minmax(0,1fr); }
+  body.film-expert.has-image[data-tab=looks] .filmstrip,body.film-expert.has-image[data-tab=looks] .app-shell > .stage { grid-row:1; }
+  body.film-expert.has-image[data-tab=looks] .controls { grid-column:3; grid-row:1; max-height:none; border-left:1px solid var(--pk-sheet-border); }
+  body.film-expert[data-tab=looks] .panel-body { border-top:0; border-radius:0; }
+  body.film-expert .sheet-grabber { visibility:hidden; } /* nothing to collapse; its row keeps room for the dial toggle */
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }

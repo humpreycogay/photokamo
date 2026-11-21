@@ -1,9 +1,9 @@
-import { presets, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
+import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
 import { renderImage, frameCanvas, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
-import { filmLooks, filmGroups } from './film-looks.js';
+import { filmLooks } from './film-looks.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
 import { createOptionPicker } from './option-picker.js';
@@ -17,8 +17,8 @@ const elements = {
   viewPill: $('#viewPill'), holdButton: $('#holdButton'), fileChip: $('#fileChip'), fileMenu: $('#fileMenu'), fileName: $('#fileName'), fileSize: $('#fileSize'),
   lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
   lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
-  strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
-  filmGroupRow: $('#filmGroupRow'), filmGroupFilters: $('#filmGroupFilters'), filmViewRow: $('#filmViewRow'), filmViewSwitch: $('#filmViewSwitch'), filmViewName: $('#filmViewName'),
+  strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), advancedOnly: $('#advancedOnly'), lookGrid: $('#lookGrid'),
+  filmSettings: [...document.querySelectorAll('[data-film-settings]')], sheetBack: $('#sheetBack'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
   exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityGroup: $('#qualityGroup'),
@@ -52,7 +52,7 @@ const elements = {
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [],
-  filter: 'All', filmGroup: 'all', zoom: 'fit', holding: false, mobileTool: 'exposure',
+  filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
   engine: 'presets', engineParams: {}, myLookId: null, imageBitmap: null,
@@ -81,18 +81,16 @@ const sheetQuery = matchMedia('(max-width: 600px), (max-width: 900px) and (orien
 const VIEW_KEY = 'photokamo:film-view';
 const dial = { view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'dial' ? 'dial' : 'list'; } catch { return 'list'; } })(), paths: {}, px: 1, chipsKey: '', drag: null, frame: 0 };
 
-const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Creative styles': 'Creative' }; // Film: the built-in film looks (js/film-looks.js)
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
 
 const PRESETS = 'presets';
 const isFilm = () => state.engine !== PRESETS;
 const currentPreset = () => presets.find(item => item.id === state.presetId) || presets[0];
+// "Advanced only": the grid shows only looks the gear works with (film looks, My looks). A device preference.
+const ADVANCED_ONLY_KEY = 'photokamo:advanced-only';
+let advancedOnly = (() => { try { return localStorage.getItem(ADVANCED_ONLY_KEY) === '1'; } catch { return false; } })();
 const filmLookById = id => filmLooks.find(look => look.id === id) || null;
-function groupLabel(preset) {
-  if (preset.group === 'Utility') return 'Utility';
-  if (preset.group === 'Camera looks') return 'Camera look';
-  return 'Creative style';
-}
+const styleLabel = style => lookStyles.find(([id]) => id === style)?.[1] || '';
 
 // ---------- Values ----------
 // On a film engine the look is the engine's output, so Adjust edits sit on the defaults.
@@ -322,11 +320,10 @@ function buildLooks() {
   const presetTile = preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`;
   // Film tiles: a static thumbnail (images/looks/, loaded only when visible) and a download badge.
   const filmTile = look => `<button class="look-tile" type="button" data-film="${look.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><img src="${look.thumb}" alt="" loading="lazy" decoding="async"><span class="look-badge" hidden></span></span><span class="look-tile-name">${escapeHtml(look.name)}</span></button>`;
-  // Order in All (SPEC §4.1): Utility, Camera looks, film looks (filmGroups order), Creative styles.
-  const groupOrder = filmGroups.map(([id]) => id);
-  const film = [...filmTileLooks].sort((a, b) => groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group));
-  const creative = preset => preset.group === 'Creative styles';
-  elements.lookGrid.innerHTML = [...presets.filter(preset => !creative(preset)).map(presetTile), ...film.map(filmTile), ...presets.filter(creative).map(presetTile)].join('');
+  // Order in All: by look style (lookStyles), Basic presets before film looks within each style.
+  elements.lookGrid.innerHTML = lookStyles.flatMap(([style]) => [
+    ...presets.filter(preset => preset.style === style).map(presetTile), ...filmTileLooks.filter(look => look.style === style).map(filmTile)
+  ]).join('');
   elements.lookGrid.addEventListener('load', event => { if (event.target.matches?.('.look-thumb img')) event.target.parentElement.classList.add('has-preview'); }, true);
   elements.lookGrid.addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-look]');
@@ -335,26 +332,29 @@ function buildLooks() {
     if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else if (tile.dataset.film) pickFilmLook(tile.dataset.film); else pickLook(tile.dataset.preset);
   });
   buildMyLookTiles();
+  elements.advancedOnly.checked = advancedOnly;
+  elements.advancedOnly.addEventListener('change', () => {
+    advancedOnly = elements.advancedOnly.checked;
+    try { localStorage.setItem(ADVANCED_ONLY_KEY, advancedOnly ? '1' : '0'); } catch { /* this visit only */ }
+    syncLooks();
+  });
   elements.lookFilters.addEventListener('click', event => {
     const chip = event.target.closest('[data-filter]'); if (!chip) return;
     state.filter = chip.dataset.filter; syncLooks();
   });
-  elements.filmGroupFilters.addEventListener('click', event => {
-    const chip = event.target.closest('[data-film-group]'); if (!chip) return;
-    state.filmGroup = chip.dataset.filmGroup; syncLooks();
-  });
   renderPresetPreviews();
 }
 function filterMatches(preset) {
+  if (advancedOnly) return false; // Basic presets have no film settings
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(preset.id);
   if (state.filter === 'Mine') return false;
-  return CATEGORY[preset.group] === state.filter;
+  return preset.style === state.filter;
 }
 function filmFilterMatches(look) {
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(look.id);
-  return state.filter === 'Film' && (state.filmGroup === 'all' || look.group === state.filmGroup);
+  return look.style === state.filter;
 }
 /** Chip buttons (`attr` = data attribute); rebuilt only when the set changes, so keyboard focus stays on the chip. */
 function syncChips(container, attr, items, pressed) {
@@ -401,15 +401,11 @@ function setLookName(name, edited) {
 }
 function syncLooks() {
   const preset = currentPreset();
-  const filters = ['All', 'Camera', 'Film', 'Creative', ...(myLooks.length ? ['Mine'] : []), ...(favorites.length ? ['Favorites'] : [])];
+  const filters = [['All', 'All'], ...lookStyles.filter(([style]) => (!advancedOnly && presets.some(item => item.style === style)) || filmTileLooks.some(look => look.style === style)),
+    ...(myLooks.length ? [['Mine', 'Mine']] : []), ...(favorites.length ? [['Favorites', 'Favorites']] : [])];
   const advanced = isFilm();
-  if (!filters.includes(state.filter)) state.filter = 'All';
-  syncChips(elements.lookFilters, 'data-filter', filters.map(filter => [filter, filter]), state.filter);
-  // Film sub-filters (only groups this device has tiles for).
-  const groups = [['all', 'All film'], ...filmGroups.filter(([id]) => filmTileLooks.some(look => look.group === id))];
-  if (!groups.some(([id]) => id === state.filmGroup)) state.filmGroup = 'all';
-  elements.filmGroupRow.hidden = state.filter !== 'Film';
-  syncChips(elements.filmGroupFilters, 'data-film-group', groups, state.filmGroup);
+  if (!filters.some(([id]) => id === state.filter)) state.filter = 'All';
+  syncChips(elements.lookFilters, 'data-filter', filters, state.filter);
   elements.lookGrid.querySelectorAll('[data-film]').forEach(tile => {
     const look = filmLookById(tile.dataset.film);
     tile.hidden = !filmFilterMatches(look);
@@ -435,7 +431,6 @@ function syncLooks() {
     tile.parentElement.hidden = !['All', 'Mine'].includes(state.filter);
     tile.setAttribute('aria-pressed', advanced && tile.dataset.mine === state.myLookId);
   });
-  elements.strengthRow.hidden = advanced; // film looks have no Strength (SPEC §4.2)
   elements.lookMeta.hidden = !advanced;
   if (advanced) {
     const current = currentMyLook();
@@ -445,7 +440,7 @@ function syncLooks() {
     const edited = Boolean(current?.edited);
     elements.lookGroup.textContent = current ? (current.builtIn ? 'Film look' : 'My look') : entry.label;
     setLookName(name, edited);
-    elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.filmViewName.textContent = edited ? `${name} · edited` : name;
+    elements.photoLookBadge.textContent = elements.engineLookName.textContent = edited ? `${name} · edited` : name;
     elements.engineCaption.textContent = current ? elements.engineLookName.textContent : 'Film engine'; // phone sheet: over the engine name
     // Stock names stay visible to experts: "Kodak Portra 400 → Kodak Portra Endura · Spektrafilm".
     elements.lookMeta.textContent = module ? `${module.stockSummary(params)} · ${entry.label}` : `Loading ${entry.label}…`;
@@ -454,10 +449,12 @@ function syncLooks() {
     const showBack = Boolean(current?.builtIn && edited);
     elements.lookEdited.hidden = !showBack;
     if (showBack) elements.lookEditedText.textContent = `You changed ${plural(current.changed, 'setting')}.`;
+    // Film looks have no Strength (SPEC §4.2): the row stays in place, inactive, so picking a film tile moves nothing.
+    elements.strength.value = 100; elements.strength.disabled = true; elements.strengthOutput.value = '100%';
     return;
   }
   elements.lookEdited.hidden = true; elements.lookDesc.hidden = false;
-  elements.lookGroup.textContent = groupLabel(preset);
+  elements.lookGroup.textContent = styleLabel(preset.style);
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
   elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
   elements.lookDesc.innerHTML = preset.description + (preset.engine === 'Spektrafilm-inspired' ? ' <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Credits<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a>' : '');
@@ -1356,35 +1353,31 @@ function buildAdvancedPanel() {
   $('#deleteMyLook').addEventListener('click', () => { if (state.myLookId) deleteMyLook(state.myLookId); });
 }
 
-// ---------- Film panel: Looks | Controls (SPEC §4.3) ----------
-// A device preference, not part of the photo: no undo step, no re-render. First visit: Looks.
-// (photokamo:film-view already holds the phone sheet's list/dial choice, so this has its own key.)
-const FILM_PANEL_KEY = 'photokamo:film-panel';
-let filmPanel = (() => { try { return localStorage.getItem(FILM_PANEL_KEY) === 'controls' ? 'controls' : 'looks'; } catch { return 'looks'; } })();
-/** Shows the Looks grid or the engine controls while a film engine is active (Basic always shows the grid). */
+// ---------- Film settings (gear): the engine controls for the current film look ----------
+// The gear never moves: inactive for Basic looks, active for film looks. Opening it is a view, not part of the photo
+// (no undo step, no re-render) and isn't remembered, so a reload or a Basic look always comes back to the Looks grid.
+let filmExpert = false;
 function syncFilmPanel() {
-  const film = isFilm(); const controls = film && filmPanel === 'controls';
-  elements.filmViewRow.hidden = !film;
-  document.body.classList.toggle('film-looks-view', film && !controls);
-  elements.presetsView.hidden = controls; elements.advancedPanel.hidden = !controls;
-  elements.filmViewSwitch.querySelectorAll('[role=radio]').forEach(radio => {
-    const checked = radio.dataset.filmPanel === filmPanel;
-    radio.setAttribute('aria-checked', checked); radio.tabIndex = checked ? 0 : -1;
+  const film = isFilm(); if (!film) filmExpert = false;
+  const open = film && filmExpert;
+  document.body.classList.toggle('film-expert', open);
+  elements.presetsView.hidden = open; elements.advancedPanel.hidden = !open;
+  elements.filmSettings.forEach(button => {
+    button.setAttribute('aria-disabled', !film); button.setAttribute('aria-expanded', open);
+    button.setAttribute('aria-label', film ? 'Film settings' : 'Film settings (choose a film look first)');
+    button.title = !film ? 'Film settings: choose a film look first' : open ? 'Back to looks' : 'Film settings';
   });
 }
-function setFilmPanel(value, focus = false) {
-  filmPanel = value;
-  try { localStorage.setItem(FILM_PANEL_KEY, value); } catch { /* remembered for this visit only */ }
-  syncFilmPanel();
-  if (focus) elements.filmViewSwitch.querySelector(`[data-film-panel="${value}"]`).focus();
-  if (value === 'controls') syncAdvancedPanel(); // the panel may have been built while hidden
+const shown = element => element.offsetParent !== null;
+function setFilmExpert(open) {
+  filmExpert = open; syncFilmPanel();
+  if (open) syncAdvancedPanel(); // the panel may have been built while hidden
+  // Phone sheet: the gear steps aside while open, so focus goes to Back (and returns to the gear).
+  const target = open ? elements.sheetBack : elements.filmSettings.find(shown);
+  if (document.activeElement && !shown(document.activeElement) && target && shown(target)) target.focus();
 }
-elements.filmViewSwitch.addEventListener('click', event => { const radio = event.target.closest('[data-film-panel]'); if (radio) setFilmPanel(radio.dataset.filmPanel); });
-elements.filmViewSwitch.addEventListener('keydown', event => {
-  const next = { ArrowLeft: 'looks', ArrowUp: 'looks', ArrowRight: 'controls', ArrowDown: 'controls', Home: 'looks', End: 'controls' }[event.key];
-  if (!next) return;
-  event.preventDefault(); setFilmPanel(next, true);
-});
+elements.filmSettings.forEach(button => button.addEventListener('click', () => { if (isFilm()) setFilmExpert(!filmExpert); }));
+elements.sheetBack.addEventListener('click', () => setFilmExpert(false));
 
 // ---------- Engine view: Presets or a film engine, inside the Looks tab ----------
 function syncEngineView() {
@@ -2706,7 +2699,8 @@ $('#surpriseButton').addEventListener('click', async () => {
   const basic = presets.filter(p => !isCurrent(p.id) && p.id !== 'original');
   const film = filmTileLooks.filter(look => !isCurrent(look.id) && engineReady(pickEngineFor(look)));
   const matching = [...basic.filter(filterMatches), ...film.filter(filmFilterMatches)];
-  const pool = matching.length ? matching : basic;
+  const pool = matching.length ? matching : advancedOnly ? film : basic;
+  if (!pool.length) { toast('Surprise me uses film looks that are already downloaded. Pick a film look first.'); return; }
   const pick = pool[Math.floor(Math.random() * pool.length)];
   if (filmLookById(pick.id)) await pickFilmLook(pick.id); else pickLook(pick.id);
   elements.lookGrid.querySelector(`[data-preset="${pick.id}"],[data-film="${pick.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
