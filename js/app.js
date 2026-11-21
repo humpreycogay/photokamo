@@ -3,7 +3,7 @@ import { renderImage, frameCanvas, applyAdjustments, drawTexts, textFonts, textF
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
-import { filmLooks } from './film-looks.js';
+import { filmLooks, filmGroups } from './film-looks.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
 import { createOptionPicker } from './option-picker.js';
@@ -18,6 +18,7 @@ const elements = {
   lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
   lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
   strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
+  filmGroupRow: $('#filmGroupRow'), filmGroupFilters: $('#filmGroupFilters'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
   exportDialog: $('#exportDialog'), exportForm: $('#exportForm'), quality: $('#exportQuality'), qualityOutput: $('#qualityOutput'), qualityGroup: $('#qualityGroup'),
@@ -51,7 +52,7 @@ const elements = {
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [],
-  filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
+  filter: 'All', filmGroup: 'all', zoom: 'fit', holding: false, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
   engine: 'presets', engineParams: {}, myLookId: null, imageBitmap: null,
@@ -80,17 +81,17 @@ const sheetQuery = matchMedia('(max-width: 600px), (max-width: 900px) and (orien
 const VIEW_KEY = 'photokamo:film-view';
 const dial = { view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'dial' ? 'dial' : 'list'; } catch { return 'list'; } })(), paths: {}, px: 1, chipsKey: '', drag: null, frame: 0 };
 
-const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Film stocks': 'Film', 'Creative styles': 'Creative' };
+const CATEGORY = { 'Utility': 'Camera', 'Camera looks': 'Camera', 'Creative styles': 'Creative' }; // Film: the built-in film looks (js/film-looks.js)
 const controlSpec = Object.fromEntries(adjustmentSections.flatMap(section => section.controls).map(([id, label, min, max, step, suffix]) => [id, { id, label, min, max, step, suffix }]));
 
 const PRESETS = 'presets';
 const isFilm = () => state.engine !== PRESETS;
 const currentPreset = () => presets.find(item => item.id === state.presetId) || presets[0];
+const filmLookById = id => filmLooks.find(look => look.id === id) || null;
 function groupLabel(preset) {
   if (preset.group === 'Utility') return 'Utility';
   if (preset.group === 'Camera looks') return 'Camera look';
-  if (preset.group === 'Creative styles') return 'Creative style';
-  return preset.engine.includes('inspired') ? `Film stock · ${preset.engine}` : 'Film stock';
+  return 'Creative style';
 }
 
 // ---------- Values ----------
@@ -149,15 +150,21 @@ function pickLook(id) {
 }
 
 // ---------- Favorites ----------
-function loadFavorites() { try { const value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]'); return Array.isArray(value) ? value.filter(id => presets.some(p => p.id === id)) : []; } catch { return []; } }
+function loadFavorites() { try { const value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]'); return Array.isArray(value) ? value.filter(id => presets.some(p => p.id === id) || filmLookById(id)) : []; } catch { return []; } }
 let favorites = loadFavorites();
 function saveFavorites() { try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites)); } catch { /* storage unavailable: favorites last for this visit only */ } }
+/** The look the heart applies to: the Basic look, or the built-in film look in use (null for other film edits). */
+function favoriteTarget() {
+  if (!isFilm()) return currentPreset();
+  return filmLookById(state.myLookId);
+}
 function toggleFavorite() {
-  const id = state.presetId;
+  const look = favoriteTarget(); if (!look) return;
+  const id = look.id;
   favorites = favorites.includes(id) ? favorites.filter(item => item !== id) : [...favorites, id];
   saveFavorites();
   if (state.filter === 'Favorites' && !favorites.length) state.filter = 'All';
-  toast(favorites.includes(id) ? `${currentPreset().name} added to favorites.` : `${currentPreset().name} removed from favorites.`);
+  toast(favorites.includes(id) ? `${look.name} added to favorites.` : `${look.name} removed from favorites.`);
   syncLooks();
 }
 
@@ -186,10 +193,11 @@ function saveMyLooks() { try { localStorage.setItem(MY_LOOKS_KEY, JSON.stringify
 // ---------- Built-in film looks (js/film-looks.js; SPEC §2–§4) ----------
 // A built-in look is stored like a My look: state.myLookId = 'film:<slug>', and the photo holds
 // the expanded engine params. "Edited" is worked out by comparing with the expanded look.
-const filmLookById = id => filmLooks.find(look => look.id === id) || null;
 const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
 /** The look's engine on this device: the first in its list that suits it (Negs needs WebGPU). Null: hide the look. */
 const pickEngineFor = look => look.engine.find(id => engineById(id) && (id !== 'negs' || hasWebGpu)) || null;
+/** The film looks this device can show as tiles (decided by device only, never by what is downloaded). */
+const filmTileLooks = filmLooks.filter(pickEngineFor);
 /** Engine params for a look: the engine's defaults, then each value in order through the engine's own rules. */
 function expandLook(module, values) {
   const params = module.defaultParams();
@@ -309,18 +317,31 @@ function saveAsMyLook() {
 }
 
 // ---------- Looks panel ----------
+const escapeHtml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function buildLooks() {
-  elements.lookGrid.innerHTML = presets.map(preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`).join('');
+  const presetTile = preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`;
+  // Film tiles: a static thumbnail (images/looks/, loaded only when visible) and a download badge.
+  const filmTile = look => `<button class="look-tile" type="button" data-film="${look.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><img src="${look.thumb}" alt="" loading="lazy" decoding="async"><span class="look-badge" hidden></span></span><span class="look-tile-name">${escapeHtml(look.name)}</span></button>`;
+  // Order in All (SPEC §4.1): Utility, Camera looks, film looks (filmGroups order), Creative styles.
+  const groupOrder = filmGroups.map(([id]) => id);
+  const film = [...filmTileLooks].sort((a, b) => groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group));
+  const creative = preset => preset.group === 'Creative styles';
+  elements.lookGrid.innerHTML = [...presets.filter(preset => !creative(preset)).map(presetTile), ...film.map(filmTile), ...presets.filter(creative).map(presetTile)].join('');
+  elements.lookGrid.addEventListener('load', event => { if (event.target.matches?.('.look-thumb img')) event.target.parentElement.classList.add('has-preview'); }, true);
   elements.lookGrid.addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-look]');
     if (remove) { deleteMyLook(remove.dataset.deleteLook); return; }
-    const tile = event.target.closest('[data-preset],[data-mine]'); if (!tile) return;
-    if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else pickLook(tile.dataset.preset);
+    const tile = event.target.closest('[data-preset],[data-mine],[data-film]'); if (!tile) return;
+    if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else if (tile.dataset.film) pickFilmLook(tile.dataset.film); else pickLook(tile.dataset.preset);
   });
   buildMyLookTiles();
   elements.lookFilters.addEventListener('click', event => {
     const chip = event.target.closest('[data-filter]'); if (!chip) return;
     state.filter = chip.dataset.filter; syncLooks();
+  });
+  elements.filmGroupFilters.addEventListener('click', event => {
+    const chip = event.target.closest('[data-film-group]'); if (!chip) return;
+    state.filmGroup = chip.dataset.filmGroup; syncLooks();
   });
   renderPresetPreviews();
 }
@@ -329,6 +350,49 @@ function filterMatches(preset) {
   if (state.filter === 'Favorites') return favorites.includes(preset.id);
   if (state.filter === 'Mine') return false;
   return CATEGORY[preset.group] === state.filter;
+}
+function filmFilterMatches(look) {
+  if (state.filter === 'All') return true;
+  if (state.filter === 'Favorites') return favorites.includes(look.id);
+  return state.filter === 'Film' && (state.filmGroup === 'all' || look.group === state.filmGroup);
+}
+/** Chip buttons (`attr` = data attribute); rebuilt only when the set changes, so keyboard focus stays on the chip. */
+function syncChips(container, attr, items, pressed) {
+  const key = items.map(([id]) => id).join('|');
+  if (container.dataset.key !== key) {
+    container.dataset.key = key;
+    container.innerHTML = items.map(([id, label]) => `<button class="chip" type="button" ${attr}="${id}" aria-pressed="false">${escapeHtml(label)}</button>`).join('');
+  }
+  container.querySelectorAll('.chip').forEach((chip, index) => chip.setAttribute('aria-pressed', items[index][0] === pressed));
+}
+
+// ---------- Download badges on film tiles (SPEC §8) ----------
+// Size: the engine's manifest total (engines/<id>/manifest.json); no badge under 1 MB or once saved on this device.
+const engineBytes = {};
+let savedEngineIds = new Set();
+let manifestsRead = null;
+const downloadBadge = id => (engineBytes[id] >= 1e6 && !savedEngineIds.has(id) ? `${Math.ceil(engineBytes[id] / 1e6)} MB` : '');
+/** Ready without a download: saved on this device, or an engine with no runtime files (DuXun). */
+const engineReady = id => savedEngineIds.has(id) || engineById(id)?.manifest === false;
+async function syncDownloadBadges() {
+  manifestsRead ||= Promise.all(engines.filter(entry => entry.manifest !== false).map(entry => fetch(new URL('manifest.json', entry.folder))
+    .then(response => (response.ok ? response.json() : null))
+    .then(manifest => { if (manifest?.files) engineBytes[entry.id] = Object.values(manifest.files).reduce((sum, file) => sum + (file.size || 0), 0); })
+    .catch(() => {})));
+  await manifestsRead;
+  savedEngineIds = await savedEngineIdList();
+  syncLooks();
+}
+/** Engines with files saved on this device. Like savedEngineList(), but reads only cache names, so
+ *  startup imports no engine code (js/engines/engine-files.js names caches `photokamo-engine:<id>:<version>`). */
+async function savedEngineIdList() {
+  const ids = new Set();
+  try {
+    for (const key of await caches.keys()) {
+      if (key.startsWith('photokamo-engine:') && (await (await caches.open(key)).keys()).length) ids.add(key.split(':')[1]);
+    }
+  } catch { /* no Cache Storage: nothing is saved */ }
+  return ids;
 }
 /** "Name · edited", with "· edited" in the accent colour. */
 function setLookName(name, edited) {
@@ -340,7 +404,28 @@ function syncLooks() {
   const filters = ['All', 'Camera', 'Film', 'Creative', ...(myLooks.length ? ['Mine'] : []), ...(favorites.length ? ['Favorites'] : [])];
   const advanced = isFilm();
   if (!filters.includes(state.filter)) state.filter = 'All';
-  elements.lookFilters.innerHTML = filters.map(filter => `<button class="chip" type="button" data-filter="${filter}" aria-pressed="${filter === state.filter}">${filter}</button>`).join('');
+  syncChips(elements.lookFilters, 'data-filter', filters.map(filter => [filter, filter]), state.filter);
+  // Film sub-filters (only groups this device has tiles for).
+  const groups = [['all', 'All film'], ...filmGroups.filter(([id]) => filmTileLooks.some(look => look.group === id))];
+  if (!groups.some(([id]) => id === state.filmGroup)) state.filmGroup = 'all';
+  elements.filmGroupRow.hidden = state.filter !== 'Film';
+  syncChips(elements.filmGroupFilters, 'data-film-group', groups, state.filmGroup);
+  elements.lookGrid.querySelectorAll('[data-film]').forEach(tile => {
+    const look = filmLookById(tile.dataset.film);
+    tile.hidden = !filmFilterMatches(look);
+    tile.setAttribute('aria-pressed', advanced && look.id === state.myLookId);
+    const badge = downloadBadge(pickEngineFor(look));
+    const label = tile.querySelector('.look-badge');
+    label.hidden = !badge; label.textContent = badge ? `↓ ${badge}` : '';
+    tile.setAttribute('aria-label', `${look.name}, film look${badge ? `, downloads about ${badge}` : ''}`);
+  });
+  const favorite = favoriteTarget();
+  elements.favorite.hidden = !favorite;
+  if (favorite) {
+    const isFavorite = favorites.includes(favorite.id);
+    elements.favorite.setAttribute('aria-pressed', isFavorite);
+    elements.favorite.setAttribute('aria-label', isFavorite ? `Remove ${favorite.name} from favorites` : `Save ${favorite.name} to favorites`);
+  }
   elements.lookGrid.querySelectorAll('[data-preset]').forEach(tile => {
     const item = presets.find(p => p.id === tile.dataset.preset);
     tile.hidden = !filterMatches(item);
@@ -350,7 +435,6 @@ function syncLooks() {
     tile.parentElement.hidden = !['All', 'Mine'].includes(state.filter);
     tile.setAttribute('aria-pressed', advanced && tile.dataset.mine === state.myLookId);
   });
-  elements.favorite.hidden = advanced;
   elements.strengthRow.hidden = advanced; // film looks have no Strength (SPEC §4.2)
   elements.lookMeta.hidden = !advanced;
   if (advanced) {
@@ -377,9 +461,6 @@ function syncLooks() {
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
   elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
   elements.lookDesc.innerHTML = preset.description + (preset.engine === 'Spektrafilm-inspired' ? ' <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Credits<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a>' : '');
-  const isFavorite = favorites.includes(preset.id);
-  elements.favorite.setAttribute('aria-pressed', isFavorite);
-  elements.favorite.setAttribute('aria-label', isFavorite ? `Remove ${preset.name} from favorites` : `Save ${preset.name} to favorites`);
   elements.strength.value = state.strength;
   elements.strength.disabled = preset.id === 'original';
   elements.strengthOutput.value = `${state.strength}%`;
@@ -1053,7 +1134,7 @@ function warmEngine() {
   const module = activeModule(); if (!module?.warm) { setEngineStatus('ready'); return; }
   setEngineStatus('preparing');
   module.warm(cloneParams(advParams())).then(
-    () => { if (activeModule() === module) { setEngineStatus('ready'); if (state.renderQuality === 'preview') syncRenderStatus(); } },
+    () => { if (activeModule() === module) { setEngineStatus('ready'); if (state.renderQuality === 'preview') syncRenderStatus(); } syncDownloadBadges(); },
     error => {
       if (activeModule() !== module) return;
       if (error?.name === 'AbortError') setEngineStatus('idle'); // a cancelled render restarted the worker
@@ -1181,7 +1262,7 @@ async function syncEngineStorage() {
 async function removeSavedEngines() {
   try { await (await import('./engines/engine-files.js')).removeSavedEngines(); toast('Saved film engines removed. They download again when you use them.'); }
   catch { toast('The saved film engines could not be removed.'); }
-  syncEngineStorage();
+  syncEngineStorage(); syncDownloadBadges();
 }
 
 // ---------- Advanced panel ----------
@@ -2318,6 +2399,8 @@ function buildBatch() {
 
 // ---------- Wiring ----------
 buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildBatch(); syncControls(); updateButtons();
+// Download badges once the page is idle: two small manifest files, no engine code.
+(window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges(), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
@@ -2587,11 +2670,16 @@ document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListen
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
 elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
-$('#surpriseButton').addEventListener('click', () => {
-  const options = presets.filter(p => p.id !== state.presetId && p.id !== 'original' && filterMatches(p));
-  const pool = options.length ? options : presets.filter(p => p.id !== state.presetId && p.id !== 'original');
-  pickLook(pool[Math.floor(Math.random() * pool.length)].id);
-  elements.lookGrid.querySelector(`[data-preset="${state.presetId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+$('#surpriseButton').addEventListener('click', async () => {
+  // Film looks only when their engine needs no download: Surprise me never starts one.
+  const isCurrent = id => id === (isFilm() ? state.myLookId : state.presetId);
+  const basic = presets.filter(p => !isCurrent(p.id) && p.id !== 'original');
+  const film = filmTileLooks.filter(look => !isCurrent(look.id) && engineReady(pickEngineFor(look)));
+  const matching = [...basic.filter(filterMatches), ...film.filter(filmFilterMatches)];
+  const pool = matching.length ? matching : basic;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  if (filmLookById(pick.id)) await pickFilmLook(pick.id); else pickLook(pick.id);
+  elements.lookGrid.querySelector(`[data-preset="${pick.id}"],[data-film="${pick.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
 elements.export.addEventListener('click', openSave);

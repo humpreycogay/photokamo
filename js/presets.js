@@ -20,13 +20,8 @@ export const presets = [
   p('golden-hour', 'Golden Hour', 'Camera looks', 'A warm highlight-forward rendering.', { temperature: 22, tint: 4, highlights: 8, shadows: 6, vibrance: 10 }),
   p('cool-document', 'Cool Document', 'Camera looks', 'Neutral detail with cool shadows.', { temperature: -13, contrast: 10, saturation: -8, sharpness: 14 }),
 
-  p('amber-200', 'Amber 200', 'Film stocks', 'Fine grain, honeyed highlights, soft greens.', { temperature: 15, contrast: -3, highlights: -18, saturation: -5, fade: 4, grain: 13 }, 'Spektrafilm-inspired'),
-  p('summer-negative', 'Summer Negative', 'Film stocks', 'Pastel color and generous exposure latitude.', { exposure: .08, temperature: 8, contrast: -12, shadows: 15, saturation: -4, fade: 8, grain: 10 }, 'Spektrafilm-inspired'),
-  p('night-tungsten', 'Night Tungsten', 'Film stocks', 'Cool nocturnal color with lively grain.', { exposure: -.1, temperature: -25, tint: 8, contrast: 18, saturation: -10, grain: 25, vignette: 12 }, 'Spektrafilm-inspired'),
-  p('slide-daylight', 'Slide Daylight', 'Film stocks', 'Dense blacks and saturated slide color.', { contrast: 24, highlights: -7, shadows: -18, saturation: 17, vibrance: 9, grain: 5 }, 'RawTherapee-inspired'),
-  p('faded-print', 'Faded Print', 'Film stocks', 'A sun-softened family print.', { temperature: 12, contrast: -18, saturation: -18, fade: 20, grain: 15 }, 'RawTherapee-inspired'),
-  p('silver-mono', 'Silver Mono', 'Film stocks', 'Classic monochrome with silvery midtones.', { saturation: -100, contrast: 18, highlights: -15, shadows: 8, grain: 22 }, 'Browser Native'),
-
+  p('faded-print', 'Faded Print', 'Creative styles', 'A sun-softened family print.', { temperature: 12, contrast: -18, saturation: -18, fade: 20, grain: 15 }, 'RawTherapee-inspired'),
+  p('silver-mono', 'Silver Mono', 'Creative styles', 'Classic monochrome with silvery midtones.', { saturation: -100, contrast: 18, highlights: -15, shadows: 8, grain: 22 }, 'Browser Native'),
   p('cinema-teal', 'Cinema Teal', 'Creative styles', 'Cool atmosphere and warm highlights.', { temperature: -10, tint: -8, contrast: 20, shadows: -12, saturation: -6, vignette: 12 }),
   p('desert-dream', 'Desert Dream', 'Creative styles', 'Dusty warmth with faded color.', { temperature: 30, tint: 9, contrast: -8, saturation: -12, fade: 17, grain: 9 }),
   p('forest-matte', 'Forest Matte', 'Creative styles', 'Deep greens and lifted black levels.', { temperature: -4, tint: -10, contrast: 12, shadows: -5, saturation: -8, fade: 13, vignette: 8 }),

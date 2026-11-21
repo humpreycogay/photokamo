@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoKamo · film look thumbnails (dev tool)</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <!-- Dev-only page (docs/handover/SPEC.md §6). Not linked from the app. Serve the repo root
+       (python -m http.server 8080) and open http://localhost:8080/tools/look-thumbs.html -->
+  <style>
+    body { margin:0; padding:24px; background:#121210; color:#f3f1ea; font:14px/1.45 system-ui, sans-serif; }
+    h1 { margin:0 0 6px; font-size:20px; }
+    p { max-width:70ch; color:#c9c7be; }
+    form { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:end; margin:16px 0; }
+    label { display:flex; flex-direction:column; gap:4px; font-weight:600; }
+    input, select { min-height:36px; padding:0 8px; border:1px solid #3a3a35; border-radius:8px; background:#242421; color:inherit; font:inherit; }
+    button { min-height:44px; padding:0 16px; border:0; border-radius:10px; background:#f3f1ea; color:#121210; font:inherit; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.45; cursor:default; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #4fc4b4; outline-offset:2px; }
+    #status { min-height:1.45em; color:#4fc4b4; }
+    ol { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:16px; margin:0; padding:0; list-style:none; }
+    li { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#c9c7be; }
+    li strong { color:#f3f1ea; font-size:13px; }
+    li .thumb { aspect-ratio:1; border-radius:10px; background:#242421; overflow:hidden; }
+    li img { display:block; width:100%; height:100%; }
+    li.failed { color:#f3f1ea; font-weight:600; }
+  </style>
+</head>
+<body>
+  <h1>Film look thumbnails</h1>
+  <p>Renders a square crop of <code>images/model.jpg</code> through every look in <code>js/film-looks.js</code> at full quality, with the look's
+    <strong>first</strong> engine (the one the app uses on a WebGPU device), then saves each one as a small JPEG.
+    Download the ZIP and unzip it into <code>images/looks/</code>. Use a browser with WebGPU (desktop Chrome or Edge) so Negs runs on the GPU.</p>
+  <form id="options">
+    <label>Size (px)<input id="size" type="number" min="64" max="512" step="8" value="240"></label>
+    <label>Render edge (px)<input id="edge" type="number" min="128" max="2048" step="32" value="480"></label>
+    <label>Target size (KB)<input id="target" type="number" min="3" max="40" step="1" value="8"></label>
+    <label>Face position (0 top – 1 bottom)<input id="focus" type="number" min="0" max="1" step="0.05" value="0.3"></label>
+    <label>Looks<select id="only"><option value="">All looks</option></select></label>
+    <button id="run" type="submit">Render</button>
+    <button id="zip" type="button" disabled>Download ZIP</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <ol id="grid"></ol>
+
+  <script type="module">
+    import { filmLooks } from '../js/film-looks.js';
+    import { loadEngine, engineById } from '../js/engines/registry.js';
+    import { createZip } from '../js/zip.js';
+
+    const $ = selector => document.querySelector(selector);
+    const status = text => { $('#status').textContent = text; };
+    for (const look of filmLooks) $('#only').append(new Option(`${look.name} (${look.engine[0]})`, look.id));
+
+    // Same as expandLook in js/app.js (SPEC decision 7): defaults, each value through the engine's rules, normalized.
+    function expandLook(module, values) {
+      const params = module.defaultParams();
+      for (const [path, value] of Object.entries(values || {})) {
+        module.ui?.beforeChange?.(params, path, value);
+        params[path] = Array.isArray(value) ? [...value] : value;
+      }
+      return module.normalizeParams(params);
+    }
+    function loadImage(src) {
+      return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error(`Could not load ${src}`)); image.src = src; });
+    }
+    /** Square crop of the sample (face centred horizontally, `focus` from the top), `edge` px. */
+    async function sampleSquare(edge, focus) {
+      const image = await loadImage('../images/model.jpg');
+      const side = Math.min(image.naturalWidth, image.naturalHeight);
+      const canvas = new OffscreenCanvas(edge, edge);
+      canvas.getContext('2d').drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) * focus, side, side, 0, 0, edge, edge);
+      return createImageBitmap(canvas);
+    }
+    /** JPEG near the target size: lower the quality until it fits (not below 0.5). */
+    async function encode(canvas, targetBytes) {
+      let quality = 0.86, blob;
+      do { blob = await canvas.convertToBlob({ type: 'image/jpeg', quality }); quality -= 0.04; } while (blob.size > targetBytes && quality >= 0.5);
+      return blob;
+    }
+
+    let files = [];
+    $('#options').addEventListener('submit', async event => {
+      event.preventDefault();
+      const size = Number($('#size').value), edge = Number($('#edge').value), target = Number($('#target').value) * 1024, focus = Number($('#focus').value);
+      const looks = filmLooks.filter(look => !$('#only').value || look.id === $('#only').value);
+      $('#run').disabled = $('#zip').disabled = true; $('#grid').innerHTML = ''; files = [];
+      const source = await sampleSquare(edge, focus);
+      // Group by engine so each engine loads once and is stopped before the next.
+      const byEngine = Map.groupBy(looks, look => look.engine[0]);
+      let done = 0;
+      for (const [engineId, group] of byEngine) {
+        let module;
+        try { module = await loadEngine(engineId); }
+        catch (error) { for (const look of group) addItem(look, engineId, null, `engine did not load: ${error.message}`); continue; }
+        for (const look of group) {
+          status(`Rendering ${++done} of ${looks.length}: ${look.name} with ${engineById(engineId).label}…`);
+          try {
+            const raw = await module.render(source, expandLook(module, look.values[engineId]), { quality: 'full' });
+            const canvas = new OffscreenCanvas(size, size);
+            const ctx = canvas.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(raw, 0, 0, size, size); raw.close?.();
+            const blob = await encode(canvas, target);
+            files.push({ name: look.thumb.split('/').pop(), blob });
+            addItem(look, engineId, blob);
+          } catch (error) { console.error(error); addItem(look, engineId, null, error.message); }
+        }
+        module.dispose?.();
+      }
+      const failed = looks.length - files.length;
+      status(`Done: ${files.length} thumbnails, ${Math.round(files.reduce((sum, file) => sum + file.blob.size, 0) / 1024)} KB in all${failed ? `, ${failed} failed` : ''}. Download the ZIP and unzip it into images/looks/.`);
+      $('#run').disabled = false; $('#zip').disabled = !files.length;
+    });
+    function addItem(look, engineId, blob, error = '') {
+      const item = document.createElement('li');
+      if (blob) {
+        const thumb = document.createElement('span'); thumb.className = 'thumb';
+        const img = document.createElement('img'); img.alt = ''; img.src = URL.createObjectURL(blob);
+        thumb.append(img); item.append(thumb);
+      } else item.className = 'failed';
+      const name = document.createElement('strong'); name.textContent = look.name;
+      item.append(name, `${look.thumb.split('/').pop()} · ${engineById(engineId)?.label || engineId}${blob ? ` · ${(blob.size / 1024).toFixed(1)} KB` : ` · failed: ${error}`}`);
+      $('#grid').append(item);
+    }
+    $('#zip').addEventListener('click', async () => {
+      const zip = await createZip(files);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(zip); link.download = 'photokamo-look-thumbs.zip'; link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    });
+  </script>
+</body>
+</html>

@@ -4,6 +4,7 @@
 // Each engine lives in engines/<id>/ (source copy, licence, credits.json, runtime files) and
 // js/engines/<id>/index.js (the engine contract: sections, defaultParams, normalizeParams,
 // render, warm, dispose, …; see the spektrafilm-rs one for the full list).
+// approxDownload matches engines/<id>/manifest.json (the Looks grid badges read the manifest itself).
 
 export const engines = [
   {
@@ -11,7 +12,7 @@ export const engines = [
     label: 'Spektrafilm',
     description: 'Spectral film → print → scan model',
     licence: 'GPL-3.0',
-    approxDownload: '≈ 10 MB',
+    approxDownload: '≈ 16 MB',
     // Shown under the controls; plain text + links, built in the UI.
     credit: [
       'Film modelling by ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
@@ -25,7 +26,7 @@ export const engines = [
     label: 'Negs',
     description: 'Spectral film model on WebGPU · 52 films incl. B&W, 10 papers',
     licence: 'GPL-3.0',
-    approxDownload: '≈ 15 MB',
+    approxDownload: '≈ 39 MB',
     credit: [
       'Film modelling by ', { text: 'negs', href: 'https://github.com/noahhaasis/negs' },
       ', built on ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
@@ -40,6 +41,7 @@ export const engines = [
     description: 'Live film look from a Resolve plugin (GPU) · 54 film presets, grain, halation, bloom',
     licence: 'GPL-2.0-or-later',
     approxDownload: '≈ 60 KB',
+    manifest: false, // no runtime files: nothing to download besides its code (no download badge)
     credit: [
       'Film look by ', { text: 'DuXun Film Simulation', href: 'https://github.com/DuXun03/duxun-film-simulation' },
       ' (presets from ', { text: 't3mujinpack', href: 'https://github.com/t3mujinpack/t3mujinpack' }, '), ported to run on your device.'

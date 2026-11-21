@@ -7,6 +7,7 @@
   <meta name="description" content="PhotoKamo is a private, browser-based camera and film look playground.">
   <title>PhotoKamo — Camera & film looks</title>
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -62,7 +63,7 @@
         <p class="start-brand"><span class="brand-mark" aria-hidden="true"><i></i></span><span class="start-brand-name">Photo<span>Kamo</span></span></p>
         <figure class="start-preview" role="img" aria-label="A sample portrait shown in the Amber 200, Silver Mono and Cinema Teal looks">
           <div class="start-preview-strip" id="startPreview" aria-hidden="true">
-            <canvas data-start-look="amber-200" data-focus="0.3" width="240" height="600"></canvas>
+            <canvas data-start-look="golden-hour" data-focus="0.3" width="240" height="600"></canvas>
             <canvas data-start-look="silver-mono" data-focus="0.5" width="240" height="600"></canvas>
             <canvas data-start-look="cinema-teal" data-focus="0.7" width="240" height="600"></canvas>
           </div>
@@ -201,11 +202,14 @@
 
           <div class="presets-view" id="presetsView">
           <div class="look-filters">
-            <div class="chips" id="lookFilters"></div>
+            <div class="chips" id="lookFilters" role="group" aria-label="Look types"></div>
             <button class="text-button surprise-button" id="surpriseButton" type="button">
               <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
               Surprise me
             </button>
+          </div>
+          <div class="look-filters look-subfilters" id="filmGroupRow" hidden>
+            <div class="chips" id="filmGroupFilters" role="group" aria-label="Film type"></div>
           </div>
 
           <div class="look-grid-scroll">

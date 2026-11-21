@@ -303,10 +303,14 @@ body:not(.has-image) .topbar { display:none; }
 .look-thumb { position:relative; display:block; aspect-ratio:1/1; overflow:hidden; border-radius:var(--radius); box-shadow:0 0 0 1px var(--line); background:linear-gradient(145deg,#e9b56d 0 33%,#63806f 33% 62%,#273c37 62%); }
 .look-thumb canvas { display:block; width:100%; height:100%; opacity:0; transition:opacity .2s ease; }
 .look-thumb.has-preview canvas { opacity:1; }
-.look-thumb img { display:none; width:100%; height:100%; object-fit:cover; }
-.look-thumb.has-preview img { display:block; }
+.look-thumb img { display:block; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .2s ease; } /* displayed (not display:none) so lazy thumbnails load */
+.look-thumb.has-preview img { opacity:1; }
 .look-tile[aria-pressed=true] .look-thumb { box-shadow:var(--ring-selected); }
 /* My looks: the tile plus a delete button in its corner */
+.look-badge { position:absolute; left:5px; bottom:5px; padding:2px 6px; border-radius:var(--radius-sm); background:rgba(12,12,11,.78); color:var(--text); font-size:var(--fs-xs); font-weight:600; line-height:16px; white-space:nowrap; }
+.look-badge[hidden] { display:none; }
+.look-subfilters { margin-top:0; }
+.look-subfilters[hidden] { display:none; }
 .look-tile-wrap { position:relative; min-width:0; }
 .look-tile-wrap .look-tile { width:100%; }
 .look-delete { position:absolute; top:4px; right:4px; display:grid; place-items:center; width:26px; height:26px; padding:0; border:0; border-radius:13px; background:rgba(12,12,11,.78); color:var(--text); cursor:pointer; }
@@ -477,6 +481,8 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .engine-bar { flex:none; padding:14px 20px 10px; border-bottom:1px solid var(--line); }
 .engine-label { display:block; margin-bottom:6px; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
 .engine-row { display:flex; gap:8px; }
+body:not(.is-film) .engine-label,body:not(.is-film) #engineButton { display:none; }
+@media (min-width:901px) { body:not(.is-film) .engine-bar { display:none; } }
 .engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
 .engine-button-text { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
@@ -633,7 +639,10 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
 
   /* Looks: name + strength, slider, horizontal strip */
   .look-card { margin:0; padding:14px 16px 4px; border:0; border-radius:0; background:transparent; position:relative; }
-  .look-group,.look-desc,.favorite-button,.look-filters { display:none; }
+  .look-group,.look-desc,.favorite-button,.surprise-button { display:none; }
+  .look-filters { flex-wrap:nowrap; overflow-x:auto; margin:0; padding:5px 16px; scrollbar-width:none; overscroll-behavior-inline:contain; }
+  .look-filters .chip { position:relative; flex:none; }
+  .look-filters .chip::before { content:""; position:absolute; inset:-5px 0; } /* 44px tap height */
   /* The look's name sits in the engine row (mockup E); the card keeps Strength */
   .look-card { padding:0 16px; }
   .look-card-head { display:none; }
@@ -641,12 +650,12 @@ body.is-film .view-zoom,body.is-film .zoom-divider { display:none; }
   #strengthSlider { height:var(--tap); margin:0; }
   .look-grid-scroll { flex:none; overflow-x:auto; overflow-y:hidden; padding:6px 16px 12px; scroll-snap-type:x proximity; scroll-padding-inline:16px; overscroll-behavior-inline:contain; scrollbar-width:none; }
   .look-grid { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:68px; gap:10px; }
-  .look-grid .look-tile[hidden],.look-grid .look-tile-wrap[hidden] { display:block!important; }
   .look-tile-wrap .look-tile { padding-top:4px; }
   .look-delete { top:8px; right:4px; }
   .look-tile { scroll-snap-align:start; padding:4px 0 0; }
   .look-thumb { width:68px; height:68px; border-radius:12px; box-shadow:none; }
   .look-tile-name { font-size:var(--fs-xs); color:var(--text-muted); }
+  .look-badge { left:3px; bottom:3px; padding:1px 4px; font-size:10px; line-height:14px; }
   .look-tile[aria-pressed=true] .look-tile-name { color:var(--text); }
 
   /* Adjust: one slider at a time */
