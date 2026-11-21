@@ -276,6 +276,10 @@ body:not(.has-image) .topbar { display:none; }
 .look-card-text { min-width:0; }
 .look-group { margin:0; font-size:var(--fs-sm); font-weight:500; color:var(--text-muted); }
 .look-name { margin:2px 0 0; font-size:var(--fs-xl); font-weight:700; letter-spacing:-.4px; }
+.look-name .look-edited-mark { color:var(--accent); }
+.look-meta { margin:4px 0 0; font-size:var(--fs-sm); font-weight:500; color:var(--text-2); }
+.look-edited:not([hidden]) { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; font-size:var(--fs-md); color:var(--text-2); }
+.look-edited .text-button { min-height:var(--tap); font-weight:600; }
 .look-desc { margin:4px 0 0; font-size:var(--fs-md); line-height:1.45; color:var(--text-2); }
 .look-desc a { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
 .look-desc a svg { width:13px; height:13px; }

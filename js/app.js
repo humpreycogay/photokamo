@@ -3,6 +3,7 @@ import { renderImage, frameCanvas, applyAdjustments, drawTexts, textFonts, textF
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
+import { filmLooks } from './film-looks.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
 import { createEnginePicker } from './engine-picker.js';
 import { createOptionPicker } from './option-picker.js';
@@ -14,7 +15,8 @@ const elements = {
   fileInput: $('#fileInput'), cameraInput: $('#cameraInput'), dropZone: $('#dropZone'), emptyState: $('#emptyState'),
   viewport: $('#viewport'), canvasWrap: $('#canvasWrap'), canvas: $('#previewCanvas'), processing: $('#processing'), originalBadge: $('#originalBadge'),
   viewPill: $('#viewPill'), holdButton: $('#holdButton'), fileChip: $('#fileChip'), fileMenu: $('#fileMenu'), fileName: $('#fileName'), fileSize: $('#fileSize'),
-  lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
+  lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
+  lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
   strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
@@ -142,6 +144,7 @@ function updateButtons() { elements.undo.disabled = !state.undo.length; elements
 function toast(message) { clearTimeout(toastTimer); elements.toast.textContent = message; elements.toast.classList.add('show'); toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600); }
 function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
 function pickLook(id) {
+  filmLookTap++; // a film look still loading its engine must not apply after this
   change(() => { state.presetId = id; state.edits = {}; state.engine = PRESETS; state.myLookId = null; });
 }
 
@@ -179,7 +182,79 @@ function loadMyLooks() {
 }
 let myLooks = loadMyLooks();
 function saveMyLooks() { try { localStorage.setItem(MY_LOOKS_KEY, JSON.stringify(myLooks)); return true; } catch { return false; } }
-const currentMyLook = () => myLooks.find(look => look.id === state.myLookId) || null;
+
+// ---------- Built-in film looks (js/film-looks.js; SPEC §2–§4) ----------
+// A built-in look is stored like a My look: state.myLookId = 'film:<slug>', and the photo holds
+// the expanded engine params. "Edited" is worked out by comparing with the expanded look.
+const filmLookById = id => filmLooks.find(look => look.id === id) || null;
+const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
+/** The look's engine on this device: the first in its list that suits it (Negs needs WebGPU). Null: hide the look. */
+const pickEngineFor = look => look.engine.find(id => engineById(id) && (id !== 'negs' || hasWebGpu)) || null;
+/** Engine params for a look: the engine's defaults, then each value in order through the engine's own rules. */
+function expandLook(module, values) {
+  const params = module.defaultParams();
+  for (const [path, value] of Object.entries(values || {})) {
+    module.ui?.beforeChange?.(params, path, value);
+    params[path] = Array.isArray(value) ? [...value] : value;
+  }
+  return module.normalizeParams(params);
+}
+const sameParam = (module, path, a, b) => (Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b)
+  : module.sameValue ? module.sameValue(a, b, module.controlByPath[path]) : a === b);
+/** Param paths where `params` differs from `base`. */
+const changedPaths = (module, base, params) => Object.keys(base).filter(path => !sameParam(module, path, base[path], params[path]));
+/** The look the photo uses (a My look or a built-in film look): { id, name, builtIn, look, params, changed, edited }, or null. */
+function currentMyLook() {
+  const id = state.myLookId; if (!id) return null;
+  const builtIn = filmLookById(id);
+  const look = builtIn || myLooks.find(item => item.id === id); if (!look) return null;
+  const module = activeModule(); const params = advParams();
+  let base = null;
+  if (module && builtIn && builtIn.values[state.engine]) base = expandLook(module, builtIn.values[state.engine]);
+  if (module && !builtIn && look.engine === state.engine) base = module.normalizeParams(look.params);
+  const changed = base ? changedPaths(module, base, params).length : 0;
+  return { id, name: look.name, builtIn: Boolean(builtIn), look, params: base, changed, edited: changed > 0 };
+}
+let filmLookTap = 0; // only the latest tap applies when engines load out of order
+/** One tap: load the look's engine, expand the look, and make one change (engine, its params, the look id). */
+async function pickFilmLook(id) {
+  const look = filmLookById(id); const engineId = look && pickEngineFor(look);
+  if (!engineId) return;
+  const tap = ++filmLookTap;
+  let module;
+  try { module = await loadEngine(engineId); }
+  catch (error) { console.error(error); toast(`The ${engineById(engineId).label} engine could not be loaded. Check your connection and try again.`); return; }
+  if (tap !== filmLookTap) return;
+  change(() => { state.engine = engineId; state.engineParams[engineId] = expandLook(module, look.values[engineId]); state.myLookId = id; });
+}
+/** Back to look: the expanded look again, as one undo step. */
+function backToLook() {
+  const look = filmLookById(state.myLookId); const module = activeModule();
+  if (!look || !module || !look.values[state.engine]) return;
+  change(() => { state.engineParams[state.engine] = expandLook(module, look.values[state.engine]); });
+}
+/** Dev check (console): every look on every engine survives normalizeParams unchanged, with no value dropped. */
+async function checkFilmLooks() {
+  const rows = [];
+  for (const look of filmLooks) for (const engineId of look.engine) {
+    let module;
+    try { module = await loadEngine(engineId); }
+    catch (error) { rows.push({ look: look.id, engine: engineId, ok: false, problem: `engine did not load: ${error.message}` }); continue; }
+    const expanded = expandLook(module, look.values[engineId]);
+    const again = module.normalizeParams(expanded);
+    const drift = changedPaths(module, expanded, again).concat(Object.keys(again).filter(path => !(path in expanded)));
+    const dropped = Object.entries(look.values[engineId]).filter(([path, value]) => !sameParam(module, path, value, expanded[path])).map(([path]) => path);
+    const problem = [drift.length ? `normalize changes ${drift.join(', ')}` : '', dropped.length ? `dropped ${dropped.join(', ')}` : ''].filter(Boolean).join('; ');
+    rows.push({ look: look.id, engine: engineId, ok: !problem, problem, stock: module.stockSummary(expanded) });
+  }
+  console.table(rows);
+  const failed = rows.filter(row => !row.ok).length;
+  console.log(`checkFilmLooks: ${rows.length} look × engine pairs, ${failed} failed.`);
+  return failed;
+}
+// Console helpers for testing (docs/handover/TASKS.md, Task 1 and Task 4).
+Object.assign(window, { pickFilmLook, checkFilmLooks });
+
 function buildMyLookTiles() {
   elements.lookGrid.querySelectorAll('[data-mine-wrap]').forEach(wrap => wrap.remove());
   for (const look of myLooks) {
@@ -211,7 +286,7 @@ function deleteMyLook(id) {
   syncLooks(); syncDeleteMyLook();
   toast(`Deleted “${look.name}”.`);
 }
-function syncDeleteMyLook() { $('#deleteMyLook').hidden = !(isFilm() && currentMyLook()); }
+function syncDeleteMyLook() { const look = currentMyLook(); $('#deleteMyLook').hidden = !(isFilm() && look && !look.builtIn); }
 async function pickMyLook(id) {
   const look = myLooks.find(item => item.id === id); if (!look) return;
   let module;
@@ -222,7 +297,8 @@ async function pickMyLook(id) {
 function saveAsMyLook() {
   const params = advParams(); if (!params) return;
   const suggested = `My look ${myLooks.length + 1}`;
-  const name = prompt('Name this look', currentMyLook()?.name || suggested);
+  const current = currentMyLook();
+  const name = prompt('Name this look', current ? (current.builtIn ? `${current.name} (mine)` : current.name) : suggested);
   if (name === null) return;
   const look = { id: `mine-${Date.now().toString(36)}`, name: name.trim().slice(0, 40) || suggested, engine: state.engine, params: cloneParams(params), thumb: previewThumbnail() };
   myLooks = [...myLooks, look];
@@ -254,6 +330,11 @@ function filterMatches(preset) {
   if (state.filter === 'Mine') return false;
   return CATEGORY[preset.group] === state.filter;
 }
+/** "Name · edited", with "· edited" in the accent colour. */
+function setLookName(name, edited) {
+  const mark = document.createElement('span'); mark.className = 'look-edited-mark'; mark.textContent = ' · edited';
+  elements.lookName.replaceChildren(name, ...(edited ? [mark] : []));
+}
 function syncLooks() {
   const preset = currentPreset();
   const filters = ['All', 'Camera', 'Film', 'Creative', ...(myLooks.length ? ['Mine'] : []), ...(favorites.length ? ['Favorites'] : [])];
@@ -270,19 +351,28 @@ function syncLooks() {
     tile.setAttribute('aria-pressed', advanced && tile.dataset.mine === state.myLookId);
   });
   elements.favorite.hidden = advanced;
+  elements.strengthRow.hidden = advanced; // film looks have no Strength (SPEC §4.2)
+  elements.lookMeta.hidden = !advanced;
   if (advanced) {
-    const mine = currentMyLook();
+    const current = currentMyLook();
     const module = activeModule(); const params = advParams();
-    const edited = mine && module && JSON.stringify(module.normalizeParams(mine.params)) !== JSON.stringify(params);
-    elements.lookGroup.textContent = engineById(state.engine).label;
-    elements.lookName.textContent = mine ? (edited ? `${mine.name} · edited` : mine.name) : 'Film edit';
-    elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
-    elements.engineCaption.textContent = mine ? elements.lookName.textContent : 'Film engine'; // phone sheet: over the engine name
-    elements.lookDesc.textContent = module ? module.stockSummary(params) : 'Loading the film engine…';
-    elements.strength.disabled = true;
-    elements.strengthOutput.value = '—';
+    const entry = engineById(state.engine);
+    const name = current ? current.name : 'Film edit';
+    const edited = Boolean(current?.edited);
+    elements.lookGroup.textContent = current ? (current.builtIn ? 'Film look' : 'My look') : entry.label;
+    setLookName(name, edited);
+    elements.photoLookBadge.textContent = elements.engineLookName.textContent = edited ? `${name} · edited` : name;
+    elements.engineCaption.textContent = current ? elements.engineLookName.textContent : 'Film engine'; // phone sheet: over the engine name
+    // Stock names stay visible to experts: "Kodak Portra 400 → Kodak Portra Endura · Spektrafilm".
+    elements.lookMeta.textContent = module ? `${module.stockSummary(params)} · ${entry.label}` : `Loading ${entry.label}…`;
+    elements.lookDesc.textContent = current?.builtIn ? current.look.description : '';
+    elements.lookDesc.hidden = !current?.builtIn;
+    const showBack = Boolean(current?.builtIn && edited);
+    elements.lookEdited.hidden = !showBack;
+    if (showBack) elements.lookEditedText.textContent = `You changed ${plural(current.changed, 'setting')}.`;
     return;
   }
+  elements.lookEdited.hidden = true; elements.lookDesc.hidden = false;
   elements.lookGroup.textContent = groupLabel(preset);
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
   elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
@@ -1179,8 +1269,9 @@ function buildAdvancedPanel() {
     syncAdvancedPanel();
     if (!mobileQuery.matches) container.querySelector(`[data-section="${step.dataset.step}"]`).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
-  $('#advResetAll').addEventListener('click', () => { const module = activeModule(); if (module) change(() => { state.engineParams[state.engine] = module.defaultParams(); }); });
+  $('#advResetAll').addEventListener('click', () => { const module = activeModule(); if (module) change(() => { state.engineParams[state.engine] = module.defaultParams(); state.myLookId = null; }); });
   $('#saveMyLook').addEventListener('click', saveAsMyLook);
+  $('#backToLook').addEventListener('click', backToLook);
   $('#deleteMyLook').addEventListener('click', () => { if (state.myLookId) deleteMyLook(state.myLookId); });
 }
 

@@ -180,22 +180,26 @@
             </div>
           </div>
 
-          <div class="presets-view" id="presetsView">
           <article class="look-card" aria-live="polite">
             <div class="look-card-head">
               <div class="look-card-text">
                 <p class="look-group" id="lookGroup"></p>
                 <h2 class="look-name" id="lookName"></h2>
+                <p class="look-meta" id="lookMeta" hidden></p>
                 <p class="look-desc" id="lookDesc"></p>
               </div>
               <button class="icon-button favorite-button" id="favoriteButton" type="button" aria-pressed="false" aria-label="Save look to favorites">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
               </button>
             </div>
-            <label class="strength-label" for="strengthSlider"><span>Strength</span><output id="strengthOutput" for="strengthSlider">100%</output></label>
-            <input id="strengthSlider" type="range" min="0" max="100" step="1" value="100">
+            <div class="look-edited" id="lookEdited" hidden><span id="lookEditedText"></span><button class="text-button" id="backToLook" type="button">Back to look</button></div>
+            <div class="strength-row" id="strengthRow">
+              <label class="strength-label" for="strengthSlider"><span>Strength</span><output id="strengthOutput" for="strengthSlider">100%</output></label>
+              <input id="strengthSlider" type="range" min="0" max="100" step="1" value="100">
+            </div>
           </article>
 
+          <div class="presets-view" id="presetsView">
           <div class="look-filters">
             <div class="chips" id="lookFilters"></div>
             <button class="text-button surprise-button" id="surpriseButton" type="button">
