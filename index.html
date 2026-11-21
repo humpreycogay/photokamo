@@ -86,7 +86,7 @@
           <canvas id="previewCanvas" aria-label="Edited photo preview"></canvas>
           <canvas class="text-overlay" id="textCanvas" aria-label="Text on the photo. Arrow keys move the selected text, Shift for larger steps."></canvas>
           <span class="original-badge" id="originalBadge" hidden>Original</span>
-          <div class="processing" id="processing" hidden><span></span> Developing…</div>
+          <div class="processing" id="processing" role="status" hidden><span aria-hidden="true"></span> Developing…</div>
           <div class="render-progress" id="renderProgress" hidden><span id="renderProgressBar"></span></div>
         </div>
       </div>

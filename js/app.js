@@ -1453,7 +1453,7 @@ function scheduleRender() {
   requestAnimationFrame(() => { if (token !== state.renderToken) return; renderPreview(token); });
 }
 function renderPreview(token) {
-  elements.processing.hidden = false;
+  showDeveloping(false); elements.processing.hidden = false;
   setTimeout(() => {
     if (token !== state.renderToken || !state.image) { elements.processing.hidden = true; return; }
     try {
@@ -1540,6 +1540,7 @@ async function runAdvancedPreview() {
   try {
     let bitmap = enginePreview.key === key ? enginePreview.bitmap : null;
     if (!bitmap) {
+      showDeveloping(true);
       bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
       enginePreview = { key, bitmap };
     }
@@ -1554,9 +1555,16 @@ async function runAdvancedPreview() {
   } finally {
     advancedBusy = false;
     if (state.renderQuality === 'preview') syncRenderStatus();
-    if (advancedDirty && isFilm() && state.image) runAdvancedPreview();
-    else renderQueue.pump(); // photos not in view render once the one in view is done
+    if (advancedDirty && isFilm() && state.image) runAdvancedPreview(); // the pill stays up for the next render
+    else { showDeveloping(false); renderQueue.pump(); } // photos not in view render once the one in view is done
   }
+}
+// "Developing…" over the photo while a film preview renders, only if it takes a moment (no flicker on fast renders).
+let developingTimer;
+function showDeveloping(on) {
+  clearTimeout(developingTimer);
+  if (on) { developingTimer = setTimeout(() => { elements.processing.classList.add('is-soft'); elements.processing.hidden = false; }, 250); return; }
+  elements.processing.hidden = true; elements.processing.classList.remove('is-soft');
 }
 function showPreviewStatus(text) {
   if (!text || state.renderQuality !== 'preview') return;
