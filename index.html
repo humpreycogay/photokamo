@@ -297,8 +297,8 @@
           <div class="text-editor" id="textEditor" hidden>
             <label class="text-label" for="textContent">Text</label>
             <textarea id="textContent" data-text="content" rows="2" spellcheck="true"></textarea>
-            <label class="text-label" for="textFont">Font</label>
-            <select id="textFont"></select>
+            <p class="text-label" id="textFontLabel">Font</p>
+            <div class="text-fonts" id="textFont" role="radiogroup" aria-labelledby="textFontLabel"></div>
             <div class="slider-row"><label class="slider-label" for="textSize"><span>Size</span><output id="textSizeOutput" for="textSize">8%</output></label><input id="textSize" data-text="size" type="range" min="2" max="30" step="0.5"></div>
             <p class="text-label" id="textColorLabel">Colour</p>
             <div class="text-colors">

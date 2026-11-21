@@ -792,7 +792,9 @@ function updateText(mutator, commitNow = true) {
   else { mutator(text); syncText(); }
 }
 function buildText() {
-  $('#textFont').innerHTML = textFonts.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+  const fontPicker = $('#textFont');
+  fontPicker.innerHTML = textFonts.map(([id, name]) => `<button type="button" role="radio" class="text-font-option" data-font="${id}" aria-checked="false">${name}</button>`).join('');
+  fontPicker.querySelectorAll('[data-font]').forEach((button, index) => { button.style.setProperty('--preview-font', textFonts[index][2]); });
   $('#textColors').innerHTML = TEXT_COLORS.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-color="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
   $('#textPlace').innerHTML = TEXT_PLACES.map(([name, x, y]) => `<button type="button" class="text-place-button" data-x="${x}" data-y="${y}" aria-label="${name}" title="${name}"><span aria-hidden="true"></span></button>`).join('')
     + '<button type="button" class="button button-ghost text-place-border" id="textOnBorder">On the bottom border</button>';
@@ -809,7 +811,7 @@ function buildText() {
     const key = input.dataset.text;
     text[key] = key === 'content' || key === 'color' ? input.value : key === 'size' ? Number(input.value) / 100 : Number(input.value) / 100;
   }, false));
-  $('#textFont').addEventListener('change', event => updateText(text => { text.font = event.target.value; }));
+  bindRadioGroup(fontPicker, '[data-font]', button => updateText(text => { text.font = button.dataset.font; }));
   bindRadioGroup($('#textColors'), '[data-color]', button => updateText(text => { text.color = button.dataset.color; }));
   bindRadioGroup($('#textAlign'), '[data-align]', button => updateText(text => { text.align = button.dataset.align; }));
   elements.textPanel.addEventListener('click', event => {
@@ -896,7 +898,7 @@ function syncText() {
   if (text) {
     const content = $('#textContent');
     if (document.activeElement !== content) content.value = text.content;
-    $('#textFont').value = text.font;
+    syncRadios($('#textFont'), 'data-font', text.font);
     const size = $('#textSize'); if (document.activeElement !== size) size.value = text.size * 100;
     $('#textSizeOutput').value = `${Number((text.size * 100).toFixed(1))}%`;
     const opacity = $('#textOpacity'); if (document.activeElement !== opacity) opacity.value = Math.round(text.opacity * 100);
