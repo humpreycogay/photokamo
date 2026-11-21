@@ -1423,7 +1423,7 @@ function syncEngineView() {
   const module = activeModule();
   document.body.classList.toggle('is-film', film);
   syncFilmPanel();
-  if (film && state.zoom !== 'fit') { state.zoom = 'fit'; applyZoom(); }
+  applyZoom(); // the zoom stays when the look or engine changes
   syncRenderStatus();
 }
 
@@ -1633,6 +1633,7 @@ function syncRenderStatus() {
   if (!info) { elements.renderText.textContent = 'Loading the film engine…'; elements.renderDetail.textContent = ''; return; }
   elements.renderText.textContent = full ? 'Full quality' : info.previewLabel;
   elements.renderDetail.textContent = full ? ` · ${elements.canvas.width} px` : ` · ${info.previewDetail}`;
+  elements.renderText.parentElement.title = elements.renderText.textContent + elements.renderDetail.textContent; // the detail may be cut short
 }
 // Phone sheet RenderButton: idle (fast preview showing) → rendering (tap cancels) → done. Any edit returns to idle
 // through scheduleAdvancedRender. "Full quality ready" is announced once, when a render finishes.
@@ -1648,16 +1649,48 @@ function syncSheetRender(info) {
   if (sheetQuery.matches && isFilm() && next !== sheetRenderState) elements.sheetRenderLive.textContent = next === 'done' ? 'Full quality ready' : '';
   sheetRenderState = next;
 }
-function applyZoom() {
-  const actual = state.zoom === '100';
-  elements.viewport.classList.toggle('is-actual', actual);
-  elements.canvas.style.width = actual ? `${elements.canvas.width}px` : '';
-  document.querySelectorAll('[data-zoom]').forEach(button => button.setAttribute('aria-pressed', button.dataset.zoom === state.zoom));
+// Zoom: 'fit' or a percentage of the full-size photo ('100' = one full-size pixel per CSS pixel, long side capped
+// at ZOOM_MAX_EDGE). Basic looks render at full size when zoomed (renderEdge); film previews are smaller and are
+// scaled up until Render full quality replaces them. The view keeps the same spot centred.
+const ZOOM_STEPS = [10, 25, 33, 50, 67, 100, 150, 200, 300, 400];
+/** Full-size pixels per rendered pixel of the preview on screen (1 for a full-size render). */
+function renderScale() {
+  const rect = state.editedCanvas?.photoRect; if (!rect) return 1;
+  const { width, height } = croppedSize();
+  return Math.min(ZOOM_MAX_EDGE, Math.max(width, height)) / Math.max(1, rect.width, rect.height);
 }
-// 100%: drag the photo to look around (mouse or pen; fingers already scroll it). Dragging text in the Text tab wins.
+/** The size Fit shows, as a zoom percentage of the full-size photo. */
+function fitPercent() {
+  if (!state.image) return 100;
+  const shown = elements.canvas.getBoundingClientRect().width / Math.max(1, elements.canvas.width); // CSS px per rendered px
+  return shown / renderScale() * 100;
+}
+let lastFitPercent = 100;
+function applyZoom() {
+  const actual = state.zoom !== 'fit', view = elements.viewport;
+  const center = view.classList.contains('is-actual') && view.scrollWidth
+    ? [(view.scrollLeft + view.clientWidth / 2) / view.scrollWidth, (view.scrollTop + view.clientHeight / 2) / view.scrollHeight] : [.5, .5];
+  view.classList.toggle('is-actual', actual);
+  elements.canvas.style.width = actual ? `${Math.round(elements.canvas.width * renderScale() * Number(state.zoom) / 100)}px` : '';
+  if (actual) { view.scrollLeft = center[0] * view.scrollWidth - view.clientWidth / 2; view.scrollTop = center[1] * view.scrollHeight - view.clientHeight / 2; }
+  else if (state.image && elements.canvas.width) lastFitPercent = fitPercent();
+  document.querySelectorAll('[data-zoom]').forEach(button => button.setAttribute('aria-pressed', button.dataset.zoom === state.zoom));
+  const percent = actual ? Number(state.zoom) : Math.round(lastFitPercent);
+  $('#zoomValue').textContent = `${percent}%`;
+  $('#zoomOut').disabled = !actual;
+  $('#zoomIn').disabled = actual && Number(state.zoom) >= ZOOM_STEPS.at(-1);
+}
+/** One step in or out; out of the smallest step that's still bigger than Fit returns to Fit. */
+function stepZoom(direction) {
+  const fit = lastFitPercent, current = state.zoom === 'fit' ? fit : Number(state.zoom);
+  if (direction > 0) { const next = ZOOM_STEPS.find(step => step > current + .5); if (next) setZoom(String(next)); return; }
+  const next = [...ZOOM_STEPS].reverse().find(step => step < current - .5);
+  setZoom(next && next > fit + .5 ? String(next) : 'fit');
+}
+// Zoomed in: drag the photo to look around (mouse or pen; fingers already scroll it). Dragging text in the Text tab wins.
 let pan = null;
 elements.viewport.addEventListener('pointerdown', event => {
-  if (state.zoom !== '100' || event.pointerType === 'touch' || event.button !== 0 || event.defaultPrevented) return;
+  if (state.zoom === 'fit' || event.pointerType === 'touch' || event.button !== 0 || event.defaultPrevented) return;
   event.preventDefault(); // no text selection while dragging
   const view = elements.viewport;
   pan = { id: event.pointerId, x: event.clientX, y: event.clientY, left: view.scrollLeft, top: view.scrollTop };
@@ -2750,6 +2783,7 @@ hold.addEventListener('contextmenu', event => event.preventDefault());
 hold.addEventListener('click', event => event.preventDefault());
 window.addEventListener('blur', () => setHolding(false));
 document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => setZoom(button.dataset.zoom)));
+$('#zoomIn').addEventListener('click', () => stepZoom(1)); $('#zoomOut').addEventListener('click', () => stepZoom(-1));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
 elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
@@ -2806,5 +2840,12 @@ document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
   if (event.key === '\\' && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); if (!event.repeat) setHolding(true); }
+  // Zoom keys (desktop): + / = in, − out, 0 Fit. Not while typing, in a dialog or on the Crop tab.
+  const typing = event.target.closest?.('input,textarea,select,[contenteditable]') || document.querySelector('dialog[open]');
+  if (!typing && !event.ctrlKey && !event.metaKey && !event.altKey && state.image && document.body.dataset.tab !== 'crop' && !mobileQuery.matches) {
+    if (event.key === '+' || event.key === '=') { event.preventDefault(); stepZoom(1); }
+    else if (event.key === '-') { event.preventDefault(); stepZoom(-1); }
+    else if (event.key === '0') { event.preventDefault(); setZoom('fit'); }
+  }
 });
 document.addEventListener('keyup', event => { if (event.key === '\\') setHolding(false); });
