@@ -491,6 +491,10 @@ body:not(.is-film) .engine-label,body:not(.is-film) #engineButton { display:none
 .film-view-switch button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .film-view-name { display:none; }
 body.film-looks-view .engine-label,body.film-looks-view #engineButton,body.film-looks-view #engineAboutButton,body.film-looks-view .sheet-view { display:none!important; }
+/* Film Looks view: the pressed tile shows the look, so the card keeps only "You changed N settings · Back to look" (when edited). Name, stock and heart are in Controls. */
+body.film-looks-view .look-card-head { display:none; }
+body.film-looks-view .look-card:not(:has(.look-edited:not([hidden]))) { display:none; }
+body.film-looks-view .look-edited { margin-top:0; }
 @media (min-width:901px) { body.film-looks-view .engine-bar { display:none; } }
 .engine-button { flex:1; min-width:0; display:flex; align-items:center; gap:10px; min-height:var(--tap); padding:6px 12px 6px 14px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); text-align:left; cursor:pointer; }
 .engine-button:hover { background:var(--control); }
