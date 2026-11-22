@@ -229,6 +229,10 @@
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
             </button>
           </div>
+          <div class="frame-apply-all" id="looksApplyAll" hidden>
+            <button class="button button-ghost" id="looksApplySelectedButton" type="button">Apply to selected photos</button>
+            <button class="button button-ghost" id="looksApplyAllButton" type="button">Apply to all photos</button>
+          </div>
           </div>
 
           <section class="advanced-panel" id="advancedPanel" aria-labelledby="advancedTitle" hidden>
@@ -277,6 +281,10 @@
             <div class="ma-groups" id="maGroups" role="tablist" aria-label="Adjustment groups"></div>
             <div class="ma-tools" id="maTools" role="tabpanel"></div>
           </div>
+          <div class="frame-apply-all" id="adjustApplyAll" hidden>
+            <button class="button button-ghost" id="adjustApplySelectedButton" type="button">Apply to selected photos</button>
+            <button class="button button-ghost" id="adjustApplyAllButton" type="button">Apply to all photos</button>
+          </div>
         </section>
 
         <section class="tab-panel scroll-panel crop-panel" id="cropPanel" role="tabpanel" aria-labelledby="cropTab" hidden>
@@ -294,6 +302,10 @@
           <div class="crop-footer">
             <button class="button button-ghost" id="cropReset" type="button">Reset crop</button>
             <button class="button button-primary" id="cropDone" type="button">Done</button>
+          </div>
+          <div class="frame-apply-all" id="cropApplyAll" hidden>
+            <button class="button button-ghost" id="cropApplySelectedButton" type="button">Apply to selected photos</button>
+            <button class="button button-ghost" id="cropApplyAllButton" type="button">Apply to all photos</button>
           </div>
         </section>
 

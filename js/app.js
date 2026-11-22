@@ -662,20 +662,34 @@ function buildFrames() {
   $('#frameColors').innerHTML = [['default', 'Frame default'], ...FRAME_SWATCHES].map(([value, name]) => `<button type="button" role="radio" class="paper-swatch${value === 'default' ? ' frame-default-swatch' : ''}" data-frame-color="${value}" aria-checked="false" aria-label="${name}" title="${name}"${value === 'default' ? '' : ` style="--swatch:${value}"`}>${value === 'default' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>' : ''}</button>`).join('');
   bindRadioGroup($('#frameColors'), '[data-frame-color]', button => change(() => { state.frame.color = button.dataset.frameColor === 'default' ? null : button.dataset.frameColor; }));
   bindHistorySlider($('#frameColorPanel'), '#frameColor', input => { state.frame.color = input.value; syncFrames(); scheduleRender(); });
-  // Apply frame to all / the selected photos: the frame, its colour and print border settings; one undo step per photo.
-  const applyFrame = targets => {
-    const count = applyToPhotos(targets, { look: false, adjustments: false, exposure: false, frame: true, text: false, crop: false });
-    toast(count ? `Frame applied to ${plural(count, 'other photo')}.` : 'Those photos already have this frame.');
-  };
-  $('#frameApplyAllButton').addEventListener('click', () => applyFrame(app.photos.filter(photo => photo.id !== app.activeId)));
-  $('#frameApplySelectedButton').addEventListener('click', () => applyFrame(otherSelected()));
   // Paper print: a custom paper colour (stored as a hex instead of a paper id).
   bindHistorySlider(elements.borderPanel, '#paperColor', input => { state.frame.border.color = input.value; state.frame.border.matchPaper = false; syncFrames(); scheduleRender(); });
 }
-/** "Apply to all N photos" / "Apply to N selected" under Frames and Text. */
+/** Each tool's "Apply to selected / Apply to all" row (`#<id>ApplyAll`): what it copies (applyToPhotos parts). */
+const APPLY_ROWS = {
+  looks: { label: 'look', name: 'Look', parts: { look: true } },
+  adjust: { label: 'adjustments', name: 'Adjustments', parts: { adjustments: true, exposure: true } }, // everything in the Adjust tab
+  crop: { label: 'crop ratio', name: 'Crop ratio', parts: { crop: true } }, // centred on each photo, like the Apply dialog
+  frame: { label: 'frame', name: 'Frame', parts: { frame: true } }, // the frame, its colour and print border settings
+  text: { label: 'text', name: 'Text', parts: { text: true }, shown: () => state.text.length > 0 } // never clears the others by accident
+};
+/** All / the selected other photos get this photo's settings for one tool; one undo step per photo. */
+function buildApplyRows() {
+  for (const [id, row] of Object.entries(APPLY_ROWS)) {
+    const apply = targets => {
+      const count = applyToPhotos(targets, row.parts);
+      toast(count ? `${row.name} applied to ${plural(count, 'other photo')}.` : `Those photos already have the same ${row.label}.`);
+    };
+    $(`#${id}ApplyAllButton`).addEventListener('click', () => apply(app.photos.filter(photo => photo.id !== app.activeId)));
+    $(`#${id}ApplySelectedButton`).addEventListener('click', () => apply(otherSelected()));
+  }
+}
+/** "Apply to all (N)" / "Apply to selected (N)" in every tool; shown with two or more photos. */
 function syncApplyButtons() {
   const count = app.photos.length, selected = otherSelected().length;
-  for (const [all, some, label] of [['#frameApplyAllButton', '#frameApplySelectedButton', 'frame'], ['#textApplyAllButton', '#textApplySelectedButton', 'text']]) {
+  for (const [id, row] of Object.entries(APPLY_ROWS)) {
+    $(`#${id}ApplyAll`).hidden = count < 2 || row.shown?.() === false;
+    const all = `#${id}ApplyAllButton`, some = `#${id}ApplySelectedButton`, label = row.label;
     $(all).textContent = `Apply to all (${count})`;
     $(all).setAttribute('aria-label', `Apply ${label} to all ${count} photos`);
     $(some).textContent = selected ? `Apply to selected (${selected})` : 'Apply to selected';
@@ -729,7 +743,6 @@ function syncFrames() {
     label.style.setProperty('--custom-color', custom.value);
     label.classList.toggle('is-selected', Boolean(color) && !FRAME_SWATCHES.some(([hex]) => hex === color));
   }
-  $('#frameApplyAll').hidden = app.photos.length < 2;
   syncApplyButtons();
   syncRadios($('#borderSizes'), 'data-border-size', border.size);
   for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
@@ -1018,13 +1031,6 @@ function buildText() {
   fontPicker.querySelectorAll('[data-font]').forEach((button, index) => { button.style.setProperty('--preview-font', textFonts[index][2]); });
   $('#textColors').innerHTML = TEXT_COLORS.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-color="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
   $('#addText').addEventListener('click', addText);
-  // All / the selected other photos get this photo's text layers (replacing theirs); one undo step per photo.
-  const applyText = targets => {
-    const count = applyToPhotos(targets, { look: false, adjustments: false, exposure: false, frame: false, text: true, crop: false });
-    toast(count ? `Text applied to ${plural(count, 'other photo')}.` : 'Those photos already have this text.');
-  };
-  $('#textApplyAllButton').addEventListener('click', () => applyText(app.photos.filter(photo => photo.id !== app.activeId)));
-  $('#textApplySelectedButton').addEventListener('click', () => applyText(otherSelected()));
   $('#deleteText').addEventListener('click', () => {
     const index = state.text.findIndex(text => text.id === textUi.selected); if (index < 0) return;
     change(() => { state.text.splice(index, 1); });
@@ -1116,8 +1122,6 @@ function drawTextOverlay() {
 }
 function syncText() {
   if (!state.text.some(text => text.id === textUi.selected)) textUi.selected = state.text[state.text.length - 1]?.id || null;
-  // Apply text to all photos: only with text here, so it never clears the others by accident.
-  $('#textApplyAll').hidden = app.photos.length < 2 || !state.text.length;
   syncApplyButtons();
   const text = selectedText();
   const refocus = elements.textLayers.contains(document.activeElement);
@@ -2562,7 +2566,7 @@ function buildBatch() {
 }
 
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildBatch(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
 // Download badges once the page is idle: two small manifest files, no engine code.
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges(), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
@@ -2573,7 +2577,7 @@ mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom(
 function placeLookTools() {
   const tools = $('.look-tools');
   if (mobileQuery.matches) $('.engine-row').insertBefore(tools, $('.engine-row .film-settings-button'));
-  else $('#presetsView').append(tools);
+  else $('#looksApplyAll').before(tools);
 }
 placeLookTools();
 elements.renderFull.addEventListener('click', renderFullQuality);
@@ -2649,6 +2653,25 @@ function editChipValue(chip) {
 }
 // The on-screen keyboard shrinks the visual viewport: keep the field being typed in visible.
 visualViewport?.addEventListener('resize', () => { const input = document.querySelector('.adv-chip-input'); if (input) input.scrollIntoView({ block: 'center' }); });
+// Phones: iOS pans the page to the focused field and often leaves it panned (the editor drifts up,
+// the top bar disappears). While the keyboard is up, pin the app to the visible area; reset after.
+function syncKeyboard() {
+  const view = visualViewport, root = document.documentElement;
+  const open = mobileQuery.matches && view.scale < 1.01 && innerHeight - view.height > 120
+    && document.activeElement?.matches('textarea,input:not([type=range],[type=color],[type=checkbox],[type=radio])');
+  const opening = open && !document.body.classList.contains('keyboard-open');
+  document.body.classList.toggle('keyboard-open', open);
+  if (open) {
+    root.style.setProperty('--vv-h', `${Math.round(view.height)}px`); root.style.setProperty('--vv-top', `${Math.round(view.offsetTop)}px`);
+    if (opening) requestAnimationFrame(() => document.activeElement?.scrollIntoView({ block: 'nearest' })); // within the text panel
+  } else {
+    root.style.removeProperty('--vv-h'); root.style.removeProperty('--vv-top');
+    if (scrollX || scrollY) scrollTo(0, 0);
+  }
+}
+visualViewport?.addEventListener('resize', syncKeyboard);
+visualViewport?.addEventListener('scroll', syncKeyboard);
+document.addEventListener('focusout', () => setTimeout(syncKeyboard, 50));
 elements.advSections.addEventListener('click', event => {
   const chip = event.target.closest('[data-chip]'); if (chip) { editChipValue(chip); return; }
   const row = event.target.closest('[data-pick]'); if (row && !row.disabled) pickOption(row, row.dataset.pick);

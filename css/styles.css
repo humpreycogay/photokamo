@@ -457,7 +457,13 @@ body[data-tab=crop] .view-pill,body[data-tab=crop] .engine-wait,body[data-tab=cr
 .frame-apply-all { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
 .frame-apply-all:not([hidden]) { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .frame-apply-all .button { width:100%; min-height:var(--tap); padding:0 10px; }
-@media (max-width:900px) { #frameColorPanel,.frame-apply-all { margin:16px 16px 0; } #textApplyAll { margin-bottom:16px; } }
+#looksApplyAll { flex:none; margin:0; padding:0 20px 16px; border-top:0; } /* under Surprise me · Favorites, which has the divider */
+@media (max-width:900px) {
+  #frameColorPanel,.frame-apply-all { margin:16px 16px 0; } #textApplyAll { margin-bottom:16px; }
+  #looksApplyAll { margin:4px 16px 12px; padding:10px 0 0; border-top:1px solid var(--line); } /* the shortcuts moved up to the look-name row */
+  #adjustApplyAll { margin:0 16px 14px; padding-top:12px; }
+  #cropApplyAll { margin:16px 0 0; } /* the Crop panel has its own side padding */
+}
 .border-hint:empty { display:none; }
 /* Film engine not ready yet: dimmed photo + status pill; notes in Adjust / Frames */
 .engine-wait { position:absolute; left:50%; top:50%; z-index:4; transform:translate(-50%,-50%); display:flex; align-items:center; gap:12px; max-width:calc(100% - 32px); padding:12px 16px; border-radius:var(--radius-lg); background:rgba(12,12,11,.88); border:1px solid var(--line-strong); box-shadow:var(--shadow-photo); }
@@ -970,6 +976,13 @@ body[data-tab=text] :is(.view-pill,.view-pill *,.fullscreen-button,.engine-wait,
      exceptions: their full option lists must own the scroll area, especially in iOS Safari. */
   #textPanel,#framePanel,#cropPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
   #framePanel { padding:14px 0 max(36px,env(safe-area-inset-bottom)); }
+  .text-panel textarea,.crop-platform select,.adv-select select { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
+  /* Typing in any tab: the app is pinned to the area above the keyboard (syncKeyboard in app.js),
+     photo and editor split it, so iOS has nothing to pan and the page can't drift. */
+  body.keyboard-open { position:fixed; left:0; right:0; top:var(--vv-top,0); height:var(--vv-h,100dvh); }
+  body.keyboard-open.has-image .app-shell { grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+  body.keyboard-open.has-image .controls { height:auto; max-height:none; }
+  body.keyboard-open .control-tabs { display:none; }
 }
 
 /* Film engine sheet on phones (docs/handover-mobile-film-panel). Tokens alias the app's own;
