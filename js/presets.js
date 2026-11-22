@@ -8,7 +8,8 @@ const p = (id, name, style, description, values = {}, engine = 'Browser Native')
   id, name, style, description, engine, values: { ...defaultAdjustments, ...values }
 });
 
-/** Look categories for the Looks grid filter, in order. Basic presets and film looks (js/film-looks.js) share them. */
+/** Film look categories for the Looks grid filter, in order (js/film-looks.js). Basic presets have their own Basic group;
+ *  their `style` is kept as data only. */
 export const lookStyles = [['film', 'Film'], ['bw', 'B&W'], ['creative', 'Creative']];
 
 export const presets = [

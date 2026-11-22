@@ -17,7 +17,7 @@ const elements = {
   viewPill: $('#viewPill'), holdButton: $('#holdButton'), fileChip: $('#fileChip'), fileMenu: $('#fileMenu'), fileName: $('#fileName'), fileSize: $('#fileSize'),
   lookGroup: $('#lookGroup'), lookName: $('#lookName'), lookMeta: $('#lookMeta'), lookDesc: $('#lookDesc'), favorite: $('#favoriteButton'),
   lookEdited: $('#lookEdited'), lookEditedText: $('#lookEditedText'), strengthRow: $('#strengthRow'),
-  strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), advancedOnly: $('#advancedOnly'), lookGrid: $('#lookGrid'),
+  strength: $('#strengthSlider'), strengthOutput: $('#strengthOutput'), lookFilters: $('#lookFilters'), lookGrid: $('#lookGrid'),
   filmSettings: [...document.querySelectorAll('[data-film-settings]')], expertDone: $('#expertDone'),
   adjustmentControls: $('#adjustmentControls'), adjustBadge: $('#adjustBadge'), frameGrid: $('#frameGrid'),
   undo: $('#undoButton'), redo: $('#redoButton'), revert: $('#revertButton'), export: $('#exportButton'),
@@ -87,10 +87,7 @@ const PRESETS = 'presets';
 const isFilm = () => state.engine !== PRESETS;
 const currentPreset = () => presets.find(item => item.id === state.presetId) || presets[0];
 // "Advanced only": the grid shows only looks the gear works with (film looks, My looks). A device preference.
-const ADVANCED_ONLY_KEY = 'photokamo:advanced-only';
-let advancedOnly = (() => { try { return localStorage.getItem(ADVANCED_ONLY_KEY) === '1'; } catch { return false; } })();
 const filmLookById = id => filmLooks.find(look => look.id === id) || null;
-const styleLabel = style => lookStyles.find(([id]) => id === style)?.[1] || '';
 
 // ---------- Values ----------
 // On a film engine the look is the engine's output, so Adjust edits sit on the defaults.
@@ -323,10 +320,8 @@ function buildLooks() {
   const presetTile = preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`;
   // Film tiles: a static thumbnail (images/looks/, loaded only when visible) and a download badge.
   const filmTile = look => `<button class="look-tile" type="button" data-film="${look.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><img src="${look.thumb}" alt="" loading="lazy" decoding="async"><span class="look-badge" hidden></span></span><span class="look-tile-name">${escapeHtml(look.name)}</span></button>`;
-  // Order in All: by look style (lookStyles), Basic presets before film looks within each style.
-  elements.lookGrid.innerHTML = lookStyles.flatMap(([style]) => [
-    ...presets.filter(preset => preset.style === style).map(presetTile), ...filmTileLooks.filter(look => look.style === style).map(filmTile)
-  ]).join('');
+  // Order in All: the Basic presets (their own group), then the film looks by style (lookStyles).
+  elements.lookGrid.innerHTML = [...presets.map(presetTile), ...lookStyles.flatMap(([style]) => filmTileLooks.filter(look => look.style === style).map(filmTile))].join('');
   elements.lookGrid.addEventListener('load', event => { if (event.target.matches?.('.look-thumb img')) event.target.parentElement.classList.add('has-preview'); }, true);
   elements.lookGrid.addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-look]');
@@ -335,11 +330,10 @@ function buildLooks() {
     if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else if (tile.dataset.film) pickFilmLook(tile.dataset.film); else pickLook(tile.dataset.preset);
   });
   buildMyLookTiles();
-  elements.advancedOnly.checked = advancedOnly;
-  elements.advancedOnly.addEventListener('change', () => {
-    advancedOnly = elements.advancedOnly.checked;
-    try { localStorage.setItem(ADVANCED_ONLY_KEY, advancedOnly ? '1' : '0'); } catch { /* this visit only */ }
-    syncLooks();
+  // Heart: shows only the favorites (tap again for All); with none yet, it says how to add one.
+  $('#favoritesFilter').addEventListener('click', () => {
+    if (!favorites.length) { toast('No favorites yet. Use the heart next to Strength to save a look.'); return; }
+    state.filter = state.filter === 'Favorites' ? 'All' : 'Favorites'; syncLooks();
   });
   elements.lookFilters.addEventListener('click', event => {
     const chip = event.target.closest('[data-filter]'); if (!chip) return;
@@ -347,12 +341,11 @@ function buildLooks() {
   });
   renderPresetPreviews();
 }
+const BASIC_FILTER = 'basic';
 function filterMatches(preset) {
-  if (advancedOnly) return false; // Basic presets have no film settings
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(preset.id);
-  if (state.filter === 'Mine') return false;
-  return preset.style === state.filter;
+  return state.filter === BASIC_FILTER; // Basic presets live only in the Basic group; Film, B&W and Creative are film looks
 }
 function filmFilterMatches(look) {
   if (state.filter === 'All') return true;
@@ -404,11 +397,15 @@ function setLookName(name, edited) {
 }
 function syncLooks() {
   const preset = currentPreset();
-  const filters = [['All', 'All'], ...lookStyles.filter(([style]) => (!advancedOnly && presets.some(item => item.style === style)) || filmTileLooks.some(look => look.style === style)),
-    ...(myLooks.length ? [['Mine', 'Mine']] : []), ...(favorites.length ? [['Favorites', 'Favorites']] : [])];
+  const filters = [['All', 'All'], [BASIC_FILTER, 'Basic'], ...lookStyles.filter(([style]) => filmTileLooks.some(look => look.style === style)),
+    ...(myLooks.length ? [['Mine', 'Mine']] : [])];
   const advanced = isFilm();
-  if (!filters.some(([id]) => id === state.filter)) state.filter = 'All';
+  if (state.filter === 'Favorites' ? !favorites.length : !filters.some(([id]) => id === state.filter)) state.filter = 'All';
   syncChips(elements.lookFilters, 'data-filter', filters, state.filter);
+  const heart = $('#favoritesFilter');
+  heart.setAttribute('aria-pressed', state.filter === 'Favorites');
+  heart.setAttribute('aria-disabled', !favorites.length);
+  heart.title = favorites.length ? `Favorites (${favorites.length})` : 'Favorites (none yet)';
   elements.lookGrid.querySelectorAll('[data-film]').forEach(tile => {
     const look = filmLookById(tile.dataset.film);
     tile.hidden = !filmFilterMatches(look);
@@ -461,7 +458,7 @@ function syncLooks() {
     return;
   }
   elements.lookEdited.hidden = true; elements.lookDesc.hidden = false;
-  elements.lookGroup.textContent = styleLabel(preset.style);
+  elements.lookGroup.textContent = 'Basic';
   elements.lookName.textContent = editCount() ? `${preset.name} · edited` : preset.name;
   elements.photoLookBadge.textContent = elements.engineLookName.textContent = elements.lookName.textContent;
   elements.lookDesc.innerHTML = preset.description + (preset.engine === 'Spektrafilm-inspired' ? ' <a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">Credits<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a>' : '');
@@ -495,6 +492,11 @@ function loadSampleImage() {
 function renderStartPreview(image) {
   document.querySelectorAll('[data-start-look]').forEach(canvas => {
     const preset = presets.find(item => item.id === canvas.dataset.startLook);
+    if (!preset) { console.warn(`Start preview: no preset "${canvas.dataset.startLook}".`); return; }
+    // Captions come from the preset itself, so the home screen always names looks that exist in the app.
+    const print = canvas.closest('.start-print');
+    print.querySelector('.start-print-name').textContent = preset.name;
+    print.querySelector('.start-print-desc').textContent = preset.description;
     try {
       const preview = renderImage(image, preset.values, 'none', 900);
       const ctx = canvas.getContext('2d');
@@ -660,12 +662,26 @@ function buildFrames() {
   $('#frameColors').innerHTML = [['default', 'Frame default'], ...FRAME_SWATCHES].map(([value, name]) => `<button type="button" role="radio" class="paper-swatch${value === 'default' ? ' frame-default-swatch' : ''}" data-frame-color="${value}" aria-checked="false" aria-label="${name}" title="${name}"${value === 'default' ? '' : ` style="--swatch:${value}"`}>${value === 'default' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>' : ''}</button>`).join('');
   bindRadioGroup($('#frameColors'), '[data-frame-color]', button => change(() => { state.frame.color = button.dataset.frameColor === 'default' ? null : button.dataset.frameColor; }));
   bindHistorySlider($('#frameColorPanel'), '#frameColor', input => { state.frame.color = input.value; syncFrames(); scheduleRender(); });
-  // Apply frame to all photos: the frame, its colour and print border settings; one undo step per photo.
-  $('#frameApplyAllButton').addEventListener('click', () => {
-    const others = app.photos.filter(photo => photo.id !== app.activeId);
-    const count = applyToPhotos(others, { look: false, adjustments: false, exposure: false, frame: true, text: false, crop: false });
-    toast(count ? `Frame applied to ${plural(count, 'other photo')}.` : 'All photos already have this frame.');
-  });
+  // Apply frame to all / the selected photos: the frame, its colour and print border settings; one undo step per photo.
+  const applyFrame = targets => {
+    const count = applyToPhotos(targets, { look: false, adjustments: false, exposure: false, frame: true, text: false, crop: false });
+    toast(count ? `Frame applied to ${plural(count, 'other photo')}.` : 'Those photos already have this frame.');
+  };
+  $('#frameApplyAllButton').addEventListener('click', () => applyFrame(app.photos.filter(photo => photo.id !== app.activeId)));
+  $('#frameApplySelectedButton').addEventListener('click', () => applyFrame(otherSelected()));
+  // Paper print: a custom paper colour (stored as a hex instead of a paper id).
+  bindHistorySlider(elements.borderPanel, '#paperColor', input => { state.frame.border.color = input.value; state.frame.border.matchPaper = false; syncFrames(); scheduleRender(); });
+}
+/** "Apply to all N photos" / "Apply to N selected" under Frames and Text. */
+function syncApplyButtons() {
+  const count = app.photos.length, selected = otherSelected().length;
+  for (const [all, some, label] of [['#frameApplyAllButton', '#frameApplySelectedButton', 'frame'], ['#textApplyAllButton', '#textApplySelectedButton', 'text']]) {
+    $(all).textContent = `Apply to all (${count})`;
+    $(all).setAttribute('aria-label', `Apply ${label} to all ${count} photos`);
+    $(some).textContent = selected ? `Apply to selected (${selected})` : 'Apply to selected';
+    $(some).setAttribute('aria-label', selected ? `Apply ${label} to the ${plural(selected, 'other selected photo')}` : `Apply ${label} to selected photos (select photos in the filmstrip first)`);
+    $(some).disabled = !selected;
+  }
 }
 const FRAME_SWATCHES = [['#ffffff', 'White'], ['#f4efe4', 'Warm white'], ['#8c8c86', 'Grey'], ['#3a3a37', 'Charcoal'], ['#111110', 'Black']];
 /** Marks the radio whose `attribute` equals `value` as checked; it (or the first) is the one Tab reaches. */
@@ -696,7 +712,8 @@ function renderFrame() { return frameFor(state.frame, matchedPaper()); }
 function frameFor({ id, border, color: borderColor }, tint) {
   if (id !== 'paper') return borderColor && FRAME_COLORS[id] ? { id, color: borderColor } : id;
   const color = (border.matchPaper && tint) || border.color;
-  return { id, width: border.width, bottom: border.bottom, paper: (paperColors.find(item => item.id === color) || paperColors[1]).hex };
+  const paper = color?.startsWith('#') ? color : (paperColors.find(item => item.id === color) || paperColors[1]).hex;
+  return { id, width: border.width, bottom: border.bottom, paper };
 }
 function syncFrames() {
   const { id, border } = state.frame;
@@ -713,7 +730,7 @@ function syncFrames() {
     label.classList.toggle('is-selected', Boolean(color) && !FRAME_SWATCHES.some(([hex]) => hex === color));
   }
   $('#frameApplyAll').hidden = app.photos.length < 2;
-  $('#frameApplyAllButton').textContent = `Apply frame to all ${app.photos.length} photos`;
+  syncApplyButtons();
   syncRadios($('#borderSizes'), 'data-border-size', border.size);
   for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
     const input = elements.borderPanel.querySelector(`[data-border="${key}"]`);
@@ -725,6 +742,19 @@ function syncFrames() {
   match.disabled = !tint; match.checked = Boolean(tint && border.matchPaper);
   $('#matchPaperHint').textContent = tint ? '' : 'Available with a film engine that prints on paper.';
   syncRadios($('#paperSwatches'), 'data-paper', match.checked ? tint : border.color);
+  const paperCustom = $('#paperColor'), paperLabel = paperCustom.closest('.text-custom-color'), isCustom = !match.checked && border.color?.startsWith('#');
+  if (document.activeElement !== paperCustom) paperCustom.value = isCustom ? border.color : (paperColors.find(item => item.id === border.color) || paperColors[1]).hex;
+  paperLabel.style.setProperty('--custom-color', paperCustom.value);
+  paperLabel.classList.toggle('is-selected', Boolean(isCustom));
+}
+/** Frame cards preview the photo in view instead of a placeholder. */
+function syncFramePreview(photo) {
+  const thumb = photo?.thumb;
+  if (!thumb) { elements.frameGrid.style.removeProperty('--frame-img'); return; }
+  const scale = Math.min(1, 160 / Math.max(thumb.width, thumb.height)), canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(thumb.width * scale)); canvas.height = Math.max(1, Math.round(thumb.height * scale));
+  canvas.getContext('2d').drawImage(thumb, 0, 0, canvas.width, canvas.height);
+  elements.frameGrid.style.setProperty('--frame-img', `url("${canvas.toDataURL('image/jpeg', .8)}")`);
 }
 
 // ---------- Crop ----------
@@ -988,12 +1018,13 @@ function buildText() {
   fontPicker.querySelectorAll('[data-font]').forEach((button, index) => { button.style.setProperty('--preview-font', textFonts[index][2]); });
   $('#textColors').innerHTML = TEXT_COLORS.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-color="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
   $('#addText').addEventListener('click', addText);
-  // Every other photo gets this photo's text layers (replacing theirs); one undo step per photo.
-  $('#textApplyAllButton').addEventListener('click', () => {
-    const others = app.photos.filter(photo => photo.id !== app.activeId);
-    const count = applyToPhotos(others, { look: false, adjustments: false, exposure: false, frame: false, text: true, crop: false });
-    toast(count ? `Text applied to ${plural(count, 'other photo')}.` : 'All photos already have this text.');
-  });
+  // All / the selected other photos get this photo's text layers (replacing theirs); one undo step per photo.
+  const applyText = targets => {
+    const count = applyToPhotos(targets, { look: false, adjustments: false, exposure: false, frame: false, text: true, crop: false });
+    toast(count ? `Text applied to ${plural(count, 'other photo')}.` : 'Those photos already have this text.');
+  };
+  $('#textApplyAllButton').addEventListener('click', () => applyText(app.photos.filter(photo => photo.id !== app.activeId)));
+  $('#textApplySelectedButton').addEventListener('click', () => applyText(otherSelected()));
   $('#deleteText').addEventListener('click', () => {
     const index = state.text.findIndex(text => text.id === textUi.selected); if (index < 0) return;
     change(() => { state.text.splice(index, 1); });
@@ -1020,18 +1051,24 @@ function buildText() {
     const left = rect.left + (rect.width - overlay.width * scale) / 2, top = rect.top + (rect.height - overlay.height * scale) / 2; // object-fit: contain on phones
     return { x: (event.clientX - left) / scale, y: (event.clientY - top) / scale };
   };
-  overlay.addEventListener('pointerdown', event => {
-    if (document.body.dataset.tab !== 'text' || !state.editedCanvas?.photoRect) return;
-    const point = toCanvas(event), pad = 8 * overlay.width / overlay.getBoundingClientRect().width;
-    const hit = [...textUi.boxes].reverse().find(box => point.x >= box.x - pad && point.x <= box.x + box.w + pad && point.y >= box.y - pad && point.y <= box.y + box.h + pad);
+  // Listens on the whole stage before anything else: on phones the hold button and status pills sit over the
+  // photo, and text under them must still be draggable. Fingers get a larger hit area.
+  elements.dropZone.addEventListener('pointerdown', event => {
+    if (document.body.dataset.tab !== 'text' || !state.editedCanvas?.photoRect || event.button > 0 || event.target.closest('#fullscreenButton,#engineWaitRetry')) return;
+    const bounds = overlay.getBoundingClientRect();
+    if (!bounds.width || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return;
+    const point = toCanvas(event), px = Math.max(overlay.width / bounds.width, overlay.height / bounds.height); // canvas px per CSS px (contain)
+    const pad = (event.pointerType === 'mouse' ? 8 : 22) * px;
+    const distance = box => Math.hypot(Math.max(box.x - point.x, 0, point.x - box.x - box.w), Math.max(box.y - point.y, 0, point.y - box.y - box.h));
+    const hit = [...textUi.boxes].reverse().find(box => distance(box) <= pad);
     if (!hit) return;
-    event.preventDefault();
+    event.preventDefault(); event.stopPropagation();
     textUi.selected = hit.id; overlay.focus({ preventScroll: true });
     const text = selectedText();
     textUi.drag = { id: event.pointerId, point, x: text.x, y: text.y, start: snapshot() };
     overlay.setPointerCapture(event.pointerId);
     syncText();
-  });
+  }, { capture: true });
   overlay.addEventListener('pointermove', event => {
     const drag = textUi.drag; if (!drag || drag.id !== event.pointerId) return;
     const point = toCanvas(event), rect = state.editedCanvas.photoRect;
@@ -1044,6 +1081,7 @@ function buildText() {
   const drop = event => { const drag = textUi.drag; if (!drag || drag.id !== event.pointerId) return; textUi.drag = null; commit(drag.start); syncText(); };
   overlay.addEventListener('pointerup', drop);
   overlay.addEventListener('pointercancel', drop);
+  overlay.addEventListener('lostpointercapture', drop);
   overlay.addEventListener('keydown', event => {
     const step = event.shiftKey ? .05 : .01;
     const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
@@ -1080,7 +1118,7 @@ function syncText() {
   if (!state.text.some(text => text.id === textUi.selected)) textUi.selected = state.text[state.text.length - 1]?.id || null;
   // Apply text to all photos: only with text here, so it never clears the others by accident.
   $('#textApplyAll').hidden = app.photos.length < 2 || !state.text.length;
-  $('#textApplyAllButton').textContent = `Apply text to all ${app.photos.length} photos`;
+  syncApplyButtons();
   const text = selectedText();
   const refocus = elements.textLayers.contains(document.activeElement);
   elements.textLayers.innerHTML = state.text.map((layer, index) => `<button type="button" role="radio" class="chip" data-layer="${layer.id}" aria-checked="${layer.id === textUi.selected}" tabindex="${layer.id === textUi.selected ? 0 : -1}"></button>`).join('');
@@ -1208,10 +1246,12 @@ function syncEngineWait() {
   elements.engineWaitRetry.hidden = !failed;
   if (!waiting) { document.querySelectorAll('[data-engine-wait]').forEach(note => { note.hidden = true; }); return; }
   const download = engine.status === 'preparing' ? engine.download : null;
-  const title = failed ? `${entry.label} couldn't load` : `Loading ${entry.label}…`;
-  const sub = failed ? 'Your changes are saved. Check your connection and retry.' : 'Your changes will show when it’s ready.';
+  // One message while it loads ("Developing…", like a render); the Developing pill itself stays hidden meanwhile (CSS).
+  const title = failed ? `${entry.label} couldn't load` : 'Developing…';
+  const sub = failed ? 'Your changes are saved. Check your connection and retry.' : '';
   if (elements.engineWaitTitle.textContent !== title) elements.engineWaitTitle.textContent = title;
   if (elements.engineWaitSub.textContent !== sub) elements.engineWaitSub.textContent = sub;
+  elements.engineWaitSub.hidden = !sub;
   elements.engineWaitProgress.textContent = !download ? '' : download.percent == null ? ` ${download.mb} MB` : ` ${download.percent}%`;
   const note = failed ? `${entry.label} couldn't load. Your changes are saved; retry from the photo.` : `${entry.label} isn't ready yet. Changes are saved and will apply when it finishes loading.`;
   document.querySelectorAll('[data-engine-wait]').forEach(element => { element.hidden = false; element.textContent = note; });
@@ -1715,7 +1755,7 @@ function setHolding(holding) {
   state.holding = holding;
   elements.originalBadge.hidden = !holding;
   elements.holdButton.classList.toggle('is-holding', holding);
-  drawPreview();
+  drawPreview(); drawFullscreen();
 }
 
 // ---------- Photos: several open at once (SPEC §2) ----------
@@ -1758,7 +1798,11 @@ async function addFiles(fileList) {
   if (!files.length) return;
   const problems = { type: 0, size: 0, decode: 0, cap: 0 };
   let added = 0;
-  for (const file of files) {
+  const loading = $('#photoLoading'), loadingText = $('#photoLoadingText');
+  loading.hidden = files.length < 2;
+  try {
+  for (const [index, file] of files.entries()) {
+    loadingText.textContent = `Opening photos… ${index + 1} of ${files.length}`;
     if (!file.type.startsWith('image/')) { problems.type++; continue; }
     if (file.size > MAX_FILE_BYTES) { problems.size++; continue; }
     if (app.photos.length >= MAX_PHOTOS) { problems.cap++; continue; }
@@ -1770,6 +1814,7 @@ async function addFiles(fileList) {
     if (!added++) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
     syncStrip();
   }
+  } finally { loading.hidden = true; }
   const skipped = problems.type + problems.size + problems.decode + problems.cap;
   if (!skipped) toast(added === 1 ? 'Photo opened locally.' : `${added} photos opened locally.`);
   else if (files.length === 1) toast(problems.type ? 'Choose a JPEG, PNG, WebP, or GIF image.' : problems.size ? 'That photo is over the 40 MB limit.' : problems.cap ? `PhotoKamo keeps up to ${MAX_PHOTOS} photos open. Close some to add more.` : 'PhotoKamo could not decode that image.');
@@ -1825,6 +1870,7 @@ function showPhoto(target, image) {
   elements.fileSize.textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
   elements.fileChip.setAttribute('aria-label', `${target.name}, ${image.naturalWidth} by ${image.naturalHeight} pixels. Photo options`);
   elements.cropStage.hidden = document.body.dataset.tab !== 'crop';
+  syncFramePreview(target);
   updateButtons(); syncControls(); scheduleRender();
 }
 /** Closes the photo in view; the next one (or the start screen) comes into view. */
@@ -1889,6 +1935,7 @@ function syncStrip() {
   const selected = app.photos.filter(photo => app.selected.has(photo.id)).length;
   elements.stripCount.textContent = `${selected} selected`;
   elements.stripHint.textContent = otherSelected().length ? 'Changes go to the photo in view. Use Apply to copy them to the rest.' : '';
+  syncApplyButtons();
   const busy = renderQueue.size;
   elements.stripStatus.textContent = busy ? `Updating ${busy} photo${busy === 1 ? '' : 's'}…` : '';
   $('#selectAllButton').disabled = selected === count; $('#clearSelectionButton').disabled = selected <= 1;
@@ -2521,7 +2568,14 @@ buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
-mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); });
+mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); placeLookTools(); });
+// Surprise me · Favorites: under the Looks grid on desktop; phones have no room there, so they sit in the look-name row by the gear.
+function placeLookTools() {
+  const tools = $('.look-tools');
+  if (mobileQuery.matches) $('.engine-row').insertBefore(tools, $('.engine-row .film-settings-button'));
+  else $('#presetsView').append(tools);
+}
+placeLookTools();
 elements.renderFull.addEventListener('click', renderFullQuality);
 elements.renderCancel.addEventListener('click', () => { cancelFullRender(); scheduleAdvancedRender(0); });
 elements.sheetRender.addEventListener('click', () => {
@@ -2794,7 +2848,7 @@ $('#surpriseButton').addEventListener('click', async () => {
   const basic = presets.filter(p => !isCurrent(p.id) && p.id !== 'original');
   const film = filmTileLooks.filter(look => !isCurrent(look.id) && engineReady(pickEngineFor(look)));
   const matching = [...basic.filter(filterMatches), ...film.filter(filmFilterMatches)];
-  const pool = matching.length ? matching : advancedOnly ? film : basic;
+  const pool = matching.length ? matching : basic;
   if (!pool.length) { toast('Surprise me uses film looks that are already downloaded. Pick a film look first.'); return; }
   const pick = pool[Math.floor(Math.random() * pool.length)];
   if (filmLookById(pick.id)) await pickFilmLook(pick.id); else pickLook(pick.id);
@@ -2812,13 +2866,23 @@ $('#sizeOptions').addEventListener('click', event => { const button = event.targ
 elements.quality.addEventListener('input', () => { syncExportOptions(); schedulePrepare(400); });
 // ---------- Full screen: the edited photo with its text (no selection box). Esc or ✕ closes. ----------
 // The dialog fills the window; where the browser allows it (desktop), it also goes truly full screen.
-const fullscreen = { dialog: $('#fullscreenDialog'), canvas: $('#fullscreenCanvas'), button: $('#fullscreenButton') };
+const fullscreen = { dialog: $('#fullscreenDialog'), canvas: $('#fullscreenCanvas'), button: $('#fullscreenButton'), hold: $('#fullscreenHold') };
+/** The edited photo with its text, or the original while Hold to compare is held. */
+function drawFullscreen() {
+  if (!$('#fullscreenDialog').open) return; // (setHolding may run before `fullscreen` below is initialised)
+  const edited = state.editedCanvas, original = state.holding && state.originalCanvas;
+  $('#fullscreenBadge').hidden = !original; fullscreen.hold.classList.toggle('is-holding', Boolean(original));
+  if (!edited) return;
+  const canvas = fullscreen.canvas; canvas.width = edited.width; canvas.height = edited.height;
+  const ctx = canvas.getContext('2d');
+  if (original) { ctx.drawImage(original, 0, 0, canvas.width, canvas.height); return; }
+  ctx.drawImage(edited, 0, 0);
+  if (edited.photoRect && state.text.length) drawTexts(ctx, edited.photoRect, state.text);
+}
 function openFullscreen() {
-  const source = state.editedCanvas; if (!source) return;
-  const canvas = fullscreen.canvas; canvas.width = source.width; canvas.height = source.height;
-  const ctx = canvas.getContext('2d'); ctx.drawImage(source, 0, 0);
-  if (source.photoRect && state.text.length) drawTexts(ctx, source.photoRect, state.text);
-  fullscreen.dialog.showModal();
+  if (!state.editedCanvas) return;
+  setHolding(false);
+  fullscreen.dialog.showModal(); drawFullscreen();
   fullscreen.dialog.requestFullscreen?.().catch(() => { /* window-sized is fine (iPhone, or not allowed) */ });
 }
 function closeFullscreen() { if (fullscreen.dialog.open) fullscreen.dialog.close(); }
@@ -2826,7 +2890,15 @@ fullscreen.button.addEventListener('click', openFullscreen);
 $('#fullscreenClose').addEventListener('click', closeFullscreen);
 // In browser full screen, Esc leaves full screen first (no keydown reaches the page): close the dialog with it.
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) closeFullscreen(); });
+// Hold to compare in full screen: pointer, Space/Enter on the button, or the \ key (document handler).
+fullscreen.hold.addEventListener('pointerdown', event => { if (event.button === 0) setHolding(true); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(type => fullscreen.hold.addEventListener(type, () => setHolding(false)));
+fullscreen.hold.addEventListener('keydown', event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); setHolding(true); } });
+fullscreen.hold.addEventListener('keyup', event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); setHolding(false); } });
+fullscreen.hold.addEventListener('blur', () => setHolding(false));
+fullscreen.hold.addEventListener('contextmenu', event => event.preventDefault());
 fullscreen.dialog.addEventListener('close', () => {
+  setHolding(false);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   fullscreen.button.focus();
 });

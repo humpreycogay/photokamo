@@ -45,8 +45,8 @@ function frameLayout(width, height, frame) {
     return { width: width + side * 2, height: height + side + bottom, x: side, y: side, background };
   }
   const fit = FIT_FRAMES[frame];
-  if (fit) { // pad to the ratio (white keeps a slim margin all round; blur lets the photo meet the edge)
-    const margin = fit.blur ? 0 : Math.round(short * .03);
+  if (fit) { // pad to the ratio, with a margin all round (white: slim; blur: wider, so the blur shows even when the photo is near the ratio)
+    const margin = Math.round(short * (fit.blur ? .07 : .03));
     let W = width + margin * 2, H = height + margin * 2;
     if (W / H < fit.ratio) W = Math.round(H * fit.ratio); else H = Math.round(W / fit.ratio);
     return { width: W, height: H, x: Math.round((W - width) / 2), y: Math.round((H - height) / 2), background: fit.blur ? '#171715' : background };
