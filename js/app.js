@@ -3033,3 +3033,34 @@ document.addEventListener('keydown', event => {
   }
 });
 document.addEventListener('keyup', event => { if (event.key === '\\') setHolding(false); });
+
+// Boot splash (#splash): every load plays the camera → print → develop sequence to the end (its own CSS animations,
+// however late a slow first load starts them), then waits up to 3 s more for the home screen (fonts + sample photo).
+{
+  const splash = $('#splash'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = ms => new Promise(done => setTimeout(done, Math.max(0, ms)));
+  const developed = Promise.all(splash.getAnimations({ subtree: true })
+    .filter(animation => animation.animationName !== 'splash-failsafe' && animation.effect.getComputedTiming().iterations !== Infinity)
+    .map(animation => animation.finished.catch(() => {})));
+  const homeReady = Promise.all([document.fonts.ready, $('#startComparePhoto img').decode().catch(() => {})]);
+  const lift = () => { splash.classList.add('is-done'); setTimeout(() => splash.remove(), still ? 0 : 600); };
+  developed.then(() => Promise.race([homeReady, wait(3000)])).then(() => {
+    splash.style.animation = 'none'; // the CSS failsafe must not cut the hand-off short
+    // Fully ejected print + home print on screen: fly the print onto the home sample so it becomes it.
+    const card = splash.querySelector('.splash-print'), target = $('#startPrint');
+    const from = card.getBoundingClientRect(), to = target.getBoundingClientRect();
+    const ejected = card.getAnimations().every(animation => animation.playState === 'finished');
+    if (still || !ejected || !to.width || to.top >= innerHeight || to.bottom <= 0 || document.body.classList.contains('has-image')) return lift();
+    const dx = to.left - from.left, dy = to.top - from.top, scale = to.width / from.width;
+    card.style.transformOrigin = '0 0';
+    splash.classList.add('is-flying'); document.body.classList.add('splash-flying');
+    card.animate([
+      { transform: 'none' },
+      { transform: `translate(${dx / 2}px, ${dy / 2 - 28}px) scale(${(1 + scale) / 2}) rotate(-2deg)`, offset: .5 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, backgroundColor: getComputedStyle(target).backgroundColor }
+    ], { duration: 950, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).finished.then(() => {
+      document.body.classList.remove('splash-flying'); splash.classList.add('is-landed');
+      setTimeout(() => splash.remove(), 450);
+    }, lift);
+  });
+}
