@@ -128,6 +128,11 @@ body:not(.has-image) .drop-overlay { position:fixed; } /* "drop anywhere" covers
 .start { --start-pad:clamp(20px,4vw,48px); width:100%; max-width:calc(1200px + 2 * var(--start-pad)); min-height:100%; margin:0 auto; padding:0 var(--start-pad) 32px; display:flex; flex-direction:column; }
 .start-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:72px; }
 .start-header .brand-mark { height:22px; }
+/* the brand sits above the headline on desktop and in the header on mobile */
+.start-brand-mobile { display:none; }
+.start-header { justify-content:flex-end; }
+.start-brand { align-self:flex-start; gap:12px; margin-bottom:6px; font-size:32px; letter-spacing:-.8px; }
+.start-brand .brand-mark { height:42px; }
 .start-links { display:flex; align-items:center; gap:4px; }
 .start-link { display:inline-flex; align-items:center; min-height:var(--tap); padding:0 10px; border:0; background:none; color:var(--text-muted); font-size:var(--fs-base); font-weight:500; text-decoration:none; cursor:pointer; }
 .start-link:hover { color:var(--text); }
@@ -166,7 +171,6 @@ body:not(.has-image) .drop-overlay { position:fixed; } /* "drop anywhere" covers
 .start-print-text { margin:0; aspect-ratio:92/12; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.2cqi; overflow:hidden; }
 .start-print-title { font-family:var(--print-title-font, var(--font-display)); font-style:italic; font-weight:600; font-size:5.4cqi; line-height:1; color:var(--stage); }
 .start-print-date { font-family:var(--print-date-font, monospace); font-weight:700; font-size:2.6cqi; line-height:1; letter-spacing:.12em; color:var(--stamp); text-shadow:0 0 5px rgba(255,120,40,.35); white-space:pre; }
-.start-caption { font-size:var(--fs-md); line-height:1.5; color:var(--text-muted); }
 
 /* Photo viewport */
 .viewport { flex:1 1 auto; min-height:0; width:100%; display:flex; overflow:hidden; }
@@ -936,8 +940,15 @@ body.is-film .render-divider { display:block; }
 
   /* Start screen (Task 3 finishes the mobile layout) */
   body:not(.has-image) .stage { padding:0 0 env(safe-area-inset-bottom); }
-  .start-hero { gap:28px; padding-top:8px; }
+  .start-header { justify-content:space-between; }
+  .start-brand-mobile { display:flex; } .start-brand { display:none; }
+  /* one column: headline, buttons, print, then the small print under it */
+  .start-hero { gap:20px; padding-top:8px; }
+  .start-copy { display:contents; }
   .start-copy h1 { font-size:38px; letter-spacing:-1.6px; }
+  .start-actions { flex-wrap:nowrap; gap:10px; }
+  .start-actions .button-xl { flex:1 1 0; min-width:0; padding:0 10px; font-size:15px; white-space:nowrap; }
+  .start-small { order:1; text-align:center; }
 
   /* Camera dialog as a sheet */
   .camera-dialog { width:100%; max-width:none; margin:auto 0 0; }

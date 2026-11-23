@@ -502,7 +502,6 @@ function showStartLook(id) {
   const preset = presets.find(item => item.id === id); if (!preset) return;
   startUi.look = id;
   $('#startLooks').querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', button.dataset.look === id));
-  $('#startCaption').textContent = `After: ${preset.name} look, Paper print frame, two text layers. Drag the line to compare.`;
   if (!startUi.image) return;
   try {
     if (!startUi.renders.has(id)) startUi.renders.set(id, renderImage(startUi.image, preset.values, 'none', 900));
