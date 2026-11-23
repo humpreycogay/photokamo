@@ -52,7 +52,7 @@ const elements = {
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
   image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [],
-  filter: 'All', zoom: 'fit', holding: false, mobileTool: 'exposure',
+  filter: 'All', zoom: 'fit', holding: false, split: null, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
   engine: 'presets', engineParams: {}, myLookId: null, imageBitmap: null,
@@ -1525,6 +1525,12 @@ function drawPreview() {
   const ctx = elements.canvas.getContext('2d');
   ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
   ctx.drawImage(source, 0, 0, elements.canvas.width, elements.canvas.height);
+  // Split view (desktop): the original left of the divider, the edit right of it.
+  if (!state.holding && state.split !== null && state.originalCanvas) {
+    const { width, height } = elements.canvas;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, Math.round(width * state.split), height); ctx.clip();
+    ctx.drawImage(state.originalCanvas, 0, 0, width, height); ctx.restore();
+  }
   drawTextOverlay();
 }
 
@@ -1761,6 +1767,52 @@ function setHolding(holding) {
   elements.holdButton.classList.toggle('is-holding', holding);
   drawPreview(); drawFullscreen();
 }
+// Press and hold anywhere on the photo: a short delay so taps don't flash the original. Zoomed in, moving
+// first pans instead; a second finger (pinch) cancels. Dragging text in the Text tab wins (it stops the event).
+const HOLD_DELAY = 120;
+let photoHold = null;
+function endPhotoHold() { if (!photoHold) return; clearTimeout(photoHold.timer); photoHold = null; setHolding(false); }
+elements.canvasWrap.addEventListener('pointerdown', event => {
+  if (!state.image || event.button !== 0) return;
+  if (photoHold) { endPhotoHold(); return; }
+  if (state.split !== null) { startSplitDrag(event); return; }
+  photoHold = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: setTimeout(() => setHolding(true), HOLD_DELAY) };
+});
+window.addEventListener('pointermove', event => {
+  if (photoHold?.id === event.pointerId && state.zoom !== 'fit' && !state.holding
+    && Math.hypot(event.clientX - photoHold.x, event.clientY - photoHold.y) > 6) endPhotoHold();
+});
+['pointerup', 'pointercancel'].forEach(type => window.addEventListener(type, event => { if (photoHold?.id === event.pointerId) endPhotoHold(); }));
+elements.canvasWrap.addEventListener('contextmenu', event => { if (photoHold || state.holding) event.preventDefault(); }); // long-press on phones
+
+// ---------- Slide to compare (desktop): a divider over the photo, original on the left ----------
+const splitUi = { box: $('#compareSplit'), handle: $('#compareHandle'), button: $('#splitButton'), drag: null };
+function setSplit(split) {
+  state.split = split === null ? null : Math.min(1, Math.max(0, split));
+  const on = state.split !== null, percent = on ? Math.round(state.split * 100) : 50;
+  splitUi.box.hidden = !on; splitUi.button.setAttribute('aria-pressed', on);
+  splitUi.box.style.setProperty('--split', `${on ? state.split * 100 : 50}%`);
+  splitUi.handle.setAttribute('aria-valuenow', percent); splitUi.handle.setAttribute('aria-valuetext', `${percent}% original`);
+  drawPreview();
+}
+const splitAt = event => { const rect = elements.canvas.getBoundingClientRect(); return (event.clientX - rect.left) / Math.max(1, rect.width); };
+/** Drag on the photo moves the divider; zoomed in, only the handle does (the photo pans). */
+function startSplitDrag(event) {
+  if (state.zoom !== 'fit' && event.target !== splitUi.handle) return;
+  event.preventDefault();
+  splitUi.drag = event.pointerId; elements.canvasWrap.setPointerCapture(event.pointerId); elements.canvasWrap.classList.add('is-splitting');
+  setSplit(splitAt(event));
+}
+elements.canvasWrap.addEventListener('pointermove', event => { if (splitUi.drag === event.pointerId) setSplit(splitAt(event)); });
+const endSplitDrag = event => { if (splitUi.drag === event.pointerId) { splitUi.drag = null; elements.canvasWrap.classList.remove('is-splitting'); } };
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => elements.canvasWrap.addEventListener(type, endSplitDrag));
+splitUi.button.addEventListener('click', () => { setSplit(state.split === null ? .5 : null); if (state.split !== null) splitUi.handle.focus({ preventScroll: true }); });
+splitUi.handle.addEventListener('keydown', event => {
+  const step = event.shiftKey ? .1 : .02;
+  const next = { ArrowLeft: state.split - step, ArrowDown: state.split - step, ArrowRight: state.split + step, ArrowUp: state.split + step, Home: 0, End: 1 }[event.key];
+  if (next !== undefined) { event.preventDefault(); setSplit(next); }
+  else if (event.key === 'Escape') { event.preventDefault(); setSplit(null); splitUi.button.focus(); }
+});
 
 // ---------- Photos: several open at once (SPEC §2) ----------
 // The editor `state` always holds the photo in view. Switching saves its settings and undo/redo
@@ -2572,7 +2624,7 @@ buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openSave);
-mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) setZoom('fit'); syncAdvancedPanel(); placeLookTools(); });
+mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) { setZoom('fit'); if (state.split !== null) setSplit(null); } syncAdvancedPanel(); placeLookTools(); });
 // Surprise me · Favorites: under the Looks grid on desktop; phones have no room there, so they sit in the look-name row by the gear.
 function placeLookTools() {
   const tools = $('.look-tools');
@@ -2920,6 +2972,10 @@ fullscreen.hold.addEventListener('keydown', event => { if (event.key === ' ' || 
 fullscreen.hold.addEventListener('keyup', event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); setHolding(false); } });
 fullscreen.hold.addEventListener('blur', () => setHolding(false));
 fullscreen.hold.addEventListener('contextmenu', event => event.preventDefault());
+let fullscreenHold = null; // press and hold on the photo, like the editor
+fullscreen.canvas.addEventListener('pointerdown', event => { if (event.button === 0) { clearTimeout(fullscreenHold); fullscreenHold = setTimeout(() => setHolding(true), HOLD_DELAY); } });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(type => fullscreen.canvas.addEventListener(type, () => { clearTimeout(fullscreenHold); setHolding(false); }));
+fullscreen.canvas.addEventListener('contextmenu', event => event.preventDefault());
 fullscreen.dialog.addEventListener('close', () => {
   setHolding(false);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});

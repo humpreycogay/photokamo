@@ -183,6 +183,17 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .fullscreen-hold:hover { background:rgba(12,12,11,.9); }
 .fullscreen-hold.is-holding { background:var(--control); }
 .original-badge { position:absolute; top:14px; left:14px; padding:6px 10px; border-radius:var(--radius-sm); background:rgba(12,12,11,.8); color:var(--text); font-size:var(--fs-sm); font-weight:600; line-height:1.2; pointer-events:none; }
+/* Hold anywhere on the photo to compare; Split (desktop): drag the divider, original on the left */
+.canvas-wrap { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.compare-split { position:absolute; inset:0; pointer-events:none; --split:50%; }
+.compare-handle { position:absolute; top:0; bottom:0; left:var(--split); width:var(--tap); transform:translateX(-50%); pointer-events:auto; cursor:ew-resize; touch-action:none; }
+.compare-handle::before { content:""; position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:var(--text); box-shadow:0 0 0 1px rgba(12,12,11,.45); }
+.compare-handle::after { content:""; position:absolute; top:50%; left:50%; width:28px; height:28px; margin:-14px 0 0 -14px; border:2px solid var(--text); border-radius:50%; background:rgba(12,12,11,.6); }
+.compare-handle:focus-visible { outline:none; }
+.compare-handle:focus-visible::after { box-shadow:0 0 0 3px var(--accent); }
+.compare-label { position:absolute; bottom:14px; padding:6px 10px; border-radius:var(--radius-sm); background:rgba(12,12,11,.8); color:var(--text); font-size:var(--fs-sm); font-weight:600; line-height:1.2; }
+.compare-label-before { left:14px; } .compare-label-after { right:14px; }
+.canvas-wrap.is-splitting { cursor:ew-resize; }
 .drop-overlay { display:none; position:absolute; inset:18px; border:2px dashed var(--accent); border-radius:var(--radius-lg); background:rgba(18,18,16,.92); z-index:5; place-items:center; color:var(--accent); font-weight:700; font-size:24px; }
 .stage.dragover .drop-overlay { display:grid; }
 .processing { position:absolute; inset:0; display:flex; justify-content:center; align-items:center; gap:10px; background:rgba(12,12,11,.72); color:var(--text); font-size:var(--fs-sm); line-height:1; }
@@ -200,6 +211,7 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .view-pill-button[aria-pressed=true] { background:var(--control); color:var(--text); }
 .hold-button { padding:0 14px; color:var(--text); user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:manipulation; }
 .hold-button.is-holding { background:var(--line-strong); }
+.split-button { color:var(--text); }
 .view-pill kbd { font:inherit; font-size:var(--fs-xs); color:var(--text-muted); border:1px solid var(--line-strong); border-radius:4px; padding:1px 5px; }
 .view-pill-divider { width:1px; height:22px; background:var(--line); }
 .view-zoom { display:flex; align-items:center; gap:2px; }
@@ -687,7 +699,7 @@ body.is-film .render-status { display:flex; align-items:center; gap:10px; min-wi
 .render-detail { flex:0 1000 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; } /* gives way before the status word */
 .render-state { overflow:hidden; }
 /* Narrow desktop windows, film looks: Hold to compare shrinks to its icon (the name stays for screen readers) */
-@media (min-width:901px) and (max-width:1150px) { body.is-film .hold-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; } body.is-film .hold-button { padding:0 10px; } body.is-film .render-detail { display:none; } }
+@media (min-width:901px) and (max-width:1150px) { body.is-film .hold-label,body.is-film .split-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; } body.is-film .hold-button,body.is-film .split-button { padding:0 10px; } body.is-film .render-detail { display:none; } }
 #renderText { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .render-dot { flex:none; }
 body.is-film .render-divider { display:block; }
@@ -737,6 +749,7 @@ body.is-film .render-divider { display:block; }
   .view-pill { position:absolute; right:12px; bottom:12px; z-index:3; padding:0; border:0; background:transparent; pointer-events:none; }
   .view-pill > * { pointer-events:auto; }
   .view-pill-divider,.view-zoom,.view-pill kbd { display:none; }
+  .split-button,.compare-split { display:none!important; }
   .hold-button { min-height:var(--tap); padding:0 14px; border-radius:22px; background:rgba(12,12,11,.78); font-size:var(--fs-md); font-weight:600; }
   .hold-button:hover { background:rgba(12,12,11,.9); }
   .hold-button.is-holding { background:var(--control); }
