@@ -25,6 +25,7 @@
   --accent-hover:  #86dccf;  /* links and text buttons on hover */
   --accent-tint:   #173a36;  /* small badges behind accent text (5.8:1) */
   --ok:            #8fbf86;  /* privacy lock, "fast preview" dot */
+  --stamp:         #ff9d47;  /* film date stamp, decorative */
 
   /* Type */
   --font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -121,38 +122,51 @@ body:not(.has-image) .app-shell { grid-template-columns:minmax(0,1fr); height:10
 body:not(.has-image) .topbar { display:none; }
 .stage { position:relative; min-width:0; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:28px 24px; overflow:hidden; background:var(--stage); }
 
-/* Start screen (empty state) */
-/* --start-gap: the one gap between image strip, brand, headline and buttons */
-.start { --start-gap:24px; width:min(480px,100%); display:flex; flex-direction:column; gap:0; text-align:center; }
-/* Three pinned prints of the sample, one per look; sizes scale with the row width (cqi) */
-.start-preview { align-self:center; width:min(620px,calc(100vw - 48px)); margin:0; padding:16px 6px 10px; container-type:inline-size; }
-.start-preview-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5cqi; align-items:start; }
-.start-print { position:relative; padding:4.5% 4.5% 8%; background:var(--paper); border-radius:2px; box-shadow:0 1.6cqi 4cqi rgba(0,0,0,.55); color:var(--stage); text-align:left; transform:rotate(-3deg); }
-.start-print:nth-child(2) { margin-top:7%; transform:rotate(1.5deg); }
-.start-print:nth-child(3) { margin-top:3%; transform:rotate(-1.5deg); }
-.start-print::before { content:""; position:absolute; z-index:1; top:-1.2cqi; left:50%; width:clamp(9px,3.4cqi,20px); aspect-ratio:1; border-radius:50%; background:var(--accent); box-shadow:0 .4cqi .8cqi rgba(0,0,0,.45); translate:-50% 0; }
-.start-print canvas { display:block; width:100%; height:auto; aspect-ratio:1; opacity:0; transition:opacity .3s ease; background:var(--raised); }
-.start-print canvas.is-ready { opacity:1; }
-/* Captions are handwritten on the print margin, quieter than the headline's italic accent */
-.start-print-name { margin:0; padding-top:6%; font-family:var(--font-script); font-size:clamp(14px,3.6cqi,20px); font-weight:500; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.start-print-desc { margin:0; font-family:var(--font-script); font-size:clamp(12px,2.7cqi,15px); font-weight:500; line-height:1.15; color:var(--stage-print); overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; } /* the preset's own description, up to two lines */
-@container (max-width:440px) { .start-print-desc { display:none; } .start-print-name { padding-top:8%; text-align:center; } }
-.start-copy { padding:calc(var(--start-gap) + 4px) 8px 0; } /* strip → headline ≈ 28 px */
-.start-copy h1 { margin:0; font-size:40px; line-height:1.05; letter-spacing:-1.6px; font-weight:700; text-wrap:balance; }
-/* Brand above the image strip, with the header's camera mark */
-.start-brand { display:flex; align-items:center; justify-content:center; gap:10px; margin:0 0 var(--start-gap); font-size:28px; font-weight:700; letter-spacing:-.6px; line-height:1.1; color:var(--text); }
-.start-brand .brand-mark { height:34px; }
-.start-brand-name span { color:var(--accent); }
-.start-actions { display:flex; flex-direction:column; gap:10px; padding-top:var(--start-gap); }
-.start-actions .button-xl { min-height:54px; font-size:16px; }
-.start-actions .button-secondary { background:var(--surface); }
-.sample-button { min-height:var(--tap); font-size:15px; font-weight:600; }
-/* about ¾ of --start-gap from the sample link's text (its 44 px button adds ~14 px) */
-.start-formats { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin:max(-6px, calc(var(--start-gap) * .75 - 14px)) 0 0; font-size:var(--fs-sm); color:var(--text-muted); text-align:center; }
-.start-lock { display:inline-flex; color:var(--ok); }
-.start-drop { margin-left:-3px; }
-.text-button.start-about { align-self:center; min-height:var(--tap); margin-top:2px; padding:0 8px; color:var(--text-muted); font-size:var(--fs-sm); text-decoration:underline; text-underline-offset:3px; }
-.text-button.start-about:hover { color:var(--text); }
+/* Start screen (empty state): a scrolling page on --bg, header + two-column hero */
+body:not(.has-image) .stage { display:block; padding:0; overflow-y:auto; background:var(--bg); }
+body:not(.has-image) .drop-overlay { position:fixed; } /* "drop anywhere" covers the screen while the page scrolls */
+.start { --start-pad:clamp(20px,4vw,48px); width:100%; max-width:calc(1200px + 2 * var(--start-pad)); min-height:100%; margin:0 auto; padding:0 var(--start-pad) 32px; display:flex; flex-direction:column; }
+.start-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:72px; }
+.start-header .brand-mark { height:22px; }
+.start-links { display:flex; align-items:center; gap:4px; }
+.start-link { display:inline-flex; align-items:center; min-height:var(--tap); padding:0 10px; border:0; background:none; color:var(--text-muted); font-size:var(--fs-base); font-weight:500; text-decoration:none; cursor:pointer; }
+.start-link:hover { color:var(--text); }
+.start-hero { flex:1; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:56px; align-items:center; padding:24px 0; }
+.start-copy { display:flex; flex-direction:column; gap:22px; max-width:500px; }
+.start-copy h1 { margin:0; font-size:clamp(40px,5vw,62px); font-weight:700; line-height:1; letter-spacing:-2.4px; color:var(--text); text-wrap:balance; }
+.start-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.start-actions .button-xl { min-height:52px; padding:0 22px; border-radius:10px; font-size:16px; }
+.start-actions .button-secondary { background:transparent; }
+.start-actions .button-secondary:hover { background:var(--control); }
+.start-small { margin:0; font-size:var(--fs-md); line-height:1.6; color:var(--text-muted); }
+/* inline text button; the ::after widens its hit area to 44 px without changing the line height */
+.text-button.start-sample { position:relative; padding:0; font-size:inherit; line-height:inherit; text-decoration:underline; text-underline-offset:3px; }
+.start-sample::after { content:""; position:absolute; inset:-12px -6px; }
+/* Before/after hero photo: look switch, then a Paper print (4% sides, 12% bottom, sized from the print's
+   width so it shrink-wraps the photo) with the text layers on its bottom border, then the caption. */
+.start-compare { justify-self:center; width:100%; max-width:440px; margin:0; display:flex; flex-direction:column; gap:12px; }
+.start-looks { display:flex; flex-wrap:wrap; column-gap:18px; }
+.start-look { position:relative; min-height:var(--tap); padding:0; border:0; background:none; color:var(--text-muted); font-size:var(--fs-base); font-weight:600; cursor:pointer; white-space:nowrap; }
+.start-look:hover,.start-look[aria-pressed=true] { color:var(--text); }
+.start-look[aria-pressed=true]::after { content:""; position:absolute; left:0; right:0; bottom:6px; height:2px; border-radius:1px; background:var(--accent); }
+.start-print { --split:50%; container-type:inline-size; padding:4% 4% 0; background:var(--print-paper, var(--paper)); box-shadow:0 20px 50px rgba(0,0,0,.55); }
+.start-compare-photo { position:relative; aspect-ratio:4/5; overflow:hidden; background:var(--raised); touch-action:pan-y; user-select:none; -webkit-user-select:none; cursor:ew-resize; }
+.start-compare-photo img,.start-after { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; }
+.start-after { clip-path:inset(0 0 0 var(--split)); opacity:0; transition:opacity .4s ease; }
+.start-after.is-ready { opacity:1; }
+.start-corner { position:absolute; top:10px; font-size:var(--fs-xs); font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.8); pointer-events:none; }
+.start-corner-before { left:12px; } .start-corner-after { right:12px; }
+/* 44 px wide slider: a 1 px line with a 10 × 44 px grip */
+.start-divider { position:absolute; top:0; bottom:0; left:var(--split); width:var(--tap); translate:-50% 0; touch-action:none; cursor:ew-resize; }
+.start-divider::before { content:""; position:absolute; top:0; bottom:0; left:50%; width:1px; translate:-50% 0; background:color-mix(in srgb,var(--text) 85%,transparent); }
+.start-divider::after { content:""; position:absolute; top:50%; left:50%; width:10px; height:44px; translate:-50% -50%; border-radius:5px; background:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.start-divider:focus-visible { outline:none; }
+.start-divider:focus-visible::after { outline:2px solid var(--accent); outline-offset:3px; }
+/* bottom border = 12% of the print's width (the strip is 92% wide, so 12/92 of its own width) */
+.start-print-text { margin:0; aspect-ratio:92/12; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.2cqi; overflow:hidden; }
+.start-print-title { font-family:var(--print-title-font, var(--font-display)); font-style:italic; font-weight:600; font-size:5.4cqi; line-height:1; color:var(--stage); }
+.start-print-date { font-family:var(--print-date-font, monospace); font-weight:700; font-size:2.6cqi; line-height:1; letter-spacing:.12em; color:var(--stamp); text-shadow:0 0 5px rgba(255,120,40,.35); white-space:pre; }
+.start-caption { font-size:var(--fs-md); line-height:1.5; color:var(--text-muted); }
 
 /* Photo viewport */
 .viewport { flex:1 1 auto; min-height:0; width:100%; display:flex; overflow:hidden; }
@@ -920,15 +934,10 @@ body.is-film .render-divider { display:block; }
   .sheet-handle { display:block; align-self:center; width:40px; height:5px; border-radius:3px; background:var(--line-strong); }
   .sheet-dialog::backdrop { background:rgba(12,12,11,.55); backdrop-filter:none; }
 
-  /* Start screen: preview on top, actions near the thumb */
-  body:not(.has-image) .stage { padding:8px 16px max(14px,env(safe-area-inset-bottom)); justify-content:flex-start; }
-  .start { --start-gap:clamp(16px,2.8dvh,24px); width:100%; max-width:480px; min-height:100%; justify-content:center; }
-  .start-preview { flex:none; width:100%; }
-  .start-copy { flex:none; }
-  .start-brand { font-size:24px; gap:9px; }
-  .start-brand .brand-mark { height:30px; }
-  .start-copy h1 { font-size:clamp(28px,8.7vw,34px); letter-spacing:-1.4px; }
-  .start-drop { display:none; }
+  /* Start screen (Task 3 finishes the mobile layout) */
+  body:not(.has-image) .stage { padding:0 0 env(safe-area-inset-bottom); }
+  .start-hero { gap:28px; padding-top:8px; }
+  .start-copy h1 { font-size:38px; letter-spacing:-1.6px; }
 
   /* Camera dialog as a sheet */
   .camera-dialog { width:100%; max-width:none; margin:auto 0 0; }

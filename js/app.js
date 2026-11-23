@@ -489,26 +489,60 @@ function loadSampleImage() {
   return sampleImagePromise;
 }
 
-function renderStartPreview(image) {
-  document.querySelectorAll('[data-start-look]').forEach(canvas => {
-    const preset = presets.find(item => item.id === canvas.dataset.startLook);
-    if (!preset) { console.warn(`Start preview: no preset "${canvas.dataset.startLook}".`); return; }
-    // Captions come from the preset itself, so the home screen always names looks that exist in the app.
-    const print = canvas.closest('.start-print');
-    print.querySelector('.start-print-name').textContent = preset.name;
-    print.querySelector('.start-print-desc').textContent = preset.description;
-    try {
-      const preview = renderImage(image, preset.values, 'none', 900);
-      const ctx = canvas.getContext('2d');
-      const focusX = Number(canvas.dataset.focus);
-      const scale = Math.max(canvas.width / preview.width, canvas.height / preview.height);
-      const sourceWidth = canvas.width / scale, sourceHeight = canvas.height / scale;
-      ctx.drawImage(preview, (preview.width - sourceWidth) * focusX, (preview.height - sourceHeight) * .3, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-      canvas.classList.add('is-ready');
-    } catch (error) {
-      console.warn(`Could not render the ${preset.name} start preview.`, error);
-    }
+// Home screen before/after: the sample unedited on the left, rendered with a look on the right.
+// Each look is rendered once, on first use, and cached; names come from `presets`.
+const startUi = { looks: ['golden-hour', 'silver-mono', 'cinema-teal'].map(id => presets.find(preset => preset.id === id)).filter(Boolean),
+  look: 'silver-mono', image: null, renders: new Map(), drag: null, photo: $('#startComparePhoto'), divider: $('#startDivider'), after: $('#startAfter') };
+function setStartSplit(percent) {
+  percent = Math.round(Math.min(100, Math.max(0, percent)));
+  $('#startPrint').style.setProperty('--split', `${percent}%`);
+  startUi.divider.setAttribute('aria-valuenow', percent); startUi.divider.setAttribute('aria-valuetext', `${percent}% original`);
+}
+function showStartLook(id) {
+  const preset = presets.find(item => item.id === id); if (!preset) return;
+  startUi.look = id;
+  $('#startLooks').querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', button.dataset.look === id));
+  $('#startCaption').textContent = `After: ${preset.name} look, Paper print frame, two text layers. Drag the line to compare.`;
+  if (!startUi.image) return;
+  try {
+    if (!startUi.renders.has(id)) startUi.renders.set(id, renderImage(startUi.image, preset.values, 'none', 900));
+    const render = startUi.renders.get(id), canvas = startUi.after;
+    canvas.width = render.width; canvas.height = render.height; canvas.getContext('2d').drawImage(render, 0, 0);
+    canvas.classList.add('is-ready');
+  } catch (error) {
+    console.warn(`Could not render the ${preset.name} start preview.`, error);
+  }
+}
+function initStartCompare() {
+  const print = $('#startPrint'), now = new Date(), two = n => String(n).padStart(2, '0');
+  print.style.setProperty('--print-paper', paperColors.find(color => color.id === 'warm').hex);
+  print.style.setProperty('--print-title-font', textFonts.find(([id]) => id === 'playfair')[2]);
+  print.style.setProperty('--print-date-font', textFonts.find(([id]) => id === 'typewriter')[2]);
+  $('#startDate').textContent = `'${two(now.getFullYear() % 100)} ${two(now.getMonth() + 1)} ${two(now.getDate())}`;
+  $('#startLooks').append(...startUi.looks.map(preset => {
+    const button = Object.assign(document.createElement('button'), { type: 'button', className: 'start-look', textContent: preset.name });
+    button.dataset.look = preset.id; return button;
+  }));
+  $('#startLooks').querySelectorAll('button').forEach(button => button.addEventListener('click', () => showStartLook(button.dataset.look)));
+  showStartLook(startUi.look);
+  const splitAt = event => { const rect = startUi.photo.getBoundingClientRect(); return (event.clientX - rect.left) / Math.max(1, rect.width) * 100; };
+  startUi.photo.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    startUi.drag = event.pointerId; startUi.photo.setPointerCapture(event.pointerId); setStartSplit(splitAt(event));
   });
+  startUi.photo.addEventListener('pointermove', event => { if (startUi.drag === event.pointerId) setStartSplit(splitAt(event)); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => startUi.photo.addEventListener(type, event => { if (startUi.drag === event.pointerId) startUi.drag = null; }));
+  startUi.divider.addEventListener('keydown', event => {
+    const value = Number(startUi.divider.getAttribute('aria-valuenow'));
+    const next = { ArrowLeft: value - 5, ArrowDown: value - 5, ArrowRight: value + 5, ArrowUp: value + 5, Home: 0, End: 100 }[event.key];
+    if (next !== undefined) { event.preventDefault(); setStartSplit(next); }
+  });
+}
+initStartCompare();
+/** Called once the sample has loaded: the original shows at once, the After side fades in after a frame. */
+function renderStartPreview(image) {
+  startUi.image = image;
+  requestAnimationFrame(() => setTimeout(() => showStartLook(startUi.look)));
 }
 
 async function loadSample() {
