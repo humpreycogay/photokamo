@@ -1,0 +1,12 @@
+{
+  "name": "@photokamo/film-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "check": "for f in src/*.js src/spectral/*.js tools/*.mjs; do node --check \"$f\" || exit 1; done",
+    "validate": "node tools/validate-chart.mjs"
+  }
+}
