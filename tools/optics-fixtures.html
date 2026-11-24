@@ -56,8 +56,10 @@
     import { applyOptics } from '../js/optics/pipeline.js';
     const $ = selector => document.querySelector(selector);
     const optics = defaultOptics();
-    $('#controls').innerHTML = sections.flatMap(section => section.controls).map(({ path, label, min, max, step, default: value, unit }) =>
-      `<label><span>${label}<output id="out-${path}">${value}${unit ? ` ${unit}` : ''}</output></span><input type="range" data-path="${path}" min="${min}" max="${max}" step="${step}" value="${value}"></label>`).join('');
+    const all = sections.flatMap(section => section.controls);
+    $('#controls').innerHTML = all.map(({ path, label, kind, options, labels, format, min, max, step, default: value, unit }) => kind === 'select'
+      ? `<label>${label}<select data-path="${path}">${options.map(option => `<option value="${option}"${option === value ? ' selected' : ''}>${labels?.[option] ?? format?.(option) ?? option}</option>`).join('')}</select></label>`
+      : `<label><span>${label}<output id="out-${path}">${value}${unit ? ` ${unit}` : ''}</output></span><input type="range" data-path="${path}" min="${min}" max="${max}" step="${step}" value="${value}"></label>`).join('');
 
     const sample = new Image(); sample.src = '../images/model.jpg';
     function draw(kind, size) {
@@ -97,13 +99,14 @@
         $('#status').textContent = `${image.width} × ${image.height} · ${Math.round(performance.now() - start)} ms · ${JSON.stringify(optics)}`;
       });
     }
-    $('#controls').addEventListener('input', event => {
+    const update = event => {
       const { path } = event.target.dataset; if (!path) return;
-      optics[path] = Number(event.target.value);
-      const unit = sections.flatMap(section => section.controls).find(control => control.path === path).unit;
-      $(`#out-${path}`).textContent = `${event.target.value}${unit ? ` ${unit}` : ''}`;
+      const control = all.find(item => item.path === path);
+      optics[path] = control.kind === 'select' ? control.options.find(option => String(option) === event.target.value) : Number(event.target.value);
+      if (control.kind !== 'select') $(`#out-${path}`).textContent = `${event.target.value}${control.unit ? ` ${control.unit}` : ''}`;
       render();
-    });
+    };
+    $('#controls').addEventListener('input', update); $('#controls').addEventListener('change', update);
     $('#form').addEventListener('change', render);
     $('#download').addEventListener('click', () => $('#after').toBlob(blob => {
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `optics-${$('#fixture').value}.png`; link.click();

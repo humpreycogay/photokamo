@@ -713,7 +713,7 @@ function buildLens() {
   const row = control => control.kind === 'select'
     ? `<div class="crop-platform lens-select" data-lens-row="${control.path}"><label for="lens-${control.path}">${control.label}</label><select id="lens-${control.path}" data-lens-select="${control.path}"${described(control)}>${control.options.map(option => `<option value="${option}">${control.labels?.[option] ?? control.format?.(option) ?? option}</option>`).join('')}</select>${hintOf(control)}</div>`
     : `<div class="slider-row" data-lens-row="${control.path}"><label class="slider-label" for="lens-${control.path}"><span>${control.label}</span><output id="lensOut-${control.path}" for="lens-${control.path}">0</output></label><input id="lens-${control.path}" data-lens="${control.path}" type="range" min="${control.min}" max="${control.max}" step="${control.step}"${described(control)}>${hintOf(control)}</div>`;
-  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section"><h3>${section.title}</h3>${section.controls.map(row).join('')}${section.id === 'focus' ? '<p class="slider-hint lens-focus-info" id="lensFocusInfo" aria-live="polite"></p>' : ''}</section>`).join('');
+  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section" data-lens-section="${section.id}"><h3>${section.title}</h3>${section.controls.map(row).join('')}${section.id === 'focus' ? '<p class="slider-hint lens-focus-info" id="lensFocusInfo" aria-live="polite"></p>' : ''}</section>`).join('');
   bindHistorySlider(panel, '[data-lens]', input => { state.optics = normalizeOptics({ ...state.optics, [input.dataset.lens]: Number(input.value) }); syncLens(); scheduleRender(); });
   panel.addEventListener('change', event => {
     const path = event.target.dataset.lensSelect; if (!path) return;
@@ -821,6 +821,7 @@ function syncLens() {
     output.value = formatLens(control, value);
     output.classList.toggle('is-edited', value !== control.default);
   }
+  for (const section of opticsSections) if (section.showIf) $(`[data-lens-section="${section.id}"]`).hidden = !section.showIf(state.optics);
   const focusOn = state.optics.focusMode !== 'none';
   document.body.classList.toggle('lens-focus', focusOn);
   $('#lensFocusInfo').hidden = !focusOn;

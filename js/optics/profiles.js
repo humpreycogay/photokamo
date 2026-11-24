@@ -11,7 +11,7 @@ const original = notes => ({ type: 'original', notes });
 export const profiles = [
   { id: 'none', name: 'None', description: 'No lens effects.', source: original('Neutral.'), values: {} },
   { id: 'vintage-50', name: 'Vintage 50 mm', description: 'Soft glow, gentle falloff, a hint of fringing.', source: original('Illustrative; suggests an older fast normal lens wide open.'),
-    values: { distortion: -4, fringing: 20, falloff: -.8, falloffMidpoint: 45, falloffFeather: 70, diffusion: 25, diffusionSpread: 35, diffusionHighlights: 70 } },
+    values: { distortion: -4, fringing: 20, falloff: -.8, falloffMidpoint: 45, falloffFeather: 70, diffusion: 25, diffusionSpread: 35, diffusionHighlights: 70, bokehBlades: 6, bokehRoundness: 20, bokehCatEye: 55 } },
   { id: 'wide-24', name: 'Wide 24 mm', description: 'Barrel lines, darker corners, fringing at the edges.', source: original('Illustrative; suggests a wide-angle lens.'),
     values: { distortion: -25, fringing: 30, falloff: -1, falloffMidpoint: 55, falloffFeather: 60 } },
   { id: 'tele-85', name: 'Portrait 85 mm', description: 'Slight pincushion and a light, wide falloff.', source: original('Illustrative; suggests a short telephoto.'),
@@ -22,6 +22,8 @@ export const profiles = [
     values: { diffusion: 70, diffusionSpread: 70, diffusionHighlights: 50, bloom: 35, bloomThreshold: 65, bloomSize: 60, bloomWarmth: 15 } },
   { id: 'night-lights', name: 'Night lights', description: 'Glare around street lights and lamps.', source: original('Illustrative.'),
     values: { bloom: 60, bloomThreshold: 80, bloomSize: 45, bloomWarmth: 10, fringing: 15 } },
+  { id: 'cine-anamorphic', name: 'Cine anamorphic', description: 'Oval bokeh, cool glare, soft corners.', source: original('Illustrative; suggests an anamorphic cinema lens.'),
+    values: { bokehSqueeze: 1.8, bokehCatEye: 40, fringing: 25, falloff: -.6, falloffFeather: 75, bloom: 30, bloomThreshold: 70, bloomSize: 55, bloomWarmth: -40 } },
   { id: 'toy-camera', name: 'Toy camera', description: 'Heavy vignette, bent lines, colour fringes.', source: original('Illustrative; suggests a cheap plastic lens.'),
     values: { distortion: -35, fringing: 70, falloff: -2, falloffMidpoint: 35, falloffFeather: 40, diffusion: 30, diffusionSpread: 40, diffusionHighlights: 30 } },
 ];

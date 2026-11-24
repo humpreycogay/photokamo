@@ -64,6 +64,17 @@ export const sections = [
     { path: 'focusX', label: 'Focus X', min: 0, max: 100, step: 1, default: 50, unit: '%', scene: true, showIf: focusOn },
     { path: 'focusY', label: 'Focus Y', min: 0, max: 100, step: 1, default: 50, unit: '%', scene: true, showIf: focusOn },
   ] },
+  { id: 'bokeh', title: 'Bokeh', showIf: focusOn, controls: [
+    { path: 'bokehHighlights', label: 'Highlights', min: 0, max: 100, step: 1, default: 60, showIf: focusOn,
+      hint: 'How strongly bright points in the blurred area turn into the aperture’s shape. 0 keeps a plain blur.' },
+    { path: 'bokehBlades', label: 'Aperture', kind: 'select', options: [0, 5, 6, 7, 8, 9], format: value => (value ? `${value} blades` : 'Round'), default: 0, showIf: focusOn },
+    { path: 'bokehRoundness', label: 'Roundness', min: 0, max: 100, step: 1, default: 30, showIf: o => focusOn(o) && o.bokehBlades > 0, hint: 'Curved blades round off the corners.' },
+    { path: 'bokehRotation', label: 'Rotation', min: 0, max: 90, step: 1, default: 0, unit: '°', showIf: o => focusOn(o) && o.bokehBlades > 0 },
+    { path: 'bokehCatEye', label: 'Cat-eye', min: 0, max: 100, step: 1, default: 30, showIf: focusOn,
+      hint: 'Towards the edges the lens barrel clips the aperture into “cat’s eye” shapes.' },
+    { path: 'bokehSqueeze', label: 'Anamorphic squeeze', kind: 'select', options: [1, 1.33, 1.5, 1.8, 2], format: value => (value === 1 ? 'None (spherical)' : `${value}×`), default: 1, showIf: focusOn,
+      hint: 'Anamorphic cine lenses draw tall oval bokeh.' },
+  ] },
 ];
 
 export const controls = sections.flatMap(section => section.controls.map(control => ({ ...control, section: section.id })));
