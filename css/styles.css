@@ -397,6 +397,16 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .slider-label output.is-edited { color:var(--accent); font-weight:600; }
 .slider-row input { width:100%; accent-color:var(--accent); cursor:pointer; }
 .slider-hint { margin:4px 0 0; font-size:var(--fs-sm); line-height:1.4; color:var(--text-muted); }
+.lens-profile-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
+.lens-profile-head h3 { margin:0; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
+.lens-current { margin:0; font-size:var(--fs-sm); color:var(--accent); text-align:right; }
+.lens-profiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:22px; }
+.lens-profile { display:flex; flex-direction:column; gap:2px; min-height:var(--tap); padding:9px 10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--raised); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+.lens-profile:hover { border-color:var(--line-strong); }
+.lens-profile:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.lens-profile[aria-pressed=true] { border-color:var(--accent); background:var(--accent-tint); }
+.lens-profile strong { font-size:var(--fs-md); font-weight:600; }
+.lens-profile small { font-size:var(--fs-sm); line-height:1.35; color:var(--text-muted); }
 
 /* Frames */
 .frame-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -908,6 +918,9 @@ body.is-film .render-divider { display:block; }
   #cropPanel .panel-heading,#lensPanel .panel-heading { margin-bottom:10px; }
   #cropPanel .panel-heading h2,#lensPanel .panel-heading h2 { font-size:var(--fs-lg); }
   #resetLens { min-height:var(--tap); }
+  .lens-profiles { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:16px; }
+  .lens-profile { justify-content:center; padding:6px 8px; }
+  .lens-profile small { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; } /* name only on phones; still read aloud */
   .ratio-grid { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:max-content; overflow-x:auto; scrollbar-width:none; margin-inline:-16px; padding:2px 16px; }
   .ratio-tile { flex-direction:row; min-height:var(--tap); padding:0 16px; border-radius:22px; font-size:var(--fs-md); }
   .ratio-shape { display:none; }

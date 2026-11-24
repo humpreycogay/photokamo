@@ -329,6 +329,8 @@
         <section class="tab-panel scroll-panel" id="lensPanel" role="tabpanel" aria-labelledby="lensTab" hidden>
           <div class="panel-heading"><h2>Lens</h2><button class="text-button" id="resetLens" type="button">Reset lens</button></div>
           <p class="panel-intro">How the camera lens draws the light. Applied before your look, so film looks respond to it.</p>
+          <div class="lens-profile-head"><h3 id="lensProfilesTitle">Lens profile</h3><p class="lens-current" id="lensCurrent" aria-live="polite"></p></div>
+          <div class="lens-profiles" id="lensProfiles" role="group" aria-labelledby="lensProfilesTitle"></div>
           <div id="lensControls"></div>
           <div class="frame-apply-all" id="lensApplyAll" hidden>
             <button class="button button-ghost" id="lensApplySelectedButton" type="button">Apply to selected photos</button>

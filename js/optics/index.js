@@ -1,5 +1,6 @@
 // Main-thread side of the optics stage: hands a photo to js/optics/worker.js and returns an ImageBitmap.
 export { sections, controls, controlByPath, defaultOptics, normalizeOptics, isNeutral } from './params.js';
+export { profiles, profileById, expandProfile, matchesProfile } from './profiles.js';
 import { isNeutral, normalizeOptics } from './params.js';
 
 let worker = null, nextId = 0;

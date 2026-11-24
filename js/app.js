@@ -1,5 +1,5 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
-import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls } from './optics/index.js';
+import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls, profiles as lensProfiles, profileById as lensProfileById, expandProfile, matchesProfile } from './optics/index.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -707,12 +707,25 @@ function buildLens() {
   const panel = $('#lensControls');
   panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section"><h3>${section.title}</h3>${section.controls.map(({ path, label, min, max, step, hint }) => `<div class="slider-row"><label class="slider-label" for="lens-${path}"><span>${label}</span><output id="lensOut-${path}" for="lens-${path}">0</output></label><input id="lens-${path}" data-lens="${path}" type="range" min="${min}" max="${max}" step="${step}" aria-describedby="lensHint-${path}"><p class="slider-hint" id="lensHint-${path}">${hint}</p></div>`).join('')}</section>`).join('');
   bindHistorySlider(panel, '[data-lens]', input => { state.optics = normalizeOptics({ ...state.optics, [input.dataset.lens]: Number(input.value) }); syncLens(); scheduleRender(); });
+  // Double-click resets a slider to the active profile's value (or neutral without one).
   panel.addEventListener('dblclick', event => {
-    const path = event.target.closest('[data-lens]')?.dataset.lens;
-    if (path && lensEdits().some(control => control.path === path)) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: undefined }); });
+    const path = event.target.closest('[data-lens]')?.dataset.lens; if (!path) return;
+    const profile = lensProfileById(state.optics.profile), value = (profile ? expandProfile(profile) : defaultOptics())[path];
+    if (state.optics[path] !== value) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
   });
   $('#resetLens').addEventListener('click', () => change(() => { state.optics = defaultOptics(); }));
+  $('#lensProfiles').innerHTML = lensProfiles.map(profile => `<button class="lens-profile" type="button" data-profile="${profile.id}" aria-pressed="false" aria-describedby="lensProfileNote-${profile.id}"><strong>${profile.name}</strong><small id="lensProfileNote-${profile.id}">${profile.description}</small></button>`).join('');
+  $('#lensProfiles').addEventListener('click', event => {
+    const profile = lensProfileById(event.target.closest('[data-profile]')?.dataset.profile);
+    if (profile) change(() => { state.optics = expandProfile(profile); });
+  });
 }
+/** The Lens tab's current profile: { profile, edited }, or null when no profile is applied. */
+function lensProfileState() {
+  const profile = lensProfileById(state.optics.profile);
+  return profile ? { profile, edited: !matchesProfile(state.optics, profile) } : null;
+}
+const lensSummary = () => { const current = lensProfileState(); return current ? `${current.profile.name}${current.edited ? ' · edited' : ''}` : lensEdits().length ? 'Custom' : 'None'; };
 function syncLens() {
   for (const control of opticsControls) {
     const input = $(`#lens-${control.path}`), value = state.optics[control.path];
@@ -721,6 +734,9 @@ function syncLens() {
     output.value = formatLens(control, value);
     output.classList.toggle('is-edited', value !== control.default);
   }
+  const current = lensProfileState(), neutral = lensEdits().length === 0;
+  document.querySelectorAll('[data-profile]').forEach(button => button.setAttribute('aria-pressed', current ? button.dataset.profile === current.profile.id : button.dataset.profile === 'none' && neutral));
+  $('#lensCurrent').textContent = lensSummary();
   const count = lensEdits().length;
   $('#lensBadge').hidden = !count;
   $('#lensBadge').innerHTML = count ? `${count}<span class="visually-hidden"> edited</span>` : '';
@@ -2187,7 +2203,7 @@ function applySummaries() {
   return {
     look,
     adjustments: adjustments.length ? adjustments.slice(0, 3).join(' · ') + (adjustments.length > 3 ? ` · +${adjustments.length - 3} more` : '') : 'None (clears theirs)',
-    lens: lensEdits().map(control => `${control.label} ${formatLens(control, state.optics[control.path])}`).join(' · ') || 'None (clears theirs)',
+    lens: lensEdits().length ? [lensProfileState() ? lensSummary() : null, ...lensEdits().slice(0, 3).map(control => `${control.label} ${formatLens(control, state.optics[control.path])}`)].filter(Boolean).join(' · ') : 'None (clears theirs)',
     text: state.text.length ? state.text.map(text => `“${text.content.split('\n')[0].slice(0, 20)}”`).join(' · ') : 'None (clears theirs)',
     frame: state.frame.id === 'paper' ? `${frame} · ${state.frame.border.width}% border` : frame,
     crop: `${ratioLabel(state.crop)}${state.crop.swapped ? ' (swapped)' : ''}, centered on each photo (position is not copied)`,

@@ -42,17 +42,19 @@ export const sections = [
 export const controls = sections.flatMap(section => section.controls.map(control => ({ ...control, section: section.id })));
 export const controlByPath = Object.fromEntries(controls.map(control => [control.path, control]));
 
-export const defaultOptics = () => Object.fromEntries(controls.map(control => [control.path, control.default]));
+// `profile`: the id of the last one-tap lens profile applied (profiles.js), or null. It names the look; the values decide the render.
+export const defaultOptics = () => ({ ...Object.fromEntries(controls.map(control => [control.path, control.default])), profile: null });
 
 /** A clean copy: every known path present, numbers clamped and snapped to their step, unknown paths dropped. */
 export function normalizeOptics(value) {
   const source = value && typeof value === 'object' ? value : {};
-  return Object.fromEntries(controls.map(({ path, min, max, step, default: fallback }) => {
+  const numbers = Object.fromEntries(controls.map(({ path, min, max, step, default: fallback }) => {
     const number = Number(source[path]);
     if (!Number.isFinite(number)) return [path, fallback];
     const snapped = Math.round(Math.min(max, Math.max(min, number)) / step) * step;
     return [path, Number(snapped.toFixed(6))];
   }));
+  return { ...numbers, profile: typeof source.profile === 'string' && /^[a-z0-9-]{1,40}$/.test(source.profile) ? source.profile : null };
 }
 
 /** True when no effect is on, so the stage can hand the photo through untouched. */
