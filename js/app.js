@@ -1,4 +1,5 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
+import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics } from './optics/index.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -50,7 +51,7 @@ const elements = {
 //   original + (look - original) * strength + edit
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
-  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [],
+  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [], optics: defaultOptics(),
   filter: 'All', zoom: 'fit', holding: false, split: null, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).
@@ -107,7 +108,7 @@ const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id
 // Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
 const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder }, color: null } : { id: frame.id, border: { ...defaultBorder, ...frame.border }, color: frame.color ?? null });
 // A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
-function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, frame: cloneFrame(state.frame), text: cloneTexts(state.text) }; }
+function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, optics: { ...state.optics }, frame: cloneFrame(state.frame), text: cloneTexts(state.text) }; }
 // Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
 function migrateSnapshot(value) {
   if (value.look) return value;
@@ -117,11 +118,11 @@ function migrateSnapshot(value) {
 }
 /** Puts settings ({ look, edits, crop, frame }) into the editor state without syncing the UI. */
 function applySettings(value) {
-  const { look, edits, frame, crop, text } = migrateSnapshot(value);
+  const { look, edits, frame, crop, text, optics } = migrateSnapshot(value);
   state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
   state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
   state.edits = { ...edits }; state.frame = cloneFrame(frame); state.crop = { ...defaultCrop, ...crop };
-  state.text = cloneTexts(text);
+  state.text = cloneTexts(text); state.optics = normalizeOptics(optics);
 }
 function restore(value) {
   applySettings(value);
@@ -888,6 +889,21 @@ function croppedSource(maxEdge = Infinity) {
   if (!croppedCache.sizes.has(maxEdge)) croppedCache.sizes.set(maxEdge, cropSource(state.image, state.crop, maxEdge));
   return croppedCache.sizes.get(maxEdge);
 }
+// The cropped source with the Lens optics applied (js/optics, in a Worker): the start of every look.
+// Preview sizes are cached until the photo, crop or optics change, so Adjust and Frames don't re-run it.
+const opticsCache = { key: '', sizes: new Map() };
+async function opticsSource(maxEdge = Infinity) {
+  if (opticsNeutral(state.optics)) return croppedSource(maxEdge);
+  const key = JSON.stringify([cropKey(), state.optics]);
+  if (opticsCache.key !== key) { opticsCache.key = key; opticsCache.sizes.clear(); }
+  if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
+  if (!opticsCache.sizes.has(maxEdge)) {
+    const promise = renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
+    promise.catch(() => { if (opticsCache.sizes.get(maxEdge) === promise) opticsCache.sizes.delete(maxEdge); });
+    opticsCache.sizes.set(maxEdge, promise);
+  }
+  return opticsCache.sizes.get(maxEdge);
+}
 const croppedSize = () => { const g = cropGeo(); return { width: Math.max(1, Math.round(g.width)), height: Math.max(1, Math.round(g.height)) }; };
 
 // One history entry per gesture: the first change takes the snapshot, the end commits it.
@@ -1507,13 +1523,15 @@ function scheduleRender() {
 }
 function renderPreview(token) {
   showDeveloping(false); elements.processing.hidden = false;
-  setTimeout(() => {
+  setTimeout(async () => {
     if (token !== state.renderToken || !state.image) { elements.processing.hidden = true; return; }
     try {
       const edge = renderEdge();
       const frame = renderFrame();
+      const lensed = await opticsSource(edge);
+      if (token !== state.renderToken || !state.image) return; // a newer render replaced this one
       const source = croppedSource(edge);
-      state.editedCanvas = renderImage(source, effectiveAdjustments(), frame, edge);
+      state.editedCanvas = renderImage(lensed, effectiveAdjustments(), frame, edge);
       const originalKey = JSON.stringify([frame, edge, cropKey()]);
       if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(source, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
       elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
@@ -1551,7 +1569,7 @@ let advancedBusy = false;
 let advancedDirty = false;
 // Last engine preview, so Adjust and Frames changes don't run the engine again.
 let enginePreview = { key: '', bitmap: null };
-const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams()]);
+const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, state.optics, state.engine, advParams()]);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
 let adjustWorker = null, adjustJobId = 0;
 const adjustJobs = new Map();
@@ -1574,12 +1592,14 @@ function adjustFull(bitmap, adjustments) {
     adjustWorker.postMessage({ id, bitmap, adjustments }, [bitmap]);
   });
 }
-// The engine's input: the cropped photo at full size, re-made when the crop changes.
+// The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
+const bitmapKey = () => JSON.stringify([cropKey(), state.optics]);
 async function ensureBitmap() {
-  const key = cropKey();
+  const key = bitmapKey();
   if (state.imageBitmap && state.bitmapKey === key) return state.imageBitmap;
-  const bitmap = await createImageBitmap(croppedSource());
-  if (cropKey() !== key) { bitmap.close(); return ensureBitmap(); } // the crop changed meanwhile
+  const lensed = await opticsSource();
+  const bitmap = lensed instanceof ImageBitmap ? lensed : await createImageBitmap(lensed);
+  if (bitmapKey() !== key) { bitmap.close(); return ensureBitmap(); } // the crop or optics changed meanwhile
   state.imageBitmap?.close?.(); state.imageBitmap = bitmap; state.bitmapKey = key;
   return state.imageBitmap;
 }
@@ -1649,7 +1669,7 @@ function setRenderProgress(value) {
   }
 }
 // The full render holds the engine output with Adjust edits applied.
-const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.engine, advParams(), state.edits]);
+const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.optics, state.engine, advParams(), state.edits]);
 async function renderFullQuality() {
   const module = activeModule();
   if (!isFilm() || !state.image || !module) return;
@@ -1832,10 +1852,10 @@ const app = { photos: [], activeId: null, selected: new Set(), anchorId: null, f
 const photoById = id => app.photos.find(photo => photo.id === id) || null;
 const activePhoto = () => photoById(app.activeId);
 const photoSize = photo => ({ naturalWidth: photo.width, naturalHeight: photo.height });
-const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, frame: { id: 'none', border: { ...defaultBorder } }, text: [] });
+const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, optics: defaultOptics(), frame: { id: 'none', border: { ...defaultBorder } }, text: [] });
 const settingsOf = photo => (photo.id === app.activeId && state.image ? snapshot() : photo.settings);
 const isEdited = settings => settings.look.engine !== PRESETS || settings.look.presetId !== 'original' || Object.keys(settings.edits).length > 0
-  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length);
+  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length) || !opticsNeutral(settings.optics);
 const otherSelected = () => app.photos.filter(photo => app.selected.has(photo.id) && photo.id !== app.activeId);
 
 async function decodeImage(file) {
@@ -2205,12 +2225,14 @@ async function renderPhotoThumb(id, job) {
   const photo = photoById(id); if (!photo) return null;
   const settings = photo.settings, engineId = settings.look.engine, texts = settings.text || [];
   await ensureTextFonts(texts);
-  const source = isIdentityCrop(settings.crop) ? photo.thumb : cropSource(photo.thumb, settings.crop, QUEUE_EDGE);
+  const cropped = isIdentityCrop(settings.crop) ? photo.thumb : cropSource(photo.thumb, settings.crop, QUEUE_EDGE);
+  const source = await renderOptics(cropped, settings.optics, QUEUE_EDGE);
+  if (job.stale) return null;
   if (engineId === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), QUEUE_EDGE, texts);
   const module = await loadEngine(engineId);
   if (module !== engine.module) queueEngines.add(module);
   const params = module.normalizeParams(settings.look.engineParams[engineId]);
-  const input = await createImageBitmap(source);
+  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
   const raw = await module.render(input, cloneParams(params), { quality: 'preview' });
   input.close();
   if (job.stale) return null;
@@ -2410,7 +2432,7 @@ function prepareExport() {
     await ensureTextFonts(state.text);
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(croppedSource(edge), effectiveAdjustments(), renderFrame(), edge, state.text) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(await opticsSource(edge), effectiveAdjustments(), renderFrame(), edge, state.text) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -2495,12 +2517,13 @@ async function renderPhotoFull(photo, engineModules, onProgress) {
   const image = inView ? state.image : await decodeImage(photo.file);
   const { crop, look, edits } = settings, texts = settings.text || [];
   await ensureTextFonts(texts);
-  const source = isIdentityCrop(crop) ? image : cropSource(image, crop);
+  const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop);
+  const source = await renderOptics(cropped, settings.optics);
   if (look.engine === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height), texts);
   const module = await loadEngine(look.engine);
   engineModules.add(module);
   const params = module.normalizeParams(look.engineParams[look.engine]);
-  const input = await createImageBitmap(source);
+  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
   const raw = await module.render(input, cloneParams(params), { quality: 'full', onProgress });
   input.close();
   const full = await adjustFull(raw, Object.keys(edits).length ? adjustmentsFor(settings) : null);
@@ -3040,3 +3063,9 @@ document.addEventListener('keyup', event => { if (event.key === '\\') setHolding
     }, lift);
   });
 }
+
+// Temporary test hook for the optics stage until the Lens panel exists (plan_optics.md Task 1; removed in Task 2).
+window.photokamoOptics = {
+  get: () => ({ ...state.optics }),
+  set: values => change(() => { state.optics = normalizeOptics({ ...state.optics, ...values }); }),
+};
