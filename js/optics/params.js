@@ -2,6 +2,15 @@
 // Optics runs on the cropped photo before the look (Basic preset or film engine).
 // Spatial values are resolution independent: radius r is 0 at the frame centre and 1 at the corners.
 // Plain data, no DOM: loaded by app.js, js/optics/worker.js and the Lens panel.
+import { formats, FOCAL_LENGTHS } from './formats.js';
+
+/** The camera body: what the physical models (depth of field, diffraction) measure against. Not an effect:
+ *  it never counts as an edit, and lens profiles and Reset lens keep it. */
+export const cameraControls = [
+  { path: 'format', label: 'Format', kind: 'select', options: formats.map(format => format.id), default: '35mm' },
+  { path: 'focal', label: 'Focal length', kind: 'select', options: FOCAL_LENGTHS, default: 50, unit: 'mm' },
+];
+export const cameraOf = optics => Object.fromEntries(cameraControls.map(control => [control.path, optics[control.path]]));
 
 /** `amount: true` marks a control that turns its effect on; the others only shape it. */
 export const sections = [
@@ -43,7 +52,7 @@ export const controls = sections.flatMap(section => section.controls.map(control
 export const controlByPath = Object.fromEntries(controls.map(control => [control.path, control]));
 
 // `profile`: the id of the last one-tap lens profile applied (profiles.js), or null. It names the look; the values decide the render.
-export const defaultOptics = () => ({ ...Object.fromEntries(controls.map(control => [control.path, control.default])), profile: null });
+export const defaultOptics = () => ({ ...Object.fromEntries([...controls, ...cameraControls].map(control => [control.path, control.default])), profile: null });
 
 /** A clean copy: every known path present, numbers clamped and snapped to their step, unknown paths dropped. */
 export function normalizeOptics(value) {
@@ -54,8 +63,13 @@ export function normalizeOptics(value) {
     const snapped = Math.round(Math.min(max, Math.max(min, number)) / step) * step;
     return [path, Number(snapped.toFixed(6))];
   }));
-  return { ...numbers, profile: typeof source.profile === 'string' && /^[a-z0-9-]{1,40}$/.test(source.profile) ? source.profile : null };
+  const camera = Object.fromEntries(cameraControls.map(({ path, options, default: fallback }) => [path, options.includes(source[path]) ? source[path] : fallback]));
+  return { ...numbers, ...camera, profile: typeof source.profile === 'string' && /^[a-z0-9-]{1,40}$/.test(source.profile) ? source.profile : null };
 }
+
+/** What the render depends on, for cache keys: the effect values only. The camera and the profile name
+ *  don't change pixels yet; add a path here when a model starts to use it (depth of field, diffraction). */
+export const renderKey = optics => JSON.stringify(controls.map(control => optics?.[control.path]));
 
 /** True when no effect is on, so the stage can hand the photo through untouched. */
 export const isNeutral = optics => !optics || controls.every(control => !control.amount || !optics[control.path]);

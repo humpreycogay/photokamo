@@ -1,5 +1,7 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
-import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls, profiles as lensProfiles, profileById as lensProfileById, expandProfile, matchesProfile } from './optics/index.js';
+import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls, profiles as lensProfiles, profileById as lensProfileById, expandProfile, matchesProfile,
+  cameraOf, opticsRenderKey, formats as cameraFormats, formatById, fieldOfView } from './optics/index.js';
+import { FOCAL_LENGTHS } from './optics/formats.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -713,12 +715,35 @@ function buildLens() {
     const profile = lensProfileById(state.optics.profile), value = (profile ? expandProfile(profile) : defaultOptics())[path];
     if (state.optics[path] !== value) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
   });
-  $('#resetLens').addEventListener('click', () => change(() => { state.optics = defaultOptics(); }));
+  $('#resetLens').addEventListener('click', () => change(() => { state.optics = { ...defaultOptics(), ...cameraOf(state.optics) }; }));
   $('#lensProfiles').innerHTML = lensProfiles.map(profile => `<button class="lens-profile" type="button" data-profile="${profile.id}" aria-pressed="false" aria-describedby="lensProfileNote-${profile.id}"><strong>${profile.name}</strong><small id="lensProfileNote-${profile.id}">${profile.description}</small></button>`).join('');
   $('#lensProfiles').addEventListener('click', event => {
     const profile = lensProfileById(event.target.closest('[data-profile]')?.dataset.profile);
-    if (profile) change(() => { state.optics = expandProfile(profile); });
+    if (profile) change(() => { state.optics = { ...expandProfile(profile), ...cameraOf(state.optics) }; });
   });
+  // Camera: format and focal length (not an effect: kept by profiles and Reset lens).
+  $('#lensFormat').innerHTML = cameraFormats.map(format => `<option value="${format.id}">${format.name}</option>`).join('');
+  $('#lensFocal').innerHTML = FOCAL_LENGTHS.map(focal => `<option value="${focal}">${focal} mm</option>`).join('');
+  document.querySelectorAll('[data-camera]').forEach(select => select.addEventListener('change', () => {
+    const value = select.dataset.camera === 'focal' ? Number(select.value) : select.value;
+    change(() => { state.optics = normalizeOptics({ ...state.optics, [select.dataset.camera]: value }); });
+  }));
+  $('#lensCropToFormat').addEventListener('click', cropToFormat);
+}
+/** The format's long:short ratio, turned to the photo's orientation: an existing ratio tile when one matches. */
+function formatCrop(format) {
+  const [long, short] = format.ratio, { W, H } = cropGeo(), landscape = W >= H, want = landscape ? long / short : short / long;
+  for (const [id] of RATIOS) {
+    const [a, b] = id.split(':').map(Number); if (!b) continue;
+    if (Math.abs(a / b - want) < 1e-3) return { ratio: id, swapped: false };
+    if (Math.abs(b / a - want) < 1e-3) return { ratio: id, swapped: true };
+  }
+  return { ratio: landscape ? `${long}:${short}` : `${short}:${long}`, swapped: false };
+}
+function cropToFormat() {
+  const format = formatById(state.optics.format); if (!format || !state.image) return;
+  change(() => { state.crop = fitRatio({ ...state.crop, ...formatCrop(format), platform: null, x: .5, y: .5, zoom: 1 }); });
+  toast(`Cropped to ${format.name}.`);
 }
 /** The Lens tab's current profile: { profile, edited }, or null when no profile is applied. */
 function lensProfileState() {
@@ -737,6 +762,12 @@ function syncLens() {
   const current = lensProfileState(), neutral = lensEdits().length === 0;
   document.querySelectorAll('[data-profile]').forEach(button => button.setAttribute('aria-pressed', current ? button.dataset.profile === current.profile.id : button.dataset.profile === 'none' && neutral));
   $('#lensCurrent').textContent = lensSummary();
+  const format = formatById(state.optics.format), focal = state.optics.focal, fov = fieldOfView(format, focal), deg = value => `${value.toFixed(value < 10 ? 1 : 0)}°`;
+  $('#lensFormat').value = format.id; $('#lensFocal').value = String(focal);
+  $('#lensFov').textContent = `Angle of view ${deg(fov.diagonal)} diagonal (${deg(fov.long)} × ${deg(fov.short)})${format.id === '35mm' ? '' : ` · like ${Math.round(fov.equivalent)} mm on full frame`}`;
+  const [long, short] = format.ratio;
+  $('#lensCropToFormat').textContent = `Crop to ${format.name} (${long}:${short})`;
+  $('#lensCropToFormat').disabled = !state.image;
   const count = lensEdits().length;
   $('#lensBadge').hidden = !count;
   $('#lensBadge').innerHTML = count ? `${count}<span class="visually-hidden"> edited</span>` : '';
@@ -941,7 +972,7 @@ function croppedSource(maxEdge = Infinity) {
 const opticsCache = { key: '', sizes: new Map() };
 async function opticsSource(maxEdge = Infinity) {
   if (opticsNeutral(state.optics)) return croppedSource(maxEdge);
-  const key = JSON.stringify([cropKey(), state.optics]);
+  const key = JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
   if (opticsCache.key !== key) { opticsCache.key = key; opticsCache.sizes.clear(); }
   if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
   if (!opticsCache.sizes.has(maxEdge)) {
@@ -1617,7 +1648,7 @@ let advancedBusy = false;
 let advancedDirty = false;
 // Last engine preview, so Adjust and Frames changes don't run the engine again.
 let enginePreview = { key: '', bitmap: null };
-const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, state.optics, state.engine, advParams()]);
+const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams()]);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
 let adjustWorker = null, adjustJobId = 0;
 const adjustJobs = new Map();
@@ -1641,7 +1672,7 @@ function adjustFull(bitmap, adjustments) {
   });
 }
 // The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
-const bitmapKey = () => JSON.stringify([cropKey(), state.optics]);
+const bitmapKey = () => JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
 async function ensureBitmap() {
   const key = bitmapKey();
   if (state.imageBitmap && state.bitmapKey === key) return state.imageBitmap;
@@ -1717,7 +1748,7 @@ function setRenderProgress(value) {
   }
 }
 // The full render holds the engine output with Adjust edits applied.
-const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, state.optics, state.engine, advParams(), state.edits]);
+const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams(), state.edits]);
 async function renderFullQuality() {
   const module = activeModule();
   if (!isFilm() || !state.image || !module) return;
