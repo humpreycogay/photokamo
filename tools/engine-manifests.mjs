@@ -12,8 +12,7 @@ const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 // Per engine: folders (relative to engines/<id>/) whose files the engine's worker may download.
 const ENGINES = {
-  'spektrafilm-rs': ['runtime'],
-  negs: ['runtime', 'src/data/profiles', 'src/data/luts', 'src/data/filters']
+  'kamo-film-engine': ['data/film-scan-calibration']
 };
 
 function walk(dir) {

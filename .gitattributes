@@ -1,4 +1,4 @@
-# Keep the spektrafilm-rs patch and build script byte-exact on every platform.
+# Keep patches and build scripts (incl. the archived spektrafilm-rs ones) byte-exact on every platform.
 *.patch text eol=lf
 *.sh    text eol=lf
 
@@ -6,6 +6,8 @@
 # so updates from upstream merge cleanly.
 engines/*/src/** -text
 engines/*/runtime/** -text
+Archive/engines/*/src/** -text
+Archive/engines/*/runtime/** -text
 
 # Binary engine artifacts and data
 *.wasm  binary

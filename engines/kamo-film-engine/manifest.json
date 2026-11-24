@@ -1,0 +1,346 @@
+{
+ "engine": "kamo-film-engine",
+ "version": "903364f435e7477a",
+ "files": {
+  "data/film-scan-calibration/ATTRIBUTION.md": {
+   "size": 16073,
+   "sha256": "2629337102f6dfe8bba2090d226010ffa8f63e2ad3951bdd361663128632a4dc"
+  },
+  "data/film-scan-calibration/LICENSE-DATA.txt": {
+   "size": 4348,
+   "sha256": "0c30660b7cca50cfd6f721e0f05b2ae1f82058662ebbbd4e3749d7584d28b61d"
+  },
+  "data/film-scan-calibration/equipment/Wratten2_No25_density.json": {
+   "size": 16200,
+   "sha256": "0dfea93e38cc63126bb7ffdc116fad7ab040cf36fb9818d0007a21db98c03820"
+  },
+  "data/film-scan-calibration/equipment/Wratten2_No2B_density.json": {
+   "size": 16664,
+   "sha256": "dda2d5de12f4e6c796edcfffa09174445a9fd88f7c57dd26a038d5741496918f"
+  },
+  "data/film-scan-calibration/equipment/Wratten2_No98_density.json": {
+   "size": 15765,
+   "sha256": "31f537bbf143a7b038ed2bc96c38d2bf55f6e2acf2e2b302220f6ee7dfbf9080"
+  },
+  "data/film-scan-calibration/equipment/Wratten2_No99_density.json": {
+   "size": 15996,
+   "sha256": "81e4fce6d871a037bf6d19db7732c2dd5d076151ee0304878d3f6308d9df6a71"
+  },
+  "data/film-scan-calibration/films/EktachromeE100_datasheet_curves.json": {
+   "size": 9331,
+   "sha256": "cf1809809cb43789969482e0c451ad3727ab5144f01464041e05616e8309fc8d"
+  },
+  "data/film-scan-calibration/films/EktachromeE100_dye_density.json": {
+   "size": 22089,
+   "sha256": "9648d643440734eb55999eebc0999174018b853e47be6888938fafca2c5daf52"
+  },
+  "data/film-scan-calibration/films/EktachromeE100_mtf.json": {
+   "size": 9661,
+   "sha256": "267e7b73ba7b921dff3b5d99b0bff921617768c401ca509853e8fdea0776ab2a"
+  },
+  "data/film-scan-calibration/films/Ektar100_datasheet_curves.json": {
+   "size": 22699,
+   "sha256": "be83e7e2bf2b6898e15f8fdf488ef59caf35222cf99204c27a30ed9a16ed8f3f"
+  },
+  "data/film-scan-calibration/films/Ektar100_dye_density.json": {
+   "size": 17253,
+   "sha256": "399a12e8d59ee31f8d328cb21aafb1f4cbf65fce31c2ae3f91f30bf346f3f392"
+  },
+  "data/film-scan-calibration/films/Ektar100_mtf.json": {
+   "size": 9716,
+   "sha256": "9ee5fa2dedf79a19a78ba12ec1b75a82a4936a5d7a8ebfec5ff8205aae7b8326"
+  },
+  "data/film-scan-calibration/films/Ektar100_spectral_sensitivity.json": {
+   "size": 14260,
+   "sha256": "cd095e8ffbd8d597b3af5bd1c4abb93de0be8764a31c293bb831a60ca14f4ace"
+  },
+  "data/film-scan-calibration/films/Fujicolor100_datasheet_curves.json": {
+   "size": 39791,
+   "sha256": "3b9eb7dc589c154ff02603995580f78dcaa4291bae5ea6bfc8a507a3420681d7"
+  },
+  "data/film-scan-calibration/films/Fujicolor100_dye_density.json": {
+   "size": 17277,
+   "sha256": "31f2956c22460baa1a7c25fe7b8996e69ae0701b0da234ad91a2f280180e70ff"
+  },
+  "data/film-scan-calibration/films/Fujicolor100_mtf.json": {
+   "size": 5912,
+   "sha256": "954d36213c54774cf24eb8c33a4f789b3264a216a6d451b1c6f3576f8148bf98"
+  },
+  "data/film-scan-calibration/films/Fujicolor100_spectral_sensitivity.json": {
+   "size": 17035,
+   "sha256": "7d3097f96e6801b70d9ef421f38ec3a02a7b222ea38d2b5b0958c7cec4474a18"
+  },
+  "data/film-scan-calibration/films/Fujifilm200_datasheet_curves.json": {
+   "size": 39954,
+   "sha256": "841f920b303a0e8441e8bf0b801ffd68ad89f00795ffd73470b20cfbb8ddda14"
+  },
+  "data/film-scan-calibration/films/Fujifilm200_dye_density.json": {
+   "size": 17434,
+   "sha256": "067a8b5d248c8b2e1db58fab4b4019138ea645f592a24b5e8c2d66b268127e9d"
+  },
+  "data/film-scan-calibration/films/Fujifilm200_spectral_sensitivity.json": {
+   "size": 16589,
+   "sha256": "c3db5936145682829e17030a0cb7eade3216daf0e1db70a3e283d617ed0a0579"
+  },
+  "data/film-scan-calibration/films/Fujifilm400_datasheet_curves.json": {
+   "size": 39910,
+   "sha256": "aa02d8c7fe8e9e633f75fcf97d61ee443bbeb77c78bd17b57a88b632c4a12eac"
+  },
+  "data/film-scan-calibration/films/Fujifilm400_dye_density.json": {
+   "size": 17434,
+   "sha256": "b6133b6cfac910b4a259de76a3ad71c8a742da633183c7822fddb5689f796b92"
+  },
+  "data/film-scan-calibration/films/Fujifilm400_spectral_sensitivity.json": {
+   "size": 16594,
+   "sha256": "f039055e0a9f4de10147ca42243e5873f1250b27d0c10b5c97a53c16aad111a3"
+  },
+  "data/film-scan-calibration/films/Gold200_datasheet_curves.json": {
+   "size": 22047,
+   "sha256": "14861c94ec1ca1618901dc6fc8f1f6d1014c8cca8f8d146192e47a692610635e"
+  },
+  "data/film-scan-calibration/films/Gold200_dye_density.json": {
+   "size": 17256,
+   "sha256": "6429c42494e65209b574672606575d71101a418f5020f889a92788f9b60a734a"
+  },
+  "data/film-scan-calibration/films/Gold200_spectral_sensitivity.json": {
+   "size": 16008,
+   "sha256": "4dac8a3dda111761736a7cf605f4e5537948bbc3b8c719ba92964133183b626d"
+  },
+  "data/film-scan-calibration/films/Kodak2393_mtf.json": {
+   "size": 9790,
+   "sha256": "fd2e0cf9a506c16f7254c88cb3c5649430912b1e2513e0bf1a403d7c8e3de373"
+  },
+  "data/film-scan-calibration/films/Kodak2393_print_film.json": {
+   "size": 70473,
+   "sha256": "da53cbc5fba76307342d38c9b8d4b3fba190a8f7f2bc55da6acab05e212a6595"
+  },
+  "data/film-scan-calibration/films/Portra160_datasheet_curves.json": {
+   "size": 22345,
+   "sha256": "cfa709da1b8673a6e62cef9eb87cdfe640f311828fa7e2e3d987ca1b865e8803"
+  },
+  "data/film-scan-calibration/films/Portra160_dye_density.json": {
+   "size": 17302,
+   "sha256": "b8b4989c01eaf5e618b3c7526191883464e06600bbe83fa5de2aca8e3ec18d66"
+  },
+  "data/film-scan-calibration/films/Portra160_mtf.json": {
+   "size": 10122,
+   "sha256": "94be43e2222978b9f43a29b8b6dd4513e057ce17470a5c6f85c97a2d49aa8b5b"
+  },
+  "data/film-scan-calibration/films/Portra160_spectral_sensitivity.json": {
+   "size": 13577,
+   "sha256": "871138442fdb89d88a2cc4ed26baf8d047806f24a57aeb48a1b3235247adc74c"
+  },
+  "data/film-scan-calibration/films/Portra400_datasheet_curves.json": {
+   "size": 22600,
+   "sha256": "fb7d1ddade32d34d1dda095a7b0034fe16eb61932935e9dcc742bb0747a52d3d"
+  },
+  "data/film-scan-calibration/films/Portra400_dye_density.json": {
+   "size": 17266,
+   "sha256": "31beb5e31ac10222a6bfc22ed482349d7d9758ee07fa40c4fd6da83168a72b92"
+  },
+  "data/film-scan-calibration/films/Portra400_mtf.json": {
+   "size": 9737,
+   "sha256": "ac0a07daeed14f5910a26a2d52b0ee29119566998ec50bed3c2ab1cdc61c22c0"
+  },
+  "data/film-scan-calibration/films/Portra400_spectral_sensitivity.json": {
+   "size": 13918,
+   "sha256": "3a1520f3c28d58c982ef9b436057679ed06d27d8f843bb32a646d0c6d88eff2c"
+  },
+  "data/film-scan-calibration/films/Portra800_datasheet_curves.json": {
+   "size": 22524,
+   "sha256": "f6817d721b754b7cda6639696ba39c1e21866a38ebe807154398f84ab4da824b"
+  },
+  "data/film-scan-calibration/films/Portra800_dye_density.json": {
+   "size": 17221,
+   "sha256": "c615a0501014f487fe13216b9332bb8df58c57bd0ed8728736d805ee9bd61726"
+  },
+  "data/film-scan-calibration/films/Portra800_mtf.json": {
+   "size": 9645,
+   "sha256": "19dbfcf55a9b1424f53c0a48b1697b109f5612e93aeb9c64528eacb69da3ee05"
+  },
+  "data/film-scan-calibration/films/Portra800_spectral_sensitivity.json": {
+   "size": 15224,
+   "sha256": "7869818eae4a965e6fc63808dc654da6e574f62f8a2f5693f36508e07234f441"
+  },
+  "data/film-scan-calibration/films/Pro400H_datasheet_curves.json": {
+   "size": 42523,
+   "sha256": "b3c2ee4d9d53ca0bc9ce86f631c6e147ec19b3be825c252774d99847170fc8b0"
+  },
+  "data/film-scan-calibration/films/Pro400H_dye_density.json": {
+   "size": 17630,
+   "sha256": "462a1289928f107a8d8c9d2c80fec7ef2473f8e800769c80328598f2d41f0db3"
+  },
+  "data/film-scan-calibration/films/Pro400H_mtf.json": {
+   "size": 3563,
+   "sha256": "5671c97797b93e67964325427195184121cbaa4475a79946e6f4d256be249a2d"
+  },
+  "data/film-scan-calibration/films/ProImage100_datasheet_curves.json": {
+   "size": 22433,
+   "sha256": "ec23f1756de5597a86ed779676ba8546595c6e590b9749b53abb41809ee0e75e"
+  },
+  "data/film-scan-calibration/films/ProImage100_dye_density.json": {
+   "size": 17234,
+   "sha256": "342ad845bd70f0f70ea008e8ac670db43e15352260ca12244c14a89baf34c968"
+  },
+  "data/film-scan-calibration/films/ProImage100_spectral_sensitivity.json": {
+   "size": 13414,
+   "sha256": "b1a6bfe6613b9a6b8430f57fb614edc8c69bb164d35e11c84271029fc94d4ea7"
+  },
+  "data/film-scan-calibration/films/Provia100F_datasheet_curves.json": {
+   "size": 13653,
+   "sha256": "e5cde3795e968b67f7767af625a490714ab93f538a9ebb5c8d351137179f55e9"
+  },
+  "data/film-scan-calibration/films/Provia100F_dye_density.json": {
+   "size": 20278,
+   "sha256": "297cb1d7ec244d2d1f4745eeffe207db0dcf4304dbf221ecec6f1287b86fb725"
+  },
+  "data/film-scan-calibration/films/Provia100F_mtf.json": {
+   "size": 3819,
+   "sha256": "b2229fd42d227e6bd5191ffab45d1708297010ab1274ea996a984dca2b0c8ef7"
+  },
+  "data/film-scan-calibration/films/SuperiaPremium400_datasheet_curves.json": {
+   "size": 39915,
+   "sha256": "9ba8d5cf7747abc66c3f1414e8673bb0bdc0234deb6ba54f12dca90122b719c3"
+  },
+  "data/film-scan-calibration/films/SuperiaPremium400_dye_density.json": {
+   "size": 17183,
+   "sha256": "c7c7745f5a50b456af57576966509a37bd8a2c7eb5b41e06e1d82d959eec9984"
+  },
+  "data/film-scan-calibration/films/SuperiaPremium400_mtf.json": {
+   "size": 5925,
+   "sha256": "167928ad852a1bdd150b440fedb92ce1fc90173b36b60be55723adca585d7699"
+  },
+  "data/film-scan-calibration/films/SuperiaPremium400_spectral_sensitivity.json": {
+   "size": 15585,
+   "sha256": "dafc0aaa5ac5f502e1ad551528c2704548966d9a1da3d331472cadb2b4733252"
+  },
+  "data/film-scan-calibration/films/Ultramax400_datasheet_curves.json": {
+   "size": 22535,
+   "sha256": "1daa23da70f6d80a246dfc29610e5e176dcd01607c241fcb94a178e7b18b4ac3"
+  },
+  "data/film-scan-calibration/films/Ultramax400_dye_density.json": {
+   "size": 17290,
+   "sha256": "541942f3ac3e13c56793b0bb77c70695537624e96cdf53c9881f07be54153e96"
+  },
+  "data/film-scan-calibration/films/Ultramax400_spectral_sensitivity.json": {
+   "size": 15123,
+   "sha256": "95fd7191a8060e400e2d03cf325d7e87c377b8209a060a9b16eb8a30900c834a"
+  },
+  "data/film-scan-calibration/films/V3200T_mtf.json": {
+   "size": 6910,
+   "sha256": "c292f7b0d36cbda04fdcfc2ef714937c639cca9ab446fc66ae1238a9b3653031"
+  },
+  "data/film-scan-calibration/films/V3250D_mtf.json": {
+   "size": 6517,
+   "sha256": "c6b1b39271ec4e82fd4554525e79ee2a8f44a073d5921d6bc9f4f4d7aba4ec8c"
+  },
+  "data/film-scan-calibration/films/V3500T_datasheet_curves.json": {
+   "size": 12229,
+   "sha256": "9029f4a854ca7bab7c3515a011cba22053bb7e37142f017f8f08e2b719abbdc9"
+  },
+  "data/film-scan-calibration/films/V3500T_mtf.json": {
+   "size": 7636,
+   "sha256": "982e4f02f13864a0e15e202a861e6cb54f1db7276ab3b7f9592f809aa82125b9"
+  },
+  "data/film-scan-calibration/films/V350D_mtf.json": {
+   "size": 6516,
+   "sha256": "4c1a8562aa77a0e55108a8f6e750c06aeec61a694ccfb7574f499e3d03e32fb5"
+  },
+  "data/film-scan-calibration/films/Velvia100_datasheet_curves.json": {
+   "size": 13602,
+   "sha256": "2c76b6ec608a008846fa367e5015a9fd645d93637d5da8dce9901e63287d9015"
+  },
+  "data/film-scan-calibration/films/Velvia100_dye_density.json": {
+   "size": 17277,
+   "sha256": "c239e1d6c9970b175901ec45b265d3226a6e9dbcddb8608ff392dc0281f28ad6"
+  },
+  "data/film-scan-calibration/films/Velvia100_mtf.json": {
+   "size": 3727,
+   "sha256": "ce2f4cdc3999e1eb0c96668f469c62794035b5841dbb33b0b4dea6b6a2b2a3a4"
+  },
+  "data/film-scan-calibration/films/Velvia50_datasheet_curves.json": {
+   "size": 13940,
+   "sha256": "4f963ec86f831b2509a5f3d817bed16494d0f8a2124c0c8719c7f3d2f6f1c036"
+  },
+  "data/film-scan-calibration/films/Velvia50_dye_density.json": {
+   "size": 16898,
+   "sha256": "b6eaaefcf3f3862ebef8c1fd6f3b21a315bcc5fa383298008a5c897e9dde1c61"
+  },
+  "data/film-scan-calibration/films/Velvia50_mtf.json": {
+   "size": 4203,
+   "sha256": "7444b4a9d0d6b21d8d60013955b97c35fc2613e40e96f157a8b11371e95d9697"
+  },
+  "data/film-scan-calibration/films/Vision3_200T_datasheet_curves.json": {
+   "size": 11798,
+   "sha256": "26224a83ac129525b70bf99b009eecf66ed48477000ef2769939a9df57d7813c"
+  },
+  "data/film-scan-calibration/films/Vision3_200T_dye_density.json": {
+   "size": 39108,
+   "sha256": "810250c5ea4df27c4091df176b86f7b69a0bec77a94bc423cec6db7916edf685"
+  },
+  "data/film-scan-calibration/films/Vision3_200T_spectral_sensitivity.json": {
+   "size": 13856,
+   "sha256": "8ea856a0a64933928f49691df22fb2568851750709f9e213ef1472880f053538"
+  },
+  "data/film-scan-calibration/films/Vision3_250D_datasheet_curves.json": {
+   "size": 11841,
+   "sha256": "99c8d18636d44caa24691fe7a52d4baf6906bc93f76b68130225b89763ed88c8"
+  },
+  "data/film-scan-calibration/films/Vision3_250D_dye_density.json": {
+   "size": 39253,
+   "sha256": "2e1daaaea144df387a0db73f91503d731ae1a015e8ef3dc25581d39b0a62cf48"
+  },
+  "data/film-scan-calibration/films/Vision3_250D_spectral_sensitivity.json": {
+   "size": 15410,
+   "sha256": "71d8cc6f965663eec0a44c369786859cebb3d4099b06825a667a17f126866e41"
+  },
+  "data/film-scan-calibration/films/Vision3_500T_dye_density.json": {
+   "size": 38999,
+   "sha256": "aa2caf2c3300baf09b84ba0683d04b07c21951327a90696aeb1e294882d81b39"
+  },
+  "data/film-scan-calibration/films/Vision3_500T_spectral_sensitivity.json": {
+   "size": 14347,
+   "sha256": "acee129f83148dbc59ef85dc2a71d94f1a071cd369fb54ddfcca87f978523dd4"
+  },
+  "data/film-scan-calibration/films/Vision3_50D_datasheet_curves.json": {
+   "size": 12843,
+   "sha256": "32d28a52ba41fec963bda6ccdc23c0460ea82fbafa66ce261f71fc4cbcc85b25"
+  },
+  "data/film-scan-calibration/films/Vision3_50D_dye_density.json": {
+   "size": 38858,
+   "sha256": "ddb9f4633a6de327135ae5aa4ac742786b83cbe42a599e7d567468c987b6fd23"
+  },
+  "data/film-scan-calibration/films/Vision3_50D_spectral_sensitivity.json": {
+   "size": 14852,
+   "sha256": "1c80915a69f34ca52e2921f013912d42550391aecd3c65adf7099fcb730f5d93"
+  },
+  "data/film-scan-calibration/papers/EnduraPremier_paper.json": {
+   "size": 47686,
+   "sha256": "8e887d68a6d86920a4ffbd686ec1a147596384152e88be27336a15deeafe87b0"
+  },
+  "data/film-scan-calibration/papers/FujiProLaserTypeII_paper.json": {
+   "size": 52646,
+   "sha256": "ac14709c613ec13f2fac6f5f98d7c6c1fa82121bd0e2db22c816b33a033e40ee"
+  },
+  "data/film-scan-calibration/papers/PortraEndura_paper.json": {
+   "size": 51714,
+   "sha256": "a2d24703658ad9dad028c80969d2bf3b7e44dac1113b5e83734c22622df18a4b"
+  },
+  "data/film-scan-calibration/standards/CIE1931_2deg_CMFs.json": {
+   "size": 18057,
+   "sha256": "55ebbb5a6fb9d8e24192bc381ff5da5215208ea9cfcdfccc4c9bd470655d6e3b"
+  },
+  "data/film-scan-calibration/standards/D50_illuminant.json": {
+   "size": 2105,
+   "sha256": "deb43cd90f59a0b8bdda6e4c48b4cbb539c63755ae16eafd8d3cc21a01cd7a32"
+  },
+  "data/film-scan-calibration/standards/StatusA_ISO5-3.json": {
+   "size": 4362,
+   "sha256": "4640ddc54f5555b7ba12aef75223e90f06678cd506aea7005742becb9ee4aaca"
+  },
+  "data/film-scan-calibration/standards/StatusM_ISO5-3.json": {
+   "size": 5404,
+   "sha256": "b296756ebe973d523de62ba2c5d2801f1ecb7f2394d95cf53961746d504c2a32"
+  }
+ }
+}

@@ -64,8 +64,15 @@ export function syncAdvanced({ pipeline, container }, engine, params, { open, cu
   const track = pipeline.querySelector('.pipeline-track');
   if (sheet) { track.setAttribute('role', 'tablist'); track.setAttribute('aria-label', 'Film pipeline stages'); }
   else { track.removeAttribute('role'); track.removeAttribute('aria-label'); }
+  // An engine may show only some sections for the current params (Kamo: creative looks vs the spectral model).
+  const shown = sections.filter(section => engine.sectionVisible?.(section.id, params) ?? true);
+  track.style.setProperty('--n', shown.length); track.classList.toggle('is-dense', shown.length > 5);
   for (const section of sections) {
     const root = container.querySelector(`[data-section="${section.id}"]`);
+    const visible = shown.includes(section), stepButton = pipeline.querySelector(`[data-step="${section.id}"]`);
+    root.hidden = stepButton.hidden = !visible;
+    if (stepButton.previousElementSibling) stepButton.previousElementSibling.hidden = !visible || shown[0] === section; // the › before it
+    stepButton.querySelector('.pipeline-num').textContent = shown.indexOf(section) + 1;
     const isOpen = mobile ? section.id === current : open.has(section.id);
     const edited = section.controls.some(control => control.path && isChanged(params, control.path));
     root.classList.toggle('is-current', section.id === current);

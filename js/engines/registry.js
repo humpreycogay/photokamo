@@ -3,59 +3,30 @@
 //
 // Each engine lives in engines/<id>/ (source copy, licence, credits.json, runtime files) and
 // js/engines/<id>/index.js (the engine contract: sections, defaultParams, normalizeParams,
-// render, warm, dispose, …; see the spektrafilm-rs one for the full list).
+// render, warm, dispose, …; see the Kamo one for the full list). Retired engines are in Archive/.
 // approxDownload matches engines/<id>/manifest.json (the Looks grid badges read the manifest itself).
 
 export const engines = [
   {
-    id: 'spektrafilm-rs',
-    label: 'Spektrafilm',
-    description: 'Spectral film → print → scan model',
-    licence: 'GPL-3.0',
-    approxDownload: '≈ 16 MB',
-    // Shown under the controls; plain text + links, built in the UI.
+    id: 'kamo-film-engine',
+    label: 'Kamo',
+    description: 'PhotoKamo’s calibrated spectral model · 20 colour stocks, scan, paper and cinema print, plus B&W, instant and creative looks',
+    licence: 'Proprietary',
+    approxDownload: '≈ 1.5 MB',
     credit: [
-      'Film modelling by ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
-      ' by Andrea Volpato, running on your device via ', { text: 'spektrafilm-rs', href: 'https://github.com/turbasvin/spektrafilm-rs' }, '. Profiles CC BY-SA 4.0.'
+      'Film modelling by PhotoKamo with ', { text: 'Film Scan Calibration', href: 'https://github.com/OwlMightyCh/film-scan-calibration' },
+      ' data by OwlMightyCh (CC BY 4.0).'
     ],
-    folder: new URL('../../engines/spektrafilm-rs/', import.meta.url),
-    load: () => import('./spektrafilm-rs/index.js')
+    folder: new URL('../../engines/kamo-film-engine/', import.meta.url),
+    load: () => import('./kamo-film-engine/index.js')
   },
-  {
-    id: 'negs',
-    label: 'Negs',
-    description: 'Spectral film model on WebGPU · 52 films incl. B&W, 10 papers',
-    licence: 'GPL-3.0',
-    approxDownload: '≈ 39 MB',
-    credit: [
-      'Film modelling by ', { text: 'negs', href: 'https://github.com/noahhaasis/negs' },
-      ', built on ', { text: 'spektrafilm', href: 'https://github.com/andreavolpato/spektrafilm' },
-      ' by Andrea Volpato. Profiles CC BY-SA 4.0 (spektrafilm, Fotufilm).'
-    ],
-    folder: new URL('../../engines/negs/', import.meta.url),
-    load: () => import('./negs/index.js')
-  },
-  {
-    id: 'duxun',
-    label: 'DuXun',
-    description: 'Live film look from a Resolve plugin (GPU) · 54 film presets, grain, halation, bloom',
-    licence: 'GPL-2.0-or-later',
-    approxDownload: '≈ 60 KB',
-    manifest: false, // no runtime files: nothing to download besides its code (no download badge)
-    credit: [
-      'Film look by ', { text: 'DuXun Film Simulation', href: 'https://github.com/DuXun03/duxun-film-simulation' },
-      ' (presets from ', { text: 't3mujinpack', href: 'https://github.com/t3mujinpack/t3mujinpack' }, '), ported to run on your device.'
-    ],
-    folder: new URL('../../engines/duxun/', import.meta.url),
-    load: () => import('./duxun/index.js')
-  }
+
 ];
 
-// Negs is the default where the browser has WebGPU (live full-model previews). Without it negs
-// falls back to slow CPU previews, so those browsers start on Spektrafilm instead.
-export const defaultEngineId = typeof navigator !== 'undefined' && 'gpu' in navigator ? 'negs' : 'spektrafilm-rs';
-/** Engine of looks saved before the Engine dropdown existed (they have no engine id). */
-export const legacyEngineId = 'spektrafilm-rs';
+// Kamo is PhotoKamo's sole film-simulation engine.
+export const defaultEngineId = 'kamo-film-engine';
+/** Older saved looks without a usable engine migrate to Kamo. */
+export const legacyEngineId = 'kamo-film-engine';
 export const engineById = id => engines.find(engine => engine.id === id) || null;
 
 const modules = new Map(); // id → Promise<module>

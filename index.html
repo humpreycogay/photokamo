@@ -212,10 +212,8 @@
           <div class="engine-bar">
             <span class="engine-label" id="engineLabel">Engine</span>
             <div class="engine-row">
-              <button class="engine-button" id="engineButton" type="button" popovertarget="engineList" aria-haspopup="listbox" aria-expanded="false" aria-controls="engineList" aria-labelledby="engineLabel engineButtonName engineButtonStatus">
-                <span class="engine-button-text"><span class="engine-button-caption" id="engineButtonCaption">Film engine</span><span class="engine-button-name" id="engineButtonName">Basic</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span>
-                <svg class="icon-sm engine-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-              </button>
+              <!-- Kamo is the only film engine: its name (and load status) instead of a picker. -->
+              <div class="engine-current" id="engineCurrent"><span class="engine-button-text"><span class="engine-button-caption" id="engineButtonCaption">Film engine</span><span class="engine-button-name" id="engineButtonName">Kamo</span><span class="engine-button-status" id="engineButtonStatus" hidden></span></span></div>
               <button class="button button-secondary engine-apply mobile-only" id="mobileApplyButton" type="button" hidden>Apply</button>
               <span class="engine-look-name mobile-only" id="engineLookName" aria-hidden="true"></span>
               <button class="icon-button film-settings-button mobile-only" type="button" data-film-settings aria-controls="advancedPanel" aria-expanded="false" aria-disabled="true" aria-label="Film settings (choose a film look first)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
@@ -223,7 +221,6 @@
               <span class="visually-hidden" id="sheetRenderLive" role="status"></span>
               <button class="icon-button" id="engineAboutButton" type="button" aria-label="About this engine and its licence"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01"/></svg></button>
             </div>
-            <div class="engine-menu" id="engineList" popover role="listbox" tabindex="-1" aria-labelledby="engineLabel"></div>
             <div class="option-sheet" id="optionPicker" popover><span class="sheet-handle" aria-hidden="true"></span><h2 class="option-title" id="optionPickerTitle"></h2><div class="option-list" id="optionPickerList" role="listbox" tabindex="-1" aria-labelledby="optionPickerTitle"></div></div>
             <div class="engine-status" id="engineStatus" role="status" data-state="idle">
               <span class="engine-status-text" id="engineStatusText"></span>
@@ -564,8 +561,8 @@
       <p class="about-brand"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></p>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
       <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, and export them one by one or together. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
-      <p>The Basic looks are creative approximations, not exact reproductions. The film engines run real film simulations entirely in your browser, downloaded only when you choose one: Spektrafilm (spektrafilm by Andrea Volpato, via the Rust port spektrafilm-rs), Negs (the spektrafilm model on WebGPU) and DuXun (a DaVinci Resolve film plugin, ported to JavaScript).</p>
-      <p>PhotoKamo is free software under the GNU General Public License v3. Each film engine keeps its own licence and credits (choose it under Engine in Looks and use ⓘ next to it).</p>
+      <p>The Basic looks are creative approximations, not exact reproductions. Film looks use Kamo, PhotoKamo’s calibrated spectral engine, and run entirely in your browser. Kamo’s calibration assets download only when you choose a film look.</p>
+      <p>PhotoKamo is free software under the GNU General Public License v3. Kamo keeps its own licence and credits, available through the ⓘ button beside the engine controls.</p>
       <h3 class="engine-sub">Licences</h3>
       <ul class="engine-list" id="licenceList">
         <li>PhotoKamo · <a href="LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>

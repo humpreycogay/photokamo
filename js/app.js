@@ -5,7 +5,6 @@ import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, te
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { filmLooks } from './film-looks.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
-import { createEnginePicker } from './engine-picker.js';
 import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
@@ -32,7 +31,7 @@ const elements = {
   stageHint: $('#advStageHint'), stageHintText: $('#advStageHintText'), advDial: $('#advDial'), dialChips: $('#dialChips'), dialLabel: $('#dialLabel'), dialValue: $('#dialValue'),
   dialReset: $('#dialReset'), dialResetText: $('#dialResetText'), dialRuler: $('#dialRuler'), dialScale: $('#dialScale'), dialDefault: $('#dialDefault'), dialInput: $('#dialInput'), dialEmpty: $('#dialEmpty'), dialBody: $('#dialBody'),
   renderProgress: $('#renderProgress'), renderProgressBar: $('#renderProgressBar'),
-  engineButton: $('#engineButton'), engineList: $('#engineList'), engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
+  engineStatus: $('#engineStatus'), engineStatusText: $('#engineStatusText'),
   engineRetry: $('#engineRetry'),
   engineAboutButton: $('#engineAboutButton'), engineAboutDialog: $('#engineAboutDialog'), engineAboutBody: $('#engineAboutBody'),
   advCredit: $('#advCredit'), advNote: $('#advNote'), presetsView: $('#presetsView'), borderPanel: $('#borderPanel'),
@@ -164,8 +163,8 @@ function toggleFavorite() {
 }
 
 // ---------- My looks (saved Advanced settings, per engine) ----------
-// A look is { id, name, engine, params, thumb }. Looks saved before engines existed have no
-// `engine`: they belong to spektrafilm-rs. Params are normalized by the engine when picked.
+// A look is { id, name, engine, params, thumb }. Missing or retired engines migrate to Kamo;
+// params are normalized by Kamo when the saved look is picked.
 const lookEngine = look => (engineById(look.engine) ? look.engine : legacyEngineId);
 // Small square JPEG of the current preview, stored with a saved look as its thumbnail.
 function previewThumbnail() {
@@ -188,9 +187,8 @@ function saveMyLooks() { try { localStorage.setItem(MY_LOOKS_KEY, JSON.stringify
 // ---------- Built-in film looks (js/film-looks.js; SPEC §2–§4) ----------
 // A built-in look is stored like a My look: state.myLookId = 'film:<slug>', and the photo holds
 // the expanded engine params. "Edited" is worked out by comparing with the expanded look.
-const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-/** The look's engine on this device: the first in its list that suits it (Negs needs WebGPU). Null: hide the look. */
-const pickEngineFor = look => look.engine.find(id => engineById(id) && (id !== 'negs' || hasWebGpu)) || null;
+/** The look's registered engine on this device. Null means the tile is hidden. */
+const pickEngineFor = look => look.engine.find(id => engineById(id)) || null;
 /** The film looks this device can show as tiles (decided by device only, never by what is downloaded). */
 const filmTileLooks = filmLooks.filter(pickEngineFor);
 /** Engine params for a look: the engine's defaults, then each value in order through the engine's own rules. */
@@ -318,11 +316,10 @@ function saveAsMyLook() {
 const escapeHtml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function buildLooks() {
   const presetTile = preset => `<button class="look-tile" type="button" data-preset="${preset.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas></span><span class="look-tile-name">${preset.name}</span></button>`;
-  // Film tiles: a static thumbnail (images/looks/, loaded only when visible) and a download badge.
-  const filmTile = look => `<button class="look-tile" type="button" data-film="${look.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><img src="${look.thumb}" alt="" loading="lazy" decoding="async"><span class="look-badge" hidden></span></span><span class="look-tile-name">${escapeHtml(look.name)}</span></button>`;
+  // Film and Basic tiles use the same bundled sample photo; Film canvases are rendered by Kamo below.
+  const filmTile = look => `<button class="look-tile" type="button" data-film="${look.id}" aria-pressed="false"><span class="look-thumb" aria-hidden="true"><canvas width="200" height="200"></canvas><span class="look-badge" hidden></span></span><span class="look-tile-name">${escapeHtml(look.name)}</span></button>`;
   // Order in All: the Basic presets (their own group), then the film looks by style (lookStyles).
   elements.lookGrid.innerHTML = [...presets.map(presetTile), ...lookStyles.flatMap(([style]) => filmTileLooks.filter(look => look.style === style).map(filmTile))].join('');
-  elements.lookGrid.addEventListener('load', event => { if (event.target.matches?.('.look-thumb img')) event.target.parentElement.classList.add('has-preview'); }, true);
   elements.lookGrid.addEventListener('click', event => {
     const remove = event.target.closest('[data-delete-look]');
     if (remove) { deleteMyLook(remove.dataset.deleteLook); return; }
@@ -368,7 +365,7 @@ const engineBytes = {};
 let savedEngineIds = new Set();
 let manifestsRead = null;
 const downloadBadge = id => (engineBytes[id] >= 1e6 && !savedEngineIds.has(id) ? `${Math.ceil(engineBytes[id] / 1e6)} MB` : '');
-/** Ready without a download: saved on this device, or an engine with no runtime files (DuXun). */
+/** Ready without a download: saved on this device, or an engine with no runtime files (manifest: false). */
 const engineReady = id => savedEngineIds.has(id) || engineById(id)?.manifest === false;
 async function syncDownloadBadges() {
   manifestsRead ||= Promise.all(engines.filter(entry => entry.manifest !== false).map(entry => fetch(new URL('manifest.json', entry.folder))
@@ -442,7 +439,7 @@ function syncLooks() {
     setLookName(name, edited);
     elements.photoLookBadge.textContent = elements.engineLookName.textContent = edited ? `${name} · edited` : name;
     elements.engineCaption.textContent = current ? elements.engineLookName.textContent : 'Film engine'; // phone sheet: over the engine name
-    // Stock names stay visible to experts: "Kodak Portra 400 → Kodak Portra Endura · Spektrafilm".
+    // Stock and output names stay visible to experts.
     elements.lookMeta.textContent = module ? `${module.stockSummary(params)} · ${entry.label}` : `Loading ${entry.label}…`;
     elements.lookDesc.textContent = current?.builtIn ? current.look.description : '';
     elements.lookDesc.hidden = !current?.builtIn;
@@ -574,7 +571,30 @@ function renderPresetPreviews() {
       setTimeout(renderNext, 0);
     };
     renderNext();
+    renderFilmPreviews(image);
   }, error => console.warn(error.message));
+}
+
+/** Render Film thumbnails from the same sample used by Basic, one at a time to avoid competing workers. */
+async function renderFilmPreviews(image) {
+  let module;
+  try { module = await loadEngine('kamo-film-engine'); }
+  catch (error) { console.warn('Could not load Kamo film previews.', error); return; }
+  // 71 tiles of 200 px: render from a ~400 px copy rather than at the 900 px preview size.
+  const scale = Math.min(1, 400 / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+  const source = await createImageBitmap(image, { resizeWidth: Math.round((image.naturalWidth || image.width) * scale), resizeHeight: Math.round((image.naturalHeight || image.height) * scale), resizeQuality: 'high' });
+  for (const look of filmTileLooks) {
+    const canvas = elements.lookGrid.querySelector(`[data-film="${look.id}"] canvas`);
+    if (!canvas) continue;
+    try {
+      const preview = await module.render(source, expandLook(module, look.values['kamo-film-engine']), { quality: 'preview' });
+      drawCover(canvas.getContext('2d'), preview, canvas.width, canvas.height, .3);
+      canvas.closest('.look-thumb').classList.add('has-preview');
+      preview.close?.();
+    } catch (error) { console.warn(`Could not render the ${look.name} film preview.`, error); }
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  source.close?.();
 }
 
 // ---------- Adjust panel ----------
@@ -1250,16 +1270,6 @@ function buildEnginePanel() {
 }
 
 const MB = bytes => (bytes / 1048576).toFixed(1);
-// Engine picker (js/engine-picker.js): names only. Basic (the preset looks), then the film engines.
-const enginePicker = createEnginePicker({
-  button: elements.engineButton, list: elements.engineList, name: $('#engineButtonName'), status: $('#engineButtonStatus'),
-  groups: [
-    { id: 'basic', label: 'Basic', items: [{ id: PRESETS, name: 'Basic' }] },
-    { id: 'film', label: 'Film engines', items: engines.map(entry => ({ id: entry.id, name: entry.label })) }
-  ],
-  onChoose: id => switchEngine(id),
-  place: () => !mobileQuery.matches
-});
 function setEngineStatus(status, error = null) {
   engine.status = status; engine.error = error;
   if (status !== 'preparing') engine.download = null;
@@ -1293,45 +1303,18 @@ function syncEngineWait() {
   const note = failed ? `${entry.label} couldn't load. Your changes are saved; retry from the photo.` : `${entry.label} isn't ready yet. Changes are saved and will apply when it finishes loading.`;
   document.querySelectorAll('[data-engine-wait]').forEach(element => { element.hidden = false; element.textContent = note; });
 }
-// The picker button says only "Loading…" while an engine loads or downloads; a failure shows a line with Retry.
+// The engine name says only "Loading…" while the engine loads or downloads; a failure shows a line with Retry.
 function syncEngineBar() {
   syncEngineWait();
-  enginePicker.setValue(state.engine);
+  $('#engineButtonName').textContent = engineById(state.engine)?.label || 'Basic';
   elements.engineAboutButton.hidden = !isFilm();
   if (isFilm()) elements.engineAboutButton.setAttribute('aria-label', `About ${engineById(state.engine).label} and its licence`);
-  // Phone sheet: the caption ("Film engine" or the My Look) names the button instead of the "Engine" label.
-  elements.engineButton.setAttribute('aria-labelledby', `${sheetQuery.matches && isFilm() ? 'engineButtonCaption' : 'engineLabel'} engineButtonName engineButtonStatus`);
   const status = isFilm() ? engine.status : 'idle';
-  enginePicker.setStatus({ loading: 'Loading…', preparing: 'Loading…', failed: 'Couldn’t load' }[status] || '', status === 'failed' ? 'error' : '');
+  const statusText = { loading: 'Loading…', preparing: 'Loading…', failed: 'Couldn’t load' }[status] || '', statusLine = $('#engineButtonStatus');
+  statusLine.textContent = statusText; statusLine.hidden = !statusText; statusLine.dataset.tone = status === 'failed' ? 'error' : '';
   elements.engineStatus.dataset.state = status;
   elements.engineStatusText.textContent = status === 'failed' ? `${engineById(state.engine).label} couldn’t load. Check your connection and try again.` : '';
   elements.engineRetry.hidden = status !== 'failed';
-}
-/** Engine dropdown: keeps each engine's own settings and carries over the shared ones (film, exposure, grain, halation).
- *  Adjust edits and the frame stay. One undo step. */
-async function switchEngine(id) {
-  if (id === state.engine || (id !== PRESETS && !engineById(id))) return;
-  if (id === PRESETS) { change(() => { state.engine = PRESETS; state.myLookId = null; }); return; }
-  const previous = snapshot();
-  const fromModule = activeModule(); const fromParams = advParams();
-  state.engine = id; state.myLookId = null;
-  syncControls(); // shows the loading state and starts activateEngine
-  let module;
-  try { module = await activateEngine(id); }
-  catch { commit(previous); return; }
-  if (state.engine !== id) return;
-  if (fromModule?.shared && module.shared && fromParams) {
-    const params = advParams();
-    for (const [key, fromPath] of Object.entries(fromModule.shared)) {
-      const toPath = module.shared[key]; const control = toPath && module.controlByPath[toPath];
-      const value = fromParams[fromPath];
-      if (!control || typeof value !== typeof params[toPath]) continue;
-      if (control.kind === 'select' && !control.options.includes(value)) continue;
-      if (control.kind === 'float' && (value < control.min || value > control.max)) continue;
-      params[toPath] = value;
-    }
-  }
-  commit(previous); syncControls(); scheduleRender();
 }
 async function openEngineAbout() {
   const entry = engineById(state.engine);
@@ -1370,6 +1353,7 @@ function syncAdvancedPanel() {
   syncEngineBar();
   const module = activeModule();
   if (module && engine.builtFor === state.engine) {
+    if (module.sectionVisible && !module.sectionVisible(state.advStep, advParams())) state.advStep = module.sections.find(section => module.sectionVisible(section.id, advParams()))?.id;
     syncAdvanced(advancedRoots, module, advParams(), { open: state.advOpen, current: state.advStep, mobile: mobileQuery.matches, sheet: sheetQuery.matches });
   }
   document.querySelector('.advanced-panel').classList.toggle('is-loading', !module);
@@ -1400,19 +1384,11 @@ function setAdvancedValue(path, raw) {
 }
 function resetAdvanced(path) {
   const module = activeModule(); if (!module) return;
-  // An engine may define per-setting defaults that depend on other settings (DuXun: the film's preset).
+  // An engine may define per-setting defaults that depend on other settings (Kamo: the film stock).
   const fallback = module.defaultFor ? module.defaultFor(advParams(), path) : module.controlByPath[path].default;
   change(() => { advParams()[path] = Array.isArray(fallback) ? [...fallback] : fallback; });
 }
 function buildAdvancedPanel() {
-  // Desktop: reaching for the picker loads the other engines' code (tens of KB) so a switch
-  // starts at once; their large files still wait until the engine is chosen.
-  const prefetchEngines = () => {
-    if (!matchMedia('(pointer: fine)').matches) return;
-    for (const entry of engines) if (entry.id !== state.engine) loadEngine(entry.id).catch(() => {});
-  };
-  elements.engineButton.addEventListener('pointerenter', prefetchEngines, { once: true });
-  elements.engineButton.addEventListener('focus', prefetchEngines, { once: true });
   const retryEngine = () => { if (activeModule()) warmEngine(); else activateEngine().catch(() => {}); };
   elements.engineRetry.addEventListener('click', retryEngine);
   elements.engineWaitRetry.addEventListener('click', retryEngine);

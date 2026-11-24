@@ -1,0 +1,15 @@
+{
+  "name": "Kamo Film Engine",
+  "summary": "PhotoKamo’s dependency-free spectral film model, using datasheet-derived film, paper and cinema-print calibration data.",
+  "version": "0.1.0",
+  "licence": { "name": "Proprietary", "url": "https://github.com/humpreycogay/photokamo" },
+  "source": { "local": "engines/kamo-film-engine/" },
+  "credits": [
+    { "name": "Film Scan Calibration", "by": "OwlMightyCh", "role": "Digitized film, paper and equipment calibration data", "url": "https://github.com/OwlMightyCh/film-scan-calibration", "licence": "CC BY 4.0" }
+  ],
+  "dataLicences": [
+    { "name": "Film Scan Calibration data licence (CC BY 4.0)", "file": "data/film-scan-calibration/LICENSE-DATA.txt" },
+    { "name": "Calibration attribution and third-party standards notice", "file": "data/film-scan-calibration/ATTRIBUTION.md" }
+  ],
+  "changes": ["Adapted to PhotoKamo’s grouped engine controls and Web Worker runtime; calibration data is unmodified."]
+}

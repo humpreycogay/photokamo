@@ -29,8 +29,7 @@
 <body>
   <h1>Film look thumbnails</h1>
   <p>Renders a square crop of <code>images/model.jpg</code> through every look in <code>js/film-looks.js</code> at full quality, with the look's
-    <strong>first</strong> engine (the one the app uses on a WebGPU device), then saves each one as a small JPEG.
-    Download the ZIP and unzip it into <code>images/looks/</code>. Use a browser with WebGPU (desktop Chrome or Edge) so Negs runs on the GPU.</p>
+    Kamo, then saves each one as a small JPEG. Download the ZIP and unzip it into <code>images/looks/</code>.</p>
   <form id="options">
     <label>Size (px)<input id="size" type="number" min="64" max="512" step="8" value="240"></label>
     <label>Render edge (px)<input id="edge" type="number" min="128" max="2048" step="32" value="480"></label>
@@ -128,6 +127,7 @@
       link.href = URL.createObjectURL(zip); link.download = 'photokamo-look-thumbs.zip'; link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 10000);
     });
+    if (new URLSearchParams(location.search).has('auto')) $('#options').requestSubmit();
   </script>
 </body>
 </html>
