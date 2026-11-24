@@ -1,5 +1,5 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
-import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics } from './optics/index.js';
+import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls } from './optics/index.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -697,6 +697,36 @@ function syncAdjustments() {
   syncMobileAdjust();
 }
 
+// ---------- Lens panel (optics before the look: js/optics, plan_optics.md) ----------
+function formatLens(control, value) {
+  const text = control.step < 1 ? value.toFixed(2) : String(Math.round(value));
+  return `${Number(text) === 0 ? '0' : `${control.signed && value > 0 ? '+' : ''}${text}`}${control.unit ? ` ${control.unit}` : ''}`;
+}
+const lensEdits = () => opticsControls.filter(control => state.optics[control.path] !== control.default);
+function buildLens() {
+  const panel = $('#lensControls');
+  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section"><h3>${section.title}</h3>${section.controls.map(({ path, label, min, max, step, hint }) => `<div class="slider-row"><label class="slider-label" for="lens-${path}"><span>${label}</span><output id="lensOut-${path}" for="lens-${path}">0</output></label><input id="lens-${path}" data-lens="${path}" type="range" min="${min}" max="${max}" step="${step}" aria-describedby="lensHint-${path}"><p class="slider-hint" id="lensHint-${path}">${hint}</p></div>`).join('')}</section>`).join('');
+  bindHistorySlider(panel, '[data-lens]', input => { state.optics = normalizeOptics({ ...state.optics, [input.dataset.lens]: Number(input.value) }); syncLens(); scheduleRender(); });
+  panel.addEventListener('dblclick', event => {
+    const path = event.target.closest('[data-lens]')?.dataset.lens;
+    if (path && lensEdits().some(control => control.path === path)) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: undefined }); });
+  });
+  $('#resetLens').addEventListener('click', () => change(() => { state.optics = defaultOptics(); }));
+}
+function syncLens() {
+  for (const control of opticsControls) {
+    const input = $(`#lens-${control.path}`), value = state.optics[control.path];
+    if (document.activeElement !== input || Number(input.value) !== value) input.value = value;
+    const output = $(`#lensOut-${control.path}`);
+    output.value = formatLens(control, value);
+    output.classList.toggle('is-edited', value !== control.default);
+  }
+  const count = lensEdits().length;
+  $('#lensBadge').hidden = !count;
+  $('#lensBadge').innerHTML = count ? `${count}<span class="visually-hidden"> edited</span>` : '';
+  $('#resetLens').disabled = !count;
+}
+
 // ---------- Frames ----------
 function buildFrames() {
   elements.frameGrid.innerHTML = frames.map(frame => `<button class="frame-card" type="button" data-frame="${frame.id}" aria-pressed="false"><span class="frame-sample"><i></i></span><strong>${frame.name}</strong><small>${frame.description}</small></button>`).join('');
@@ -723,6 +753,7 @@ function buildFrames() {
 const APPLY_ROWS = {
   looks: { label: 'look', name: 'Look', parts: { look: true } },
   adjust: { label: 'adjustments', name: 'Adjustments', parts: { adjustments: true, exposure: true } }, // everything in the Adjust tab
+  lens: { label: 'lens effects', name: 'Lens', parts: { lens: true } },
   crop: { label: 'crop ratio', name: 'Crop ratio', parts: { crop: true } }, // centred on each photo, like the Apply dialog
   frame: { label: 'frame', name: 'Frame', parts: { frame: true } }, // the frame, its colour and print border settings
   text: { label: 'text', name: 'Text', parts: { text: true }, shown: () => state.text.length > 0 } // never clears the others by accident
@@ -1500,6 +1531,7 @@ function syncControls() {
   syncEngineView();
   syncAdvancedPanel();
   syncAdjustments();
+  syncLens();
   syncFrames();
   syncCrop();
   syncText();
@@ -2110,7 +2142,7 @@ function buildStrip() {
 
 // ---------- Apply to selected + live editing (SPEC §4 D) ----------
 const APPLY_PARTS_KEY = 'photokamo:apply-parts';
-const APPLY_DEFAULTS = { look: true, adjustments: true, frame: true, text: false, crop: false, exposure: false };
+const APPLY_DEFAULTS = { look: true, adjustments: true, lens: true, frame: true, text: false, crop: false, exposure: false };
 const EXPOSURE_KEYS = ['exposure', 'temperature', 'tint'];
 function loadApplyParts() {
   try { const value = JSON.parse(localStorage.getItem(APPLY_PARTS_KEY) || '{}'); return Object.fromEntries(Object.keys(APPLY_DEFAULTS).map(key => [key, typeof value[key] === 'boolean' ? value[key] : APPLY_DEFAULTS[key]])); }
@@ -2123,6 +2155,7 @@ function mergeSettings(target, source, parts) {
   const settings = structuredClone(target.settings);
   if (parts.look) settings.look = structuredClone(source.look);
   settings.edits = { ...pickEdits(parts.adjustments ? source.edits : settings.edits, false), ...pickEdits(parts.exposure ? source.edits : settings.edits, true) };
+  if (parts.lens) settings.optics = normalizeOptics(source.optics);
   if (parts.frame) settings.frame = structuredClone(source.frame);
   if (parts.text) settings.text = cloneTexts(source.text);
   // Crop: the ratio only, centred at zoom 1 on each photo (their rotation, flip and straighten stay).
@@ -2154,6 +2187,7 @@ function applySummaries() {
   return {
     look,
     adjustments: adjustments.length ? adjustments.slice(0, 3).join(' · ') + (adjustments.length > 3 ? ` · +${adjustments.length - 3} more` : '') : 'None (clears theirs)',
+    lens: lensEdits().map(control => `${control.label} ${formatLens(control, state.optics[control.path])}`).join(' · ') || 'None (clears theirs)',
     text: state.text.length ? state.text.map(text => `“${text.content.split('\n')[0].slice(0, 20)}”`).join(' · ') : 'None (clears theirs)',
     frame: state.frame.id === 'paper' ? `${frame} · ${state.frame.border.width}% border` : frame,
     crop: `${ratioLabel(state.crop)}${state.crop.swapped ? ' (swapped)' : ''}, centered on each photo (position is not copied)`,
@@ -2650,7 +2684,7 @@ function buildBatch() {
 }
 
 // ---------- Wiring ----------
-buildLooks(); buildAdjustments(); buildMobileAdjust(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
+buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
 // Download badges once the page is idle: two small manifest files, no engine code.
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges(), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
@@ -3063,9 +3097,3 @@ document.addEventListener('keyup', event => { if (event.key === '\\') setHolding
     }, lift);
   });
 }
-
-// Temporary test hook for the optics stage until the Lens panel exists (plan_optics.md Task 1; removed in Task 2).
-window.photokamoOptics = {
-  get: () => ({ ...state.optics }),
-  set: values => change(() => { state.optics = normalizeOptics({ ...state.optics, ...values }); }),
-};

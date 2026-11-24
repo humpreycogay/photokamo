@@ -311,7 +311,7 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .batch-card .export-status { margin:0; font-size:var(--fs-md); color:var(--text-2); }
 .batch-card .export-status:empty { display:none; }
 .apply-actions .button { min-height:var(--tap); }
-.control-tabs { flex:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:16px 20px 0; padding:4px; border-radius:12px; background:var(--bg); }
+.control-tabs { flex:none; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin:16px 20px 0; padding:4px; border-radius:12px; background:var(--bg); }
 .control-tabs button { min-height:40px; border:0; border-radius:9px; background:transparent; color:var(--text-muted); font-weight:500; cursor:pointer; }
 .control-tabs button:hover { color:var(--text); }
 .control-tabs button[aria-selected=true] { background:var(--control); color:var(--text); font-weight:600; }
@@ -396,6 +396,7 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .slider-label output { min-width:45px; text-align:right; color:var(--text-muted); font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
 .slider-label output.is-edited { color:var(--accent); font-weight:600; }
 .slider-row input { width:100%; accent-color:var(--accent); cursor:pointer; }
+.slider-hint { margin:4px 0 0; font-size:var(--fs-sm); line-height:1.4; color:var(--text-muted); }
 
 /* Frames */
 .frame-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -904,8 +905,9 @@ body.is-film .render-divider { display:block; }
   .engine-row .icon-button { flex:none; width:var(--tap); height:var(--tap); order:2; }
   .engine-look-name { order:1; } .engine-apply { order:3; }
   .apply-live { margin-top:-4px; }
-  #cropPanel .panel-heading { margin-bottom:10px; }
-  #cropPanel .panel-heading h2 { font-size:var(--fs-lg); }
+  #cropPanel .panel-heading,#lensPanel .panel-heading { margin-bottom:10px; }
+  #cropPanel .panel-heading h2,#lensPanel .panel-heading h2 { font-size:var(--fs-lg); }
+  #resetLens { min-height:var(--tap); }
   .ratio-grid { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:max-content; overflow-x:auto; scrollbar-width:none; margin-inline:-16px; padding:2px 16px; }
   .ratio-tile { flex-direction:row; min-height:var(--tap); padding:0 16px; border-radius:22px; font-size:var(--fs-md); }
   .ratio-shape { display:none; }
@@ -1034,7 +1036,7 @@ body[data-tab=text] :is(.view-pill,.view-pill *,.fullscreen-button,.engine-wait,
   .control-tabs button { font-size:var(--fs-xs); }
   /* `.scroll-panel` is overflow:visible above for compact tool tabs. Text and Frames are the
      exceptions: their full option lists must own the scroll area, especially in iOS Safari. */
-  #textPanel,#framePanel,#cropPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
+  #textPanel,#framePanel,#cropPanel,#lensPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
   #framePanel { padding:14px 0 max(36px,env(safe-area-inset-bottom)); }
   .text-panel textarea,.crop-platform select,.adv-select select { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
   /* Typing in any tab: the app is pinned to the area above the keyboard (syncKeyboard in app.js),

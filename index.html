@@ -195,6 +195,7 @@
       <div class="control-tabs" role="tablist" aria-label="Editor panels">
         <button role="tab" type="button" aria-selected="true" aria-controls="looksPanel" id="looksTab"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="10" r="5"/><circle cx="15" cy="10" r="5"/><circle cx="12" cy="15" r="5"/></svg><span class="tab-label">Looks</span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="tab-label">Adjust</span> <span class="tab-badge" id="adjustBadge" hidden></span></button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="lensPanel" id="lensTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.3 3.3 9.5 11.6M20.6 9.5h-9.6M18.6 17.6 13.8 9.3M9.7 20.7l4.8-8.3M3.4 14.5h9.6M5.4 6.4l4.8 8.3"/></svg><span class="tab-label">Lens</span> <span class="tab-badge" id="lensBadge" hidden></span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="cropPanel" id="cropTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span class="tab-label">Crop</span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10"/></svg><span class="tab-label">Frames</span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="textPanel" id="textTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg><span class="tab-label">Text</span></button>
@@ -322,6 +323,16 @@
           <div class="frame-apply-all" id="adjustApplyAll" hidden>
             <button class="button button-ghost" id="adjustApplySelectedButton" type="button">Apply to selected photos</button>
             <button class="button button-ghost" id="adjustApplyAllButton" type="button">Apply to all photos</button>
+          </div>
+        </section>
+
+        <section class="tab-panel scroll-panel" id="lensPanel" role="tabpanel" aria-labelledby="lensTab" hidden>
+          <div class="panel-heading"><h2>Lens</h2><button class="text-button" id="resetLens" type="button">Reset lens</button></div>
+          <p class="panel-intro">How the camera lens draws the light. Applied before your look, so film looks respond to it.</p>
+          <div id="lensControls"></div>
+          <div class="frame-apply-all" id="lensApplyAll" hidden>
+            <button class="button button-ghost" id="lensApplySelectedButton" type="button">Apply to selected photos</button>
+            <button class="button button-ghost" id="lensApplyAllButton" type="button">Apply to all photos</button>
           </div>
         </section>
 
@@ -531,6 +542,7 @@
         <legend>What to copy</legend>
         <label class="apply-part"><input type="checkbox" name="look"><span><strong>Look</strong><small id="applySumLook"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="adjustments"><span><strong>Adjustments</strong><small id="applySumAdjustments"></small></span></label>
+        <label class="apply-part"><input type="checkbox" name="lens"><span><strong>Lens</strong><small id="applySumLens"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="frame"><span><strong>Frame</strong><small id="applySumFrame"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="text"><span><strong>Text</strong><small id="applySumText"></small></span></label>
         <label class="apply-part"><input type="checkbox" name="crop"><span><strong>Crop ratio</strong><small id="applySumCrop"></small></span></label>
