@@ -857,7 +857,7 @@ function syncLens() {
 
 // ---------- Frames ----------
 function buildFrames() {
-  elements.frameGrid.innerHTML = frames.map(frame => `<button class="frame-card" type="button" data-frame="${frame.id}" aria-pressed="false"><span class="frame-sample"><i></i></span><strong>${frame.name}</strong><small>${frame.description}</small></button>`).join('');
+  elements.frameGrid.innerHTML = frames.map(frame => `<button class="frame-card" type="button" data-frame="${frame.id}" aria-pressed="false"><span class="frame-sample"><i></i><img alt=""></span><strong>${frame.name}</strong><small>${frame.description}</small></button>`).join('');
   elements.frameGrid.addEventListener('click', event => { const card = event.target.closest('[data-frame]'); if (card) change(() => { state.frame.id = card.dataset.frame; }); });
   // Paper print border: size presets set the width; sliders, paper colour, match-the-print-paper.
   $('#borderSizes').innerHTML = borderSizes.map(size => `<button type="button" role="radio" data-border-size="${size.id}" aria-checked="false">${size.name}</button>`).join('');
@@ -956,6 +956,7 @@ function syncFrames() {
     label.style.setProperty('--custom-color', custom.value);
     label.classList.toggle('is-selected', Boolean(color) && !FRAME_SWATCHES.some(([hex]) => hex === color));
   }
+  syncFramePreview();
   syncApplyButtons();
   syncRadios($('#borderSizes'), 'data-border-size', border.size);
   for (const [key, output, prefix] of [['width', '#borderWidthOutput', ''], ['bottom', '#borderBottomOutput', '+']]) {
@@ -973,14 +974,19 @@ function syncFrames() {
   paperLabel.style.setProperty('--custom-color', paperCustom.value);
   paperLabel.classList.toggle('is-selected', Boolean(isCustom));
 }
-/** Frame cards preview the photo in view instead of a placeholder. */
-function syncFramePreview(photo) {
-  const thumb = photo?.thumb;
-  if (!thumb) { elements.frameGrid.style.removeProperty('--frame-img'); return; }
-  const scale = Math.min(1, 160 / Math.max(thumb.width, thumb.height)), canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(thumb.width * scale)); canvas.height = Math.max(1, Math.round(thumb.height * scale));
-  canvas.getContext('2d').drawImage(thumb, 0, 0, canvas.width, canvas.height);
-  elements.frameGrid.style.setProperty('--frame-img', `url("${canvas.toDataURL('image/jpeg', .8)}")`);
+/** Frame cards show each frame really drawn around the photo in view (cropped, at its own shape). */
+let framePreviewKey = '';
+function syncFramePreview(photo = activePhoto()) {
+  const thumb = photo?.thumb, key = thumb ? `${state.imageId}|${JSON.stringify(state.crop)}` : '';
+  if (key === framePreviewKey) return;
+  framePreviewKey = key;
+  elements.frameGrid.classList.toggle('has-photo', Boolean(thumb));
+  if (!thumb) return;
+  const source = isIdentityCrop(state.crop) ? thumb : cropSource(thumb, state.crop, 200);
+  elements.frameGrid.querySelectorAll('[data-frame]').forEach(card => {
+    const out = frameCanvas(source, frameFor({ id: card.dataset.frame, border: defaultBorder }));
+    card.querySelector('img').src = out.toDataURL('image/jpeg', .82);
+  });
 }
 
 // ---------- Crop ----------

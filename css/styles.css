@@ -420,10 +420,15 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .frame-card { border:1px solid var(--line); border-radius:var(--radius); padding:9px; background:var(--raised); cursor:pointer; text-align:left; color:var(--text); }
 .frame-card:hover { border-color:var(--line-strong); }
 .frame-card[aria-pressed=true] { border-color:transparent; box-shadow:var(--ring-selected); }
-.frame-sample { height:88px; display:grid; place-items:center; background:var(--stage-print); border-radius:6px; margin-bottom:8px; }
+.frame-sample { height:112px; display:grid; place-items:center; background:var(--stage-print); border-radius:6px; margin-bottom:8px; }
 /* --frame-img: the photo in view (set from app.js), else a placeholder */
 .frame-grid { --frame-img:linear-gradient(145deg,#e9b56d 0 38%,#526f61 38%); }
 .frame-sample i { display:block; width:74%; height:62%; background:var(--frame-img) center / cover; }
+.frame-sample { position:relative; }
+.frame-sample img { display:none; position:absolute; inset:6px; width:calc(100% - 12px); height:calc(100% - 12px); object-fit:contain; filter:drop-shadow(0 1px 3px #0008); }
+.frame-grid.has-photo .frame-sample i { display:none; }
+.frame-grid.has-photo .frame-card .frame-sample { background:var(--stage-print); }
+.frame-grid.has-photo .frame-sample img { display:block; } /* the real frame, drawn by frameCanvas */
 .frame-card[data-frame=paper] i { border:6px solid var(--paper); border-bottom-width:11px; box-shadow:0 2px 4px #0003; }
 .frame-card[data-frame=classic] i { border:8px solid #151514; }
 .frame-card[data-frame=gallery] i { width:60%; height:50%; outline:1px solid rgba(30,30,28,.6); outline-offset:3px; box-shadow:0 0 0 12px var(--paper); }
@@ -942,7 +947,7 @@ body.is-film .render-divider { display:block; }
   .engine-wait { top:auto; bottom:64px; transform:translateX(-50%); width:max-content; }
   .frame-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:2px 16px; }
   .frame-card { padding:6px; }
-  .frame-sample { height:60px; margin-bottom:6px; }
+  .frame-sample { height:76px; margin-bottom:6px; }
   .frame-card small { display:none; }
 
   /* Film engine on mobile: its controls live in the Looks tab, under a shorter photo */
