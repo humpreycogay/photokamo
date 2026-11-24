@@ -29,12 +29,15 @@ Licences as reported on 2026-11-24; not re-audited at a pinned commit, because n
 | Topic | Reference | Used for |
 |---|---|---|
 | Lens geometry, thin lens, depth of field | MIT Vision Book, Lenses: https://visionbook.mit.edu/lenses.html | Tasks 6–7 |
-| Cameras and lenses | Berkeley CS184 lecture 15 (2022) | Thin lens, aperture, CoC |
+| Cameras and lenses | Berkeley CS184 lecture 15 (2022): https://cs184.eecs.berkeley.edu/public/sp22/lectures/lec-15-cameras-and-lenses/lec-15-cameras-and-lenses.pdf | Thin lens, aperture, CoC |
 | Thin-lens image formation | Wandell, *Foundations of Image Systems Engineering*: https://wandell.github.io/FISE-git/chapters/optics-03-thinlens.html | Tasks 6–7, 9 |
-| Glare and scattering | Spencer, Shirley, Zimmerman, Greenberg, *Physically-Based Glare Effects for Digital Images*, SIGGRAPH 1995 | Task 4 bloom and glare |
+| Glare and scattering | Spencer, Shirley, Zimmerman, Greenberg, *Physically-Based Glare Effects for Digital Images*, SIGGRAPH 1995: https://www.graphics.cornell.edu/pubs/1995/SSZG95.pdf | Task 4 bloom and glare |
 | Radial distortion | Brown–Conrady radial polynomial (standard photogrammetry) | Task 3 |
 | Diffraction | Airy disk, first minimum `r ≈ 1.22 λ N` (standard optics) | Task 9 |
 | sRGB transfer | IEC 61966-2-1 piecewise sRGB curve | Linear-light decode and encode |
+| Lens correction models (cross-check) | Lensfun documentation: https://lensfun.github.io/ | Task 3 distortion; no code or data used |
+
+The About dialog (`index.html`, “Lens references”) lists these sources for users; keep the two in step.
 
 ## Implemented models
 
