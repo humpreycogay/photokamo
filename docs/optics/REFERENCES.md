@@ -41,3 +41,5 @@ Licences as reported on 2026-11-24; not re-audited at a pinned commit, because n
 | Effect | File | Model | Limitations |
 |---|---|---|---|
 | Light falloff | `js/optics/pipeline.js` | Gain `2^(E · s(r)/s(1))` in linear light; `s` is a smoothstep around the midpoint; `r` is normalised to the half-diagonal | Artistic approximation, not a measured lens profile; brightening clips at white (no shoulder until Task 4) |
+| Distortion | `js/optics/pipeline.js` | Inverse-mapped radial polynomial `p·(1 + k1·r²)`, k1 = −0.15·d, bilinear in linear light; auto-fill zoom keeps every frame-edge sample inside the photo | One term (k1); k2 comes with profiles. Bilinear resampling softens very slightly when on |
+| Colour fringing | `js/optics/pipeline.js` | Lateral CA: red (positive) or blue (negative) image magnified by up to 0.5 % at the corners, in the same resample | Lateral only; no longitudinal (depth-dependent) CA |

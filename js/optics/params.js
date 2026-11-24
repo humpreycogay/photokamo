@@ -5,6 +5,12 @@
 
 /** `amount: true` marks a control that turns its effect on; the others only shape it. */
 export const sections = [
+  { id: 'geometry', title: 'Geometry', controls: [
+    { path: 'distortion', label: 'Distortion', min: -100, max: 100, step: 1, default: 0, signed: true, amount: true,
+      hint: 'Negative bows straight lines outwards (barrel), positive pinches them in (pincushion). The frame stays filled, so strong values crop the edges slightly.' },
+    { path: 'fringing', label: 'Colour fringing', min: -100, max: 100, step: 1, default: 0, signed: true, amount: true,
+      hint: 'Colour edges that grow towards the corners (lateral chromatic aberration). Positive gives red/cyan fringes, negative blue/yellow.' },
+  ] },
   { id: 'falloff', title: 'Light falloff', controls: [
     { path: 'falloff', label: 'Falloff', min: -3, max: 1, step: .05, default: 0, unit: 'EV', signed: true, amount: true,
       hint: 'Exposure change at the corners, in stops, as a lens dims towards the edge of the frame. Positive values brighten the corners.' },

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoKamo · optics test fixtures (dev tool)</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <!-- Dev-only page (plan_optics.md Task 3). Not linked from the app. Serve the repo root
+       (python -m http.server 8080) and open http://localhost:8080/tools/optics-fixtures.html
+       Every fixture is drawn in code, so there are no third-party test images. -->
+  <style>
+    body { margin:0; padding:24px; background:#121210; color:#f3f1ea; font:14px/1.45 system-ui, sans-serif; }
+    h1 { margin:0 0 6px; font-size:20px; }
+    p { max-width:75ch; color:#c9c7be; }
+    form { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px 20px; align-items:end; margin:16px 0; }
+    label { display:flex; flex-direction:column; gap:4px; font-weight:600; }
+    label span { display:flex; justify-content:space-between; }
+    output { color:#4fc4b4; font-variant-numeric:tabular-nums; }
+    select { min-height:44px; padding:0 8px; border:1px solid #3a3a35; border-radius:8px; background:#242421; color:inherit; font:inherit; }
+    input[type=range] { width:100%; min-height:44px; accent-color:#4fc4b4; }
+    button { min-height:44px; padding:0 16px; border:0; border-radius:10px; background:#f3f1ea; color:#121210; font:inherit; font-weight:600; cursor:pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #4fc4b4; outline-offset:2px; }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    figure { margin:0; }
+    figcaption { margin-bottom:6px; color:#c9c7be; }
+    canvas { display:block; width:100%; height:auto; border-radius:8px; background:#242421; image-rendering:pixelated; }
+    #status { min-height:1.45em; color:#4fc4b4; }
+  </style>
+</head>
+<body>
+  <h1>Optics test fixtures</h1>
+  <p>Synthetic images for checking the Lens effects: straight lines for distortion, colour edges for fringing, a grey field for falloff and point lights for bloom. The right image runs the same pipeline the app's Worker runs.</p>
+  <form id="form">
+    <label>Fixture
+      <select id="fixture">
+        <option value="grid">Radial grid</option>
+        <option value="edges">Colour edges</option>
+        <option value="grey">Grey field (18 %)</option>
+        <option value="lights">Point lights</option>
+        <option value="sample">Sample photo</option>
+      </select>
+    </label>
+    <label>Size
+      <select id="size"><option value="900">900 px</option><option value="1800">1800 px</option><option value="3600">3600 px</option></select>
+    </label>
+  </form>
+  <form id="controls"></form>
+  <p><button type="button" id="download">Download result (PNG)</button></p>
+  <p id="status" aria-live="polite"></p>
+  <div class="pair">
+    <figure><figcaption>Before</figcaption><canvas id="before"></canvas></figure>
+    <figure><figcaption>After</figcaption><canvas id="after"></canvas></figure>
+  </div>
+  <script type="module">
+    import { sections, defaultOptics } from '../js/optics/params.js';
+    import { applyOptics } from '../js/optics/pipeline.js';
+    const $ = selector => document.querySelector(selector);
+    const optics = defaultOptics();
+    $('#controls').innerHTML = sections.flatMap(section => section.controls).map(({ path, label, min, max, step, default: value, unit }) =>
+      `<label><span>${label}<output id="out-${path}">${value}${unit ? ` ${unit}` : ''}</output></span><input type="range" data-path="${path}" min="${min}" max="${max}" step="${step}" value="${value}"></label>`).join('');
+
+    const sample = new Image(); sample.src = '../images/model.jpg';
+    function draw(kind, size) {
+      const W = size, H = Math.round(size * 2 / 3), canvas = new OffscreenCanvas(W, H), ctx = canvas.getContext('2d');
+      const u = W / 900; // drawing unit, so every size shows the same picture
+      if (kind === 'grid') {
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#000'; ctx.lineWidth = 2 * u;
+        for (let x = W / 2 % (45 * u); x < W; x += 45 * u) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = H / 2 % (45 * u); y < H; y += 45 * u) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+        ctx.strokeStyle = '#c00';
+        for (let r = 90 * u; r < W; r += 90 * u) { ctx.beginPath(); ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2); ctx.stroke(); }
+      } else if (kind === 'edges') {
+        const cell = 60 * u;
+        for (let y = 0; y < H; y += cell) for (let x = 0; x < W; x += cell) { ctx.fillStyle = ((x + y) / cell) % 2 ? '#fff' : '#000'; ctx.fillRect(x, y, cell, cell); }
+        ['#e33', '#3c3', '#36e', '#fc2'].forEach((color, i) => { ctx.fillStyle = color; ctx.fillRect(W * (.08 + i * .23), H * .42, cell * 2, cell * 1.2); });
+      } else if (kind === 'grey') {
+        ctx.fillStyle = 'rgb(118,118,118)'; ctx.fillRect(0, 0, W, H); // 18 % reflectance in sRGB
+      } else if (kind === 'lights') {
+        ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff';
+        for (let j = 0; j < 5; j++) for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.arc(W * (i + .5) / 7, H * (j + .5) / 5, (1 + (i + j) % 3) * 1.5 * u, 0, Math.PI * 2); ctx.fill(); }
+      } else {
+        const scale = Math.max(W / sample.naturalWidth, H / sample.naturalHeight);
+        ctx.drawImage(sample, (W - sample.naturalWidth * scale) / 2, (H - sample.naturalHeight * scale) / 2, sample.naturalWidth * scale, sample.naturalHeight * scale);
+      }
+      return ctx.getImageData(0, 0, W, H);
+    }
+    let frame = 0;
+    function render() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const image = draw($('#fixture').value, Number($('#size').value));
+        for (const id of ['before', 'after']) { $(`#${id}`).width = image.width; $(`#${id}`).height = image.height; }
+        $('#before').getContext('2d').putImageData(image, 0, 0);
+        const start = performance.now();
+        applyOptics(image, optics);
+        $('#after').getContext('2d').putImageData(image, 0, 0);
+        $('#status').textContent = `${image.width} × ${image.height} · ${Math.round(performance.now() - start)} ms · ${JSON.stringify(optics)}`;
+      });
+    }
+    $('#controls').addEventListener('input', event => {
+      const { path } = event.target.dataset; if (!path) return;
+      optics[path] = Number(event.target.value);
+      const unit = sections.flatMap(section => section.controls).find(control => control.path === path).unit;
+      $(`#out-${path}`).textContent = `${event.target.value}${unit ? ` ${unit}` : ''}`;
+      render();
+    });
+    $('#form').addEventListener('change', render);
+    $('#download').addEventListener('click', () => $('#after').toBlob(blob => {
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `optics-${$('#fixture').value}.png`; link.click();
+    }));
+    sample.decode().catch(() => {}).finally(render);
+  </script>
+</body>
+</html>
