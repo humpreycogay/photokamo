@@ -23,11 +23,18 @@
 // Bloom (glare): bright light above a soft-knee threshold on linear luminance is blurred at four scales,
 //   weighted, tinted and added: out = I + α·Σ wᵢ·Gᵢ ∗ T(I). It adds light, so encoding rolls highlights off
 //   with a shoulder instead of clipping.
+// Depth of field (simulated): one photo has no depth, so a mask m(x, y) from the Focus area controls stands in
+//   for it: 0 where the subject is sharp, 1 for a background at infinity. The thin-lens blur circle for a
+//   point at infinity with the lens focused at distance s is c = f² / (N·(s − f)) on the format; the blur
+//   radius at a pixel is m · c / 2. Blur levels (Gaussian, σ ≈ r/2, radii doubling) are built on the working
+//   grid by normalized convolution, blur(I·w) / blur(w) with w ≈ m, so the sharp subject doesn't bleed into
+//   the blurred background; each pixel mixes its two nearest levels. Aperture shapes come with bokeh (Task 8).
 // Blur sizes are fractions of the half-diagonal, so they look the same at every image size.
 // All are artistic approximations of lens behaviour, not measured lens profiles.
 import { normalizeOptics } from './params.js';
 import { toLinear, encode, encodeShoulder, linearOf } from './color.js';
 import { downsample, blur, upsampler } from './layers.js';
+import { formatById } from './formats.js';
 
 const smoothstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
@@ -83,7 +90,7 @@ export function applyOptics(image, optics) {
   const o = normalizeOptics(optics);
   const { data, width, height } = image;
   const falloff = falloffTable(o), geo = geometry(o, width, height);
-  if (!falloff && !geo) return o.diffusion || o.bloom ? applyGlow(image, o) : image;
+  if (!falloff && !geo) return afterGeometry(image, o);
   const steps = falloff ? falloff.length - 1 : 0;
   const cx = (width - 1) / 2, cy = (height - 1) / 2, inv = 1 / Math.hypot(width / 2, height / 2);
   const src = geo ? data.slice() : data;
@@ -106,7 +113,65 @@ export function applyOptics(image, optics) {
       if (geo) data[i + 3] = 255;
     }
   }
+  return afterGeometry(image, o);
+}
+
+/** Passes after geometry and falloff: depth of field, then diffusion and bloom. */
+function afterGeometry(image, o) {
+  if (o.focusMode !== 'none') applyFocus(image, o);
   return o.diffusion || o.bloom ? applyGlow(image, o) : image;
+}
+
+/** Background blur radius (blur circle / 2 for a point at infinity) as a fraction of the half-diagonal. */
+export function focusBlurRadius(o) {
+  const format = formatById(o.format) || formatById('35mm'), f = o.focal, s = Math.max(o.subjectDistance * 1000, f * 1.1);
+  const circle = f * f / (o.aperture * (s - f));
+  return Math.min(.25, circle / 2 / Math.hypot(format.long / 2, format.short / 2));
+}
+/** m(x, y) for a width × height image: 0 inside the sharp area, rising to 1 across the feather. */
+export function focusMask(o, width, height) {
+  const D = Math.hypot(width / 2, height / 2), fx = o.focusX / 100 * (width - 1), fy = o.focusY / 100 * (height - 1);
+  const R = o.focusSize / 100, F = .02 + .98 * o.focusFeather / 100, angle = o.focusAngle * Math.PI / 180, nx = -Math.sin(angle), ny = Math.cos(angle);
+  const mode = o.focusMode;
+  return (x, y) => {
+    const dx = (x - fx) / D, dy = (y - fy) / D;
+    const d = mode === 'radial' ? Math.sqrt(dx * dx + dy * dy) : mode === 'band' ? Math.abs(dx * nx + dy * ny) : -(dx * nx + dy * ny);
+    return smoothstep(R, R + F, d);
+  };
+}
+
+function applyFocus(image, o) {
+  const { data, width, height } = image;
+  const low = downsample(data, width, height), { width: w, height: h } = low, n = w * h;
+  const rmax = focusBlurRadius(o) * Math.hypot(w / 2, h / 2); // working-grid px
+  if (rmax < .5) return image;
+  const mask = focusMask(o, width, height), weight = new Float32Array(n);
+  for (let y = 0, j = 0; y < h; y++) for (let x = 0; x < w; x++, j++) weight[j] = .02 + mask((x + .5) * width / w - .5, (y + .5) * height / h - .5);
+  const K = Math.max(1, Math.ceil(Math.log2(rmax / .75)) + 1), radii = Array.from({ length: K }, (_, k) => rmax / 2 ** (K - 1 - k));
+  let num = [low.r, low.g, low.b].map(plane => plane.map((v, j) => v * weight[j])), den = weight, previous = 0;
+  const levels = [];
+  for (const r of radii) { // cascade: each level blurs the last by √(σₖ² − σₖ₋₁²)
+    const sigma = r / 2, step = Math.sqrt(sigma * sigma - previous * previous); previous = sigma;
+    num = num.map(plane => blur(plane, w, h, step)); den = blur(den, w, h, step);
+    levels.push(...num.map(plane => plane.map((v, j) => v / Math.max(den[j], 1e-6))));
+  }
+  const up = upsampler(w, h, width, height), { x0, x1, fx } = up, first = radii[0];
+  const lerp = (row, x) => row[x0[x]] + (row[x1[x]] - row[x0[x]]) * fx[x];
+  for (let y = 0, i = 0; y < height; y++) {
+    const rows = up.row(levels, y);
+    for (let x = 0; x < width; x++, i += 4) {
+      const m = mask(x, y); if (m <= 0) continue;
+      const r = m * rmax;
+      let lo, hi, t;
+      if (r <= first) { lo = -1; hi = 0; t = r / first; }
+      else { const k = Math.floor(Math.log2(r / first)); if (k >= K - 1) { lo = hi = K - 1; t = 0; } else { lo = k; hi = k + 1; t = Math.log2(r / radii[k]); } }
+      for (let c = 0; c < 3; c++) {
+        const a = lo < 0 ? toLinear[data[i + c]] : lerp(rows[lo * 3 + c], x), b = lerp(rows[hi * 3 + c], x);
+        data[i + c] = encode(a + (b - a) * t);
+      }
+    }
+  }
+  return image;
 }
 
 const luma = (r, g, b) => .2126 * r + .7152 * g + .0722 * b;

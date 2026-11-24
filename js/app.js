@@ -1,6 +1,7 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
 import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls, profiles as lensProfiles, profileById as lensProfileById, expandProfile, matchesProfile,
-  cameraOf, opticsRenderKey, formats as cameraFormats, formatById, fieldOfView } from './optics/index.js';
+  cameraOf, sceneOf, opticsRenderKey, formats as cameraFormats, formatById, fieldOfView } from './optics/index.js';
+import { focusBlurRadius } from './optics/pipeline.js';
 import { FOCAL_LENGTHS } from './optics/formats.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
@@ -707,8 +708,18 @@ function formatLens(control, value) {
 const lensEdits = () => opticsControls.filter(control => state.optics[control.path] !== control.default);
 function buildLens() {
   const panel = $('#lensControls');
-  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section"><h3>${section.title}</h3>${section.controls.map(({ path, label, min, max, step, hint }) => `<div class="slider-row"><label class="slider-label" for="lens-${path}"><span>${label}</span><output id="lensOut-${path}" for="lens-${path}">0</output></label><input id="lens-${path}" data-lens="${path}" type="range" min="${min}" max="${max}" step="${step}" aria-describedby="lensHint-${path}"><p class="slider-hint" id="lensHint-${path}">${hint}</p></div>`).join('')}</section>`).join('');
+  const hintOf = ({ path, hint }) => (hint ? `<p class="slider-hint" id="lensHint-${path}">${hint}</p>` : '');
+  const described = ({ path, hint }) => (hint ? ` aria-describedby="lensHint-${path}"` : '');
+  const row = control => control.kind === 'select'
+    ? `<div class="crop-platform lens-select" data-lens-row="${control.path}"><label for="lens-${control.path}">${control.label}</label><select id="lens-${control.path}" data-lens-select="${control.path}"${described(control)}>${control.options.map(option => `<option value="${option}">${control.labels?.[option] ?? control.format?.(option) ?? option}</option>`).join('')}</select>${hintOf(control)}</div>`
+    : `<div class="slider-row" data-lens-row="${control.path}"><label class="slider-label" for="lens-${control.path}"><span>${control.label}</span><output id="lensOut-${control.path}" for="lens-${control.path}">0</output></label><input id="lens-${control.path}" data-lens="${control.path}" type="range" min="${control.min}" max="${control.max}" step="${control.step}"${described(control)}>${hintOf(control)}</div>`;
+  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section"><h3>${section.title}</h3>${section.controls.map(row).join('')}${section.id === 'focus' ? '<p class="slider-hint lens-focus-info" id="lensFocusInfo" aria-live="polite"></p>' : ''}</section>`).join('');
   bindHistorySlider(panel, '[data-lens]', input => { state.optics = normalizeOptics({ ...state.optics, [input.dataset.lens]: Number(input.value) }); syncLens(); scheduleRender(); });
+  panel.addEventListener('change', event => {
+    const path = event.target.dataset.lensSelect; if (!path) return;
+    const value = opticsControls.find(control => control.path === path).options.find(option => String(option) === event.target.value);
+    change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
+  });
   // Double-click resets a slider to the active profile's value (or neutral without one).
   panel.addEventListener('dblclick', event => {
     const path = event.target.closest('[data-lens]')?.dataset.lens; if (!path) return;
@@ -716,10 +727,11 @@ function buildLens() {
     if (state.optics[path] !== value) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
   });
   $('#resetLens').addEventListener('click', () => change(() => { state.optics = { ...defaultOptics(), ...cameraOf(state.optics) }; }));
+  bindFocusDrag();
   $('#lensProfiles').innerHTML = lensProfiles.map(profile => `<button class="lens-profile" type="button" data-profile="${profile.id}" aria-pressed="false" aria-describedby="lensProfileNote-${profile.id}"><strong>${profile.name}</strong><small id="lensProfileNote-${profile.id}">${profile.description}</small></button>`).join('');
   $('#lensProfiles').addEventListener('click', event => {
     const profile = lensProfileById(event.target.closest('[data-profile]')?.dataset.profile);
-    if (profile) change(() => { state.optics = { ...expandProfile(profile), ...cameraOf(state.optics) }; });
+    if (profile) change(() => { state.optics = { ...expandProfile(profile), ...cameraOf(state.optics), ...sceneOf(state.optics) }; });
   });
   // Camera: format and focal length (not an effect: kept by profiles and Reset lens).
   $('#lensFormat').innerHTML = cameraFormats.map(format => `<option value="${format.id}">${format.name}</option>`).join('');
@@ -729,6 +741,54 @@ function buildLens() {
     change(() => { state.optics = normalizeOptics({ ...state.optics, [select.dataset.camera]: value }); });
   }));
   $('#lensCropToFormat').addEventListener('click', cropToFormat);
+}
+// Focus area on the photo (Lens tab, Depth of field on): guides drawn on the overlay canvas, drag to move the focus point.
+function drawFocusGuide(ctx, overlay, source) {
+  const o = state.optics;
+  if (document.body.dataset.tab !== 'lens' || o.focusMode === 'none' || !source?.photoRect || state.holding) return;
+  const scale = overlay.width / source.width, rect = source.photoRect;
+  const x = rect.x * scale, y = rect.y * scale, w = rect.width * scale, h = rect.height * scale, D = Math.hypot(w / 2, h / 2);
+  const cx = x + o.focusX / 100 * w, cy = y + o.focusY / 100 * h, R = o.focusSize / 100 * D, F = (.02 + .98 * o.focusFeather / 100) * D;
+  const px = overlay.width / Math.max(1, overlay.getBoundingClientRect().width), angle = o.focusAngle * Math.PI / 180;
+  const ux = Math.cos(angle), uy = Math.sin(angle), nx = -uy, ny = ux;
+  const line = offset => { const ox = cx + nx * offset, oy = cy + ny * offset; ctx.moveTo(ox - ux * 2 * D, oy - uy * 2 * D); ctx.lineTo(ox + ux * 2 * D, oy + uy * 2 * D); };
+  const stroke = (draw, dashed) => {
+    ctx.beginPath(); draw(); ctx.setLineDash(dashed ? [6 * px, 5 * px] : []);
+    ctx.lineWidth = 3 * px; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.stroke();
+    ctx.lineWidth = 1.5 * px; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.stroke();
+  };
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  if (o.focusMode === 'radial') { stroke(() => ctx.arc(cx, cy, Math.max(1, R), 0, Math.PI * 2)); stroke(() => ctx.arc(cx, cy, R + F, 0, Math.PI * 2), true); }
+  else if (o.focusMode === 'band') { stroke(() => { line(R); line(-R); }); stroke(() => { line(R + F); line(-R - F); }, true); }
+  else { stroke(() => line(-R)); stroke(() => line(-R - F), true); } // linear: sharp below the line, blur grows upwards (at angle 0)
+  ctx.setLineDash([]); ctx.beginPath(); ctx.arc(cx, cy, 7 * px, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fill(); ctx.lineWidth = 2 * px; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.stroke();
+  ctx.restore();
+}
+function bindFocusDrag() {
+  const overlay = elements.textCanvas;
+  let drag = null;
+  const point = event => { // photo fraction under the pointer (object-fit: contain on phones)
+    const box = overlay.getBoundingClientRect(), scale = Math.min(box.width / overlay.width, box.height / overlay.height);
+    const left = box.left + (box.width - overlay.width * scale) / 2, top = box.top + (box.height - overlay.height * scale) / 2;
+    const source = state.editedCanvas, k = overlay.width / source.width, rect = source.photoRect;
+    return { x: ((event.clientX - left) / scale / k - rect.x) / rect.width, y: ((event.clientY - top) / scale / k - rect.y) / rect.height };
+  };
+  const move = event => {
+    const { x, y } = point(event);
+    state.optics = normalizeOptics({ ...state.optics, focusX: Math.min(1, Math.max(0, x)) * 100, focusY: Math.min(1, Math.max(0, y)) * 100 });
+    syncLens(); scheduleRender();
+  };
+  elements.dropZone.addEventListener('pointerdown', event => {
+    if (document.body.dataset.tab !== 'lens' || state.optics.focusMode === 'none' || !state.editedCanvas?.photoRect || event.button > 0 || event.target.closest('#fullscreenButton,#engineWaitRetry')) return;
+    const { x, y } = point(event); if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    event.preventDefault(); event.stopPropagation();
+    drag = { id: event.pointerId, start: snapshot() };
+    overlay.setPointerCapture(event.pointerId); move(event);
+  }, { capture: true });
+  overlay.addEventListener('pointermove', event => { if (drag?.id === event.pointerId) move(event); });
+  const drop = event => { if (drag?.id !== event.pointerId) return; const start = drag.start; drag = null; commit(start); };
+  overlay.addEventListener('pointerup', drop); overlay.addEventListener('pointercancel', drop); overlay.addEventListener('lostpointercapture', drop);
 }
 /** The format's long:short ratio, turned to the photo's orientation: an existing ratio tile when one matches. */
 function formatCrop(format) {
@@ -754,11 +814,22 @@ const lensSummary = () => { const current = lensProfileState(); return current ?
 function syncLens() {
   for (const control of opticsControls) {
     const input = $(`#lens-${control.path}`), value = state.optics[control.path];
+    $(`[data-lens-row="${control.path}"]`).hidden = control.showIf ? !control.showIf(state.optics) : false;
+    if (control.kind === 'select') { input.value = String(value); continue; }
     if (document.activeElement !== input || Number(input.value) !== value) input.value = value;
     const output = $(`#lensOut-${control.path}`);
     output.value = formatLens(control, value);
     output.classList.toggle('is-edited', value !== control.default);
   }
+  const focusOn = state.optics.focusMode !== 'none';
+  document.body.classList.toggle('lens-focus', focusOn);
+  $('#lensFocusInfo').hidden = !focusOn;
+  if (focusOn) {
+    const { width, height } = state.image ? croppedSize() : { width: 6000, height: 4000 }, o = state.optics;
+    const across = Math.round(2 * focusBlurRadius(o) * Math.hypot(width / 2, height / 2));
+    $('#lensFocusInfo').textContent = `Background blur up to ${across} px across at full size (${o.focal} mm, f/${o.aperture}, focused at ${o.subjectDistance} m on ${formatById(o.format).name}; set lens and format under Camera). Simulated: the photo has no real depth.`;
+  }
+  drawTextOverlay();
   const current = lensProfileState(), neutral = lensEdits().length === 0;
   document.querySelectorAll('[data-profile]').forEach(button => button.setAttribute('aria-pressed', current ? button.dataset.profile === current.profile.id : button.dataset.profile === 'none' && neutral));
   $('#lensCurrent').textContent = lensSummary();
@@ -1254,6 +1325,7 @@ function drawTextOverlay() {
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   textUi.boxes = [];
+  drawFocusGuide(ctx, overlay, source);
   if (!source?.photoRect || state.holding || !state.text.length) return;
   const scale = overlay.width / source.width, rect = source.photoRect;
   const scaled = { x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale };

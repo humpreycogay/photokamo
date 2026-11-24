@@ -3,6 +3,7 @@
 // Every profile here is ORIGINAL and ILLUSTRATIVE: tuned by eye, not measured from any real lens.
 // A measured profile would say source.type 'measured' and record where each value came from.
 import { defaultOptics, normalizeOptics, controls } from './params.js';
+const character = controls.filter(control => !control.scene);
 
 export const PROFILE_SCHEMA = '1.0';
 const original = notes => ({ type: 'original', notes });
@@ -29,4 +30,4 @@ export const profileById = id => profiles.find(profile => profile.id === id) || 
 /** A profile's full optics values (with `profile` set, except for None). */
 export const expandProfile = profile => normalizeOptics({ ...defaultOptics(), ...profile.values, profile: profile.id === 'none' ? null : profile.id });
 /** True when `optics` has exactly the profile's values. */
-export const matchesProfile = (optics, profile) => { const expanded = expandProfile(profile); return controls.every(control => expanded[control.path] === optics[control.path]); };
+export const matchesProfile = (optics, profile) => { const expanded = expandProfile(profile); return character.every(control => expanded[control.path] === optics[control.path]); };

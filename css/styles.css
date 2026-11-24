@@ -411,6 +411,8 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .lens-camera-fields .crop-platform { margin:0; }
 .lens-camera .slider-hint { margin:10px 0 12px; }
 .lens-crop-format { width:100%; min-height:var(--tap); }
+.lens-select { margin:0 0 17px; }
+.lens-focus-info { margin:0 0 8px; }
 
 /* Frames */
 .frame-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -1007,6 +1009,7 @@ body.is-film .render-divider { display:block; }
 /* Sits exactly over #previewCanvas (same pixel size; contain-fit like it on phones) */
 .canvas-wrap .text-overlay { position:absolute; inset:0; width:100%!important; height:100%; max-width:none; max-height:none; object-fit:contain; background:transparent; pointer-events:none; }
 body[data-tab=text] .text-overlay { pointer-events:auto; cursor:move; touch-action:none; }
+body[data-tab=lens].lens-focus .text-overlay { pointer-events:auto; cursor:crosshair; touch-action:none; }
 /* Text under the hold button or a status pill is still dragged (app.js listens on the stage): no browser pan starts there */
 body[data-tab=text] :is(.view-pill,.view-pill *,.fullscreen-button,.engine-wait,.engine-wait *) { touch-action:none; }
 .text-overlay:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
