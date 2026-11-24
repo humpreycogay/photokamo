@@ -40,6 +40,8 @@ Licences as reported on 2026-11-24; not re-audited at a pinned commit, because n
 
 | Effect | File | Model | Limitations |
 |---|---|---|---|
-| Light falloff | `js/optics/pipeline.js` | Gain `2^(E · s(r)/s(1))` in linear light; `s` is a smoothstep around the midpoint; `r` is normalised to the half-diagonal | Artistic approximation, not a measured lens profile; brightening clips at white (no shoulder until Task 4) |
+| Light falloff | `js/optics/pipeline.js` | Gain `2^(E · s(r)/s(1))` in linear light; `s` is a smoothstep around the midpoint; `r` is normalised to the half-diagonal | Artistic approximation, not a measured lens profile; brightening clips at white when used alone (the highlight shoulder applies only with diffusion or bloom) |
 | Distortion | `js/optics/pipeline.js` | Inverse-mapped radial polynomial `p·(1 + k1·r²)`, k1 = −0.15·d, bilinear in linear light; auto-fill zoom keeps every frame-edge sample inside the photo | One term (k1); k2 comes with profiles. Bilinear resampling softens very slightly when on |
 | Colour fringing | `js/optics/pipeline.js` | Lateral CA: red (positive) or blue (negative) image magnified by up to 0.5 % at the corners, in the same resample | Lateral only; no longitudinal (depth-dependent) CA |
+| Diffusion | `js/optics/pipeline.js`, `layers.js` | Energy-preserving scatter `I − s·H + s·(PSF ∗ H)`, PSF = 0.65 core + 0.35 wide Gaussian; H weighted towards highlights by a control | Blur computed on a ≤ 1024 px working grid and read back bilinearly; spatially uniform PSF |
+| Bloom | `js/optics/pipeline.js`, `layers.js` | Soft-knee threshold on linear luminance, four Gaussian scales (σ, 2σ, 4σ, 8σ; weights .35/.3/.2/.15), tinted, added; shoulder above 0.9 linear | Screen-space glare, not a simulation of a specific lens; 8-bit input limits how bright a highlight can be |

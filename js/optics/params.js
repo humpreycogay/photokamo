@@ -19,6 +19,24 @@ export const sections = [
     { path: 'falloffFeather', label: 'Feather', min: 0, max: 100, step: 1, default: 50,
       hint: 'How gradual the falloff is.' },
   ] },
+  { id: 'diffusion', title: 'Diffusion', controls: [
+    { path: 'diffusion', label: 'Diffusion', min: 0, max: 100, step: 1, default: 0, amount: true,
+      hint: 'Light scattered by a softening or mist filter. Spreads light without adding any: contrast drops, detail stays.' },
+    { path: 'diffusionSpread', label: 'Spread', min: 0, max: 100, step: 1, default: 40,
+      hint: 'How far the scattered light travels.' },
+    { path: 'diffusionHighlights', label: 'Highlights only', min: 0, max: 100, step: 1, default: 60,
+      hint: 'At 0 the whole picture softens; higher values scatter mostly the bright areas, for a glow around lights and skin.' },
+  ] },
+  { id: 'bloom', title: 'Bloom', controls: [
+    { path: 'bloom', label: 'Bloom', min: 0, max: 100, step: 1, default: 0, amount: true,
+      hint: 'Glare around the brightest parts of the picture, as light spills inside the lens.' },
+    { path: 'bloomThreshold', label: 'Threshold', min: 0, max: 100, step: 1, default: 75,
+      hint: 'How bright an area must be before it blooms.' },
+    { path: 'bloomSize', label: 'Size', min: 0, max: 100, step: 1, default: 40,
+      hint: 'How wide the glow spreads.' },
+    { path: 'bloomWarmth', label: 'Warmth', min: -100, max: 100, step: 1, default: 0, signed: true,
+      hint: 'Tints the glow warmer or cooler.' },
+  ] },
 ];
 
 export const controls = sections.flatMap(section => section.controls.map(control => ({ ...control, section: section.id })));
