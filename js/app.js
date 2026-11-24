@@ -1,7 +1,8 @@
 import { presets, lookStyles, frames, borderSizes, paperColors, defaultBorder, platformSizes, adjustmentSections, defaultAdjustments } from './presets.js';
 import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptics, sections as opticsSections, controls as opticsControls, profiles as lensProfiles, profileById as lensProfileById, expandProfile, matchesProfile,
-  cameraOf, sceneOf, opticsRenderKey, formats as cameraFormats, formatById, fieldOfView } from './optics/index.js';
-import { focusBlurRadius } from './optics/pipeline.js';
+  cameraOf, sceneOf, opticsRenderKey, formats as cameraFormats, formatById, fieldOfView, cameraControls } from './optics/index.js';
+import { focusBlurRadius, WAVELENGTH_MM } from './optics/pipeline.js';
+import { APERTURES } from './optics/formats.js';
 import { FOCAL_LENGTHS } from './optics/formats.js';
 import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
@@ -713,7 +714,7 @@ function buildLens() {
   const row = control => control.kind === 'select'
     ? `<div class="crop-platform lens-select" data-lens-row="${control.path}"><label for="lens-${control.path}">${control.label}</label><select id="lens-${control.path}" data-lens-select="${control.path}"${described(control)}>${control.options.map(option => `<option value="${option}">${control.labels?.[option] ?? control.format?.(option) ?? option}</option>`).join('')}</select>${hintOf(control)}</div>`
     : `<div class="slider-row" data-lens-row="${control.path}"><label class="slider-label" for="lens-${control.path}"><span>${control.label}</span><output id="lensOut-${control.path}" for="lens-${control.path}">0</output></label><input id="lens-${control.path}" data-lens="${control.path}" type="range" min="${control.min}" max="${control.max}" step="${control.step}"${described(control)}>${hintOf(control)}</div>`;
-  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section" data-lens-section="${section.id}"><h3>${section.title}</h3>${section.controls.map(row).join('')}${section.id === 'focus' ? '<p class="slider-hint lens-focus-info" id="lensFocusInfo" aria-live="polite"></p>' : ''}</section>`).join('');
+  panel.innerHTML = opticsSections.map(section => `<section class="adjustment-section" data-lens-section="${section.id}"><h3>${section.title}</h3>${section.controls.map(row).join('')}${section.id === 'focus' ? '<p class="slider-hint lens-focus-info" id="lensFocusInfo" aria-live="polite"></p>' : section.id === 'diffraction' ? '<p class="slider-hint lens-focus-info" id="lensDiffractionInfo" aria-live="polite"></p>' : ''}</section>`).join('');
   bindHistorySlider(panel, '[data-lens]', input => { state.optics = normalizeOptics({ ...state.optics, [input.dataset.lens]: Number(input.value) }); syncLens(); scheduleRender(); });
   panel.addEventListener('change', event => {
     const path = event.target.dataset.lensSelect; if (!path) return;
@@ -736,8 +737,9 @@ function buildLens() {
   // Camera: format and focal length (not an effect: kept by profiles and Reset lens).
   $('#lensFormat').innerHTML = cameraFormats.map(format => `<option value="${format.id}">${format.name}</option>`).join('');
   $('#lensFocal').innerHTML = FOCAL_LENGTHS.map(focal => `<option value="${focal}">${focal} mm</option>`).join('');
+  $('#lensAperture').innerHTML = APERTURES.map(stop => `<option value="${stop}">f/${stop}</option>`).join('');
   document.querySelectorAll('[data-camera]').forEach(select => select.addEventListener('change', () => {
-    const value = select.dataset.camera === 'focal' ? Number(select.value) : select.value;
+    const value = cameraControls.find(control => control.path === select.dataset.camera).options.find(option => String(option) === select.value);
     change(() => { state.optics = normalizeOptics({ ...state.optics, [select.dataset.camera]: value }); });
   }));
   $('#lensCropToFormat').addEventListener('click', cropToFormat);
@@ -830,12 +832,19 @@ function syncLens() {
     const across = Math.round(2 * focusBlurRadius(o) * Math.hypot(width / 2, height / 2));
     $('#lensFocusInfo').textContent = `Background blur up to ${across} px across at full size (${o.focal} mm, f/${o.aperture}, focused at ${o.subjectDistance} m on ${formatById(o.format).name}; set lens and format under Camera). Simulated: the photo has no real depth.`;
   }
+  const diffractionOn = state.optics.diffraction === 'on';
+  $('#lensDiffractionInfo').hidden = !diffractionOn;
+  if (diffractionOn) {
+    const { width, height } = state.image ? croppedSize() : { width: 6000, height: 4000 }, o = state.optics, airy = 2.44 * WAVELENGTH_MM * o.aperture;
+    const px = airy / (formatById(o.format).long / Math.max(width, height));
+    $('#lensDiffractionInfo').textContent = `Airy disk ${(airy * 1000).toFixed(1)} µm across at f/${o.aperture} on ${formatById(o.format).name}: about ${px.toFixed(1)} px at full size.`;
+  }
   drawTextOverlay();
   const current = lensProfileState(), neutral = lensEdits().length === 0;
   document.querySelectorAll('[data-profile]').forEach(button => button.setAttribute('aria-pressed', current ? button.dataset.profile === current.profile.id : button.dataset.profile === 'none' && neutral));
   $('#lensCurrent').textContent = lensSummary();
   const format = formatById(state.optics.format), focal = state.optics.focal, fov = fieldOfView(format, focal), deg = value => `${value.toFixed(value < 10 ? 1 : 0)}°`;
-  $('#lensFormat').value = format.id; $('#lensFocal').value = String(focal);
+  $('#lensFormat').value = format.id; $('#lensFocal').value = String(focal); $('#lensAperture').value = String(state.optics.aperture);
   $('#lensFov').textContent = `Angle of view ${deg(fov.diagonal)} diagonal (${deg(fov.long)} × ${deg(fov.short)})${format.id === '35mm' ? '' : ` · like ${Math.round(fov.equivalent)} mm on full frame`}`;
   const [long, short] = format.ratio;
   $('#lensCropToFormat').textContent = `Crop to ${format.name} (${long}:${short})`;

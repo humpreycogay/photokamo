@@ -15,7 +15,7 @@
 const STAMP = 10;
 
 /** Coverage (0–1, antialiased) of the aperture at offset (dx, dy) from a stamp centre of radius rho. */
-function coverage(dx, dy, rho, shape, sx, sy) {
+export function coverage(dx, dy, rho, shape, sx = 0, sy = 0) {
   const x = dx * shape.squeeze, d = Math.sqrt(x * x + dy * dy);
   let limit = rho;
   if (shape.blades) {

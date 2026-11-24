@@ -407,7 +407,8 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .lens-profile[aria-pressed=true] { border-color:var(--accent); background:var(--accent-tint); }
 .lens-profile strong { font-size:var(--fs-md); font-weight:600; }
 .lens-profile small { font-size:var(--fs-sm); line-height:1.35; color:var(--text-muted); }
-.lens-camera-fields { display:grid; grid-template-columns:3fr 2fr; gap:10px; }
+.lens-camera-fields { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+.lens-camera-fields .crop-platform select { padding:0 6px; }
 .lens-camera-fields .crop-platform { margin:0; }
 .lens-camera .slider-hint { margin:10px 0 12px; }
 .lens-crop-format { width:100%; min-height:var(--tap); }
@@ -924,6 +925,8 @@ body.is-film .render-divider { display:block; }
   #cropPanel .panel-heading,#lensPanel .panel-heading { margin-bottom:10px; }
   #cropPanel .panel-heading h2,#lensPanel .panel-heading h2 { font-size:var(--fs-lg); }
   #resetLens { min-height:var(--tap); }
+  .lens-camera-fields { grid-template-columns:1fr 1fr; }
+  .lens-camera-fields .crop-platform:first-child { grid-column:1 / -1; }
   .lens-profiles { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:16px; }
   .lens-profile { justify-content:center; padding:6px 8px; }
   .lens-profile small { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; } /* name only on phones; still read aloud */

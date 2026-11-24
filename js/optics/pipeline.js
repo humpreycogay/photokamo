@@ -32,13 +32,19 @@
 //   Bokeh (bokeh.js): bright pixels H (smooth luminance switch) from sources at least ~1.5 working px out of focus are taken
 //   out of the Gaussian ladder and scattered in the aperture's shape instead (energy kept, plus an artistic
 //   boost for highlights clipped by 8-bit input).
+// Diffraction: the Airy pattern of a circular aperture, first dark ring at r = 1.22·λ·N on the format, is
+//   approximated by a Gaussian with σ ≈ 0.42·λ·N (λ = 550 nm), measured against the format's half-diagonal.
+//   It is a pixel or two at full size, so it runs at full resolution (separable kernel, one channel at a time
+//   in a 16-bit linear plane). An approximation: one wavelength, no optical transfer function of the lens.
+// Lens flare (artistic): from the brightest area (or a hand-placed source), a veiling haze plus ghosts along
+//   the line from the source through the frame centre, shaped by the aperture blades and tinted like coatings.
 // Blur sizes are fractions of the half-diagonal, so they look the same at every image size.
 // All are artistic approximations of lens behaviour, not measured lens profiles.
 import { normalizeOptics } from './params.js';
 import { toLinear, encode, encodeShoulder, linearOf } from './color.js';
 import { downsample, blur, upsampler } from './layers.js';
 import { formatById } from './formats.js';
-import { bokehLayer } from './bokeh.js';
+import { bokehLayer, coverage } from './bokeh.js';
 
 const smoothstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
@@ -123,7 +129,8 @@ export function applyOptics(image, optics) {
 /** Passes after geometry and falloff: depth of field, then diffusion and bloom. */
 function afterGeometry(image, o) {
   if (o.focusMode !== 'none') applyFocus(image, o);
-  return o.diffusion || o.bloom ? applyGlow(image, o) : image;
+  if (o.diffraction === 'on') applyDiffraction(image, o);
+  return o.diffusion || o.bloom || o.flare ? applyGlow(image, o) : image;
 }
 
 /** Background blur radius (blur circle / 2 for a point at infinity) as a fraction of the half-diagonal. */
@@ -142,6 +149,77 @@ export function focusMask(o, width, height) {
     const d = mode === 'radial' ? Math.sqrt(dx * dx + dy * dy) : mode === 'band' ? Math.abs(dx * nx + dy * ny) : -(dx * nx + dy * ny);
     return smoothstep(R, R + F, d);
   };
+}
+
+export const WAVELENGTH_MM = 550e-6;
+/** Gaussian σ approximating the Airy core at the camera's aperture, as a fraction of the half-diagonal. */
+export function diffractionSigma(o) {
+  const format = formatById(o.format) || formatById('35mm');
+  return .42 * WAVELENGTH_MM * o.aperture / Math.hypot(format.long / 2, format.short / 2);
+}
+function applyDiffraction(image, o) {
+  const { data, width, height } = image, sigma = diffractionSigma(o) * Math.hypot(width / 2, height / 2);
+  if (sigma < .25) return image; // under a quarter pixel: nothing to see at this size
+  const reach = Math.ceil(2.5 * sigma), kernel = new Float32Array(2 * reach + 1);
+  let sum = 0; for (let k = -reach; k <= reach; k++) sum += kernel[k + reach] = Math.exp(-k * k / (2 * sigma * sigma));
+  for (let k = 0; k < kernel.length; k++) kernel[k] /= sum;
+  const plane = new Uint16Array(width * height), line = new Float32Array(Math.max(width, height)), SCALE = 65535;
+  for (let c = 0; c < 3; c++) {
+    for (let y = 0; y < height; y++) { // rows: decode and blur into the plane
+      const row = y * width;
+      for (let x = 0; x < width; x++) line[x] = toLinear[data[(row + x) * 4 + c]];
+      for (let x = 0; x < width; x++) {
+        let v = 0; for (let k = -reach; k <= reach; k++) v += kernel[k + reach] * line[Math.min(width - 1, Math.max(0, x + k))];
+        plane[row + x] = Math.round(v * SCALE);
+      }
+    }
+    for (let x = 0; x < width; x++) { // columns: blur and encode back
+      for (let y = 0; y < height; y++) line[y] = plane[y * width + x] / SCALE;
+      for (let y = 0; y < height; y++) {
+        let v = 0; for (let k = -reach; k <= reach; k++) v += kernel[k + reach] * line[Math.min(height - 1, Math.max(0, y + k))];
+        data[(y * width + x) * 4 + c] = encode(v);
+      }
+    }
+  }
+  return image;
+}
+
+// Ghosts along the source → centre axis: position t (0 = source, 1 = centre, beyond = the other side), radius (× D), tint.
+const GHOSTS = [[.55, .018, [1, .75, .6]], [1.35, .05, [.6, 1, .75]], [1.7, .11, [.8, .62, 1]], [2.1, .07, [1, .82, .5]], [2.6, .16, [.65, .95, 1]], [-.25, .03, [.7, .8, 1]]];
+/** Flare planes on the working grid, or null when there's no source bright enough (Brightest area). */
+function flareLayer(low, o) {
+  const { width: w, height: h, r, g, b } = low, n = w * h, D = Math.hypot(w / 2, h / 2), cx = (w - 1) / 2, cy = (h - 1) / 2;
+  let sx, sy, strength, color;
+  if (o.flareSource === 'manual') { sx = o.flareX / 100 * (w - 1); sy = o.flareY / 100 * (h - 1); strength = 1; color = [1, .95, .85]; }
+  else {
+    const lum = new Float32Array(n); for (let j = 0; j < n; j++) lum[j] = luma(r[j], g[j], b[j]);
+    const soft = blur(lum, w, h, .012 * D); let best = 0;
+    for (let j = 1; j < n; j++) if (soft[j] > soft[best]) best = j;
+    strength = smoothstep(.35, .85, soft[best]); if (!strength) return null;
+    sx = best % w; sy = (best / w) | 0;
+    const reach = Math.max(1, Math.round(.02 * D)); let cr = 0, cg = 0, cb = 0;
+    for (let y = Math.max(0, sy - reach); y <= Math.min(h - 1, sy + reach); y++) for (let x = Math.max(0, sx - reach); x <= Math.min(w - 1, sx + reach); x++) { const j = y * w + x; cr += r[j]; cg += g[j]; cb += b[j]; }
+    const top = Math.max(cr, cg, cb, 1e-6); color = [cr / top, cg / top, cb / top];
+  }
+  const amount = o.flare / 100 * strength, ghostShare = o.flareGhosts / 100;
+  const veil = amount * (1 - .6 * ghostShare), ghostGain = amount * ghostShare * .5;
+  const shape = { blades: o.bokehBlades || 6, roundness: o.bokehBlades ? o.bokehRoundness / 100 : .35, rotation: o.bokehRotation * Math.PI / 180, squeeze: 1 };
+  const planes = [new Float32Array(n), new Float32Array(n), new Float32Array(n)], spread = .3 * D;
+  for (let y = 0, j = 0; y < h; y++) for (let x = 0; x < w; x++, j++) {
+    const dx = x - sx, dy = y - sy, glow = veil * (.22 * Math.exp(-(dx * dx + dy * dy) / (2 * spread * spread)) + .025);
+    for (let c = 0; c < 3; c++) planes[c][j] = glow * color[c];
+  }
+  for (const [t, size, tint] of GHOSTS) {
+    const gx = sx + (cx - sx) * t, gy = sy + (cy - sy) * t, rho = size * D, reach = Math.ceil(rho + 2);
+    for (let y = Math.max(0, Math.floor(gy - reach)); y <= Math.min(h - 1, Math.ceil(gy + reach)); y++) {
+      for (let x = Math.max(0, Math.floor(gx - reach)); x <= Math.min(w - 1, Math.ceil(gx + reach)); x++) {
+        const c = coverage(x - gx, y - gy, rho, shape); if (!c) continue;
+        const j = y * w + x, rim = 1 + .6 * smoothstep(.75, 1, Math.hypot(x - gx, y - gy) / rho); // brighter rim
+        for (let k = 0; k < 3; k++) planes[k][j] += ghostGain * c * rim * tint[k] * color[k] * (.15 + .85 * (1 - size * 3));
+      }
+    }
+  }
+  return planes.map(plane => blur(plane, w, h, .004 * D + .6)); // soft ghost edges
 }
 
 function applyFocus(image, o) {
@@ -235,6 +313,8 @@ function applyGlow(image, o) {
       return sum;
     });
   }
+  const flare = o.flare ? flareLayer(low, o) : null;
+  if (flare) glow = glow ? glow.map((plane, c) => plane.map((v, j) => v + flare[c][j])) : flare;
   const up = upsampler(w, h, width, height), { x0, x1, fx } = up, s = o.diffusion / 100 * .7;
   const layers = [...(scatter || []), ...(glow || [])];
   const lerp = (row, x) => row[x0[x]] + (row[x1[x]] - row[x0[x]]) * fx[x];

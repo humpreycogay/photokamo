@@ -19,6 +19,7 @@ export const formats = [
 ];
 export const formatById = id => formats.find(format => format.id === id) || null;
 
+export const APERTURES = [1.2, 1.4, 1.8, 2, 2.8, 4, 5.6, 8, 11, 16, 22, 32, 45, 64];
 export const FOCAL_LENGTHS = [8, 12, 14, 18, 21, 24, 28, 35, 40, 50, 65, 80, 90, 105, 135, 150, 180, 210, 300, 400, 600];
 const FULL_FRAME_DIAGONAL = Math.hypot(36, 24);
 const degrees = radians => radians * 180 / Math.PI;

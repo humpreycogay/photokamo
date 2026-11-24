@@ -2,13 +2,14 @@
 // Optics runs on the cropped photo before the look (Basic preset or film engine).
 // Spatial values are resolution independent: radius r is 0 at the frame centre and 1 at the corners.
 // Plain data, no DOM: loaded by app.js, js/optics/worker.js and the Lens panel.
-import { formats, FOCAL_LENGTHS } from './formats.js';
+import { formats, FOCAL_LENGTHS, APERTURES } from './formats.js';
 
 /** The camera body: what the physical models (depth of field, diffraction) measure against. Not an effect:
  *  it never counts as an edit, and lens profiles and Reset lens keep it. */
 export const cameraControls = [
   { path: 'format', label: 'Format', kind: 'select', options: formats.map(format => format.id), default: '35mm' },
   { path: 'focal', label: 'Focal length', kind: 'select', options: FOCAL_LENGTHS, default: 50, unit: 'mm' },
+  { path: 'aperture', label: 'Aperture', kind: 'select', options: APERTURES, default: 2 },
 ];
 export const cameraOf = optics => Object.fromEntries(cameraControls.map(control => [control.path, optics[control.path]]));
 /** The per-photo focus settings (scene controls): kept when a lens profile is applied. */
@@ -17,8 +18,7 @@ export const sceneOf = optics => Object.fromEntries(controls.filter(control => c
 /** `amount: true` marks a control that turns its effect on (any value but its default); the others only shape it.
  *  `scene: true`: belongs to this photo's composition (where the focus is), so lens profiles keep it.
  *  `showIf(optics)`: the Lens panel shows the control only when this is true. */
-const focusOn = o => o.focusMode !== 'none', focusLine = o => o.focusMode === 'linear' || o.focusMode === 'band';
-export const APERTURES = [1.2, 1.4, 1.8, 2, 2.8, 4, 5.6, 8, 11, 16, 22];
+const focusOn = o => o.focusMode !== 'none', flareManual = o => o.flare > 0 && o.flareSource === 'manual', focusLine = o => o.focusMode === 'linear' || o.focusMode === 'band';
 export const DISTANCES = [.5, .7, 1, 1.5, 2, 3, 5, 10];
 export const sections = [
   { id: 'geometry', title: 'Geometry', controls: [
@@ -53,10 +53,18 @@ export const sections = [
     { path: 'bloomWarmth', label: 'Warmth', min: -100, max: 100, step: 1, default: 0, signed: true,
       hint: 'Tints the glow warmer or cooler.' },
   ] },
+  { id: 'flare', title: 'Lens flare (artistic)', controls: [
+    { path: 'flare', label: 'Flare', min: 0, max: 100, step: 1, default: 0, amount: true,
+      hint: 'Ghosts and veiling haze from a bright light inside the lens. An artistic effect, not a model of a particular lens.' },
+    { path: 'flareGhosts', label: 'Ghosts', min: 0, max: 100, step: 1, default: 60, showIf: o => o.flare > 0, hint: 'Balance between ghost shapes and overall haze.' },
+    { path: 'flareSource', label: 'Light source', kind: 'select', options: ['auto', 'manual'], labels: { auto: 'Brightest area', manual: 'Set by hand' }, default: 'auto', scene: true, showIf: o => o.flare > 0,
+      hint: 'Brightest area adds no flare when the photo has no strong light.' },
+    { path: 'flareX', label: 'Source X', min: 0, max: 100, step: 1, default: 80, unit: '%', scene: true, showIf: flareManual },
+    { path: 'flareY', label: 'Source Y', min: 0, max: 100, step: 1, default: 20, unit: '%', scene: true, showIf: flareManual },
+  ] },
   { id: 'focus', title: 'Depth of field (simulated)', controls: [
     { path: 'focusMode', label: 'Focus area', kind: 'select', options: ['none', 'radial', 'linear', 'band'], labels: { none: 'Off', radial: 'Radial', linear: 'Linear', band: 'Tilt-shift band' }, default: 'none', amount: true, scene: true,
       hint: 'A photo has no depth, so you choose what stays sharp: blur grows outside this area as if the background were far away. Drag on the photo to place it.' },
-    { path: 'aperture', label: 'Aperture', kind: 'select', options: APERTURES, format: value => `f/${value}`, default: 2, scene: true, showIf: focusOn },
     { path: 'subjectDistance', label: 'Subject distance', kind: 'select', options: DISTANCES, format: value => `${value} m`, default: 2, scene: true, showIf: focusOn },
     { path: 'focusSize', label: 'Size', min: 0, max: 100, step: 1, default: 25, scene: true, showIf: focusOn, hint: 'How large the sharp area is.' },
     { path: 'focusFeather', label: 'Feather', min: 0, max: 100, step: 1, default: 40, scene: true, showIf: focusOn, hint: 'How gradually the blur grows.' },
@@ -74,6 +82,10 @@ export const sections = [
       hint: 'Towards the edges the lens barrel clips the aperture into “cat’s eye” shapes.' },
     { path: 'bokehSqueeze', label: 'Anamorphic squeeze', kind: 'select', options: [1, 1.33, 1.5, 1.8, 2], format: value => (value === 1 ? 'None (spherical)' : `${value}×`), default: 1, showIf: focusOn,
       hint: 'Anamorphic cine lenses draw tall oval bokeh.' },
+  ] },
+  { id: 'diffraction', title: 'Diffraction', controls: [
+    { path: 'diffraction', label: 'Diffraction', kind: 'select', options: ['off', 'on'], labels: { off: 'Off', on: 'At the camera’s aperture' }, default: 'off', amount: true,
+      hint: 'Small apertures soften fine detail as light spreads at the aperture’s edge. Uses Aperture and Format under Camera; mostly visible at 100 % zoom.' },
   ] },
 ];
 
@@ -99,7 +111,7 @@ export function normalizeOptics(value) {
 
 /** What the render depends on, for cache keys: the effect values only. The camera and the profile name
  *  don't change pixels yet; add a path here when a model starts to use it (depth of field, diffraction). */
-export const renderKey = optics => JSON.stringify([controls.map(control => optics?.[control.path]), isOn(optics, 'focusMode') ? [optics.format, optics.focal] : null]);
+export const renderKey = optics => JSON.stringify([controls.map(control => optics?.[control.path]), isOn(optics, 'focusMode') || isOn(optics, 'diffraction') ? cameraControls.map(control => optics[control.path]) : null]);
 const isOn = (optics, path) => optics?.[path] !== undefined && optics[path] !== controlByPath[path].default;
 
 /** True when no effect is on, so the stage can hand the photo through untouched. */
