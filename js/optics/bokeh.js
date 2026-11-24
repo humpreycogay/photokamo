@@ -45,19 +45,30 @@ export function bokehLayer(hl, radius, w, h, o) {
   }
   for (const [g, grid] of grids) {
     const { gw, gh } = grid, layer = [new Float32Array(gw * gh), new Float32Array(gw * gh), new Float32Array(gw * gh)];
-    const weights = new Float32Array((2 * STAMP + 3) ** 2 * 4);
+    // Stamps repeat: cache them by radius (¼ px) and cat-eye shift (½ px), normalized to sum 1.
+    const stamps = new Map();
+    const stampFor = (rho, sx, sy) => {
+      const key = `${Math.round(rho * 4)}|${Math.round(sx * 2)}|${Math.round(sy * 2)}`;
+      let stamp = stamps.get(key);
+      if (!stamp) {
+        const reach = Math.ceil(rho + 1), weights = new Float32Array((2 * reach + 1) ** 2); let sum = 0;
+        for (let v = -reach, q = 0; v <= reach; v++) for (let u = -reach; u <= reach; u++, q++) sum += weights[q] = coverage(u, v, rho, shape, sx, sy);
+        if (sum) for (let q = 0; q < weights.length; q++) weights[q] /= sum;
+        stamp = { reach, weights, empty: !sum };
+        if (stamps.size < 4096) stamps.set(key, stamp);
+      }
+      return stamp;
+    };
     for (let k = 0; k < gw * gh; k++) {
       if (!grid.n[k]) continue;
       const px = (k % gw + .5) * g - .5, py = (((k / gw) | 0) + .5) * g - .5; // cell centre, working px
-      const rho = Math.max(.5, grid.rad[k] / grid.n[k] / g), reach = Math.ceil(rho + 1); // squeeze only narrows
+      const rho = Math.max(.5, grid.rad[k] / grid.n[k] / g);
       // Cat-eye shift along the radial direction (in the squeezed stamp space), growing towards the edge.
       const ux = (px - cx) / D, uy = (py - cy) / D, rpos = Math.sqrt(ux * ux + uy * uy), shift = cat * rpos * rpos * rho * 1.2;
       const sx = rpos ? ux / rpos * shift * shape.squeeze : 0, sy = rpos ? uy / rpos * shift : 0;
-      const gx = k % gw, gy = (k / gw) | 0;
-      let sum = 0;
-      for (let v = -reach, q = 0; v <= reach; v++) for (let u = -reach; u <= reach; u++, q++) { const c = coverage(u, v, rho, shape, sx, sy); weights[q] = c; sum += c; }
-      if (!sum) continue;
-      const er = grid.r[k] / sum, eg = grid.g[k] / sum, eb = grid.b[k] / sum;
+      const gx = k % gw, gy = (k / gw) | 0, { reach, weights, empty } = stampFor(rho, sx, sy);
+      if (empty) continue;
+      const er = grid.r[k], eg = grid.g[k], eb = grid.b[k];
       for (let v = -reach, q = 0; v <= reach; v++) {
         const ty = gy + v;
         for (let u = -reach; u <= reach; u++, q++) {

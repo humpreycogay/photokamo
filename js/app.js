@@ -1057,7 +1057,7 @@ async function opticsSource(maxEdge = Infinity) {
   if (opticsCache.key !== key) { opticsCache.key = key; opticsCache.sizes.clear(); }
   if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
   if (!opticsCache.sizes.has(maxEdge)) {
-    const promise = renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
+    const promise = renderOptics(croppedSource(maxEdge), state.optics, maxEdge, { replaceable: true });
     promise.catch(() => { if (opticsCache.sizes.get(maxEdge) === promise) opticsCache.sizes.delete(maxEdge); });
     opticsCache.sizes.set(maxEdge, promise);
   }
@@ -1755,6 +1755,20 @@ function adjustFull(bitmap, adjustments) {
 }
 // The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
 const bitmapKey = () => JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
+/** Input for an engine *preview*: with Lens optics on, they run at preview size (fast, like Basic) and the result
+ *  is scaled back up to the full size, which the engine expects for its physical scale (grain, MTF). The
+ *  engine's preview is small, so it looks the same; Render full quality and export use ensureBitmap(). */
+async function ensurePreviewBitmap() {
+  if (opticsNeutral(state.optics)) return ensureBitmap();
+  const key = bitmapKey();
+  if (state.previewBitmap && state.previewBitmapKey === key) return state.previewBitmap;
+  const edge = Math.max(PREVIEW_EDGE, activeModule()?.engineInfo.previewEdge ?? 0), { width, height } = croppedSize();
+  const lensed = await opticsSource(edge);
+  const bitmap = await createImageBitmap(lensed, { resizeWidth: width, resizeHeight: height, resizeQuality: 'high' });
+  if (bitmapKey() !== key) { bitmap.close(); return ensurePreviewBitmap(); }
+  state.previewBitmap?.close?.(); state.previewBitmap = bitmap; state.previewBitmapKey = key;
+  return bitmap;
+}
 async function ensureBitmap() {
   const key = bitmapKey();
   if (state.imageBitmap && state.bitmapKey === key) return state.imageBitmap;
@@ -1781,7 +1795,7 @@ async function runAdvancedPreview() {
     let bitmap = enginePreview.key === key ? enginePreview.bitmap : null;
     if (!bitmap) {
       showDeveloping(true);
-      bitmap = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
+      bitmap = await module.render(await ensurePreviewBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
       enginePreview = { key, bitmap };
     }
     if (engine.status === 'idle' || engine.status === 'preparing') setEngineStatus('ready');
@@ -2099,6 +2113,7 @@ function releaseImage() {
   if (state.renderAbort) cancelFullRender();
   clearTimeout(advancedTimer); clearTimeout(activeThumbTimer); state.renderToken++; // drop renders scheduled for this photo
   state.imageBitmap?.close?.(); state.imageBitmap = null; state.bitmapKey = '';
+  state.previewBitmap?.close?.(); state.previewBitmap = null; state.previewBitmapKey = '';
   state.fullRender?.bitmap?.close?.(); state.fullRender = null;
   enginePreview.bitmap?.close?.(); enginePreview = { key: '', bitmap: null };
   state.image = null; state.imageId++; state.originalKey = ''; state.originalCanvas = null; state.editedCanvas = null;

@@ -24,18 +24,31 @@ export function downsample(data, width, height) {
   return { width: w, height: h, r, g, b };
 }
 
-/** One box pass of half-width `radius` along rows (step 1) or columns (step w), edges clamped. src → dst. */
+/** One box pass of half-width `radius` along rows (step 1) or columns (step w), edges clamped. src → dst.
+ *  Running sum; the clamped ends are handled inline (this is the hot loop of every blur). */
 function boxPass(src, dst, count, length, stride, step, radius) {
-  const scale = 1 / (2 * radius + 1);
+  const scale = 1 / (2 * radius + 1), last = length - 1;
   for (let line = 0; line < count; line++) {
     const base = line * stride;
-    const at = k => src[base + Math.min(length - 1, Math.max(0, k)) * step];
-    let sum = 0;
-    for (let k = -radius; k <= radius; k++) sum += at(k);
-    for (let k = 0; k < length; k++) {
-      dst[base + k * step] = sum * scale;
-      sum += at(k + radius + 1) - at(k - radius);
+    let sum = src[base] * (radius + 1);
+    for (let k = 1; k <= radius; k++) sum += src[base + (k > last ? last : k) * step];
+    for (let k = 0, at = base; k < length; k++, at += step) {
+      dst[at] = sum * scale;
+      const add = k + radius + 1, sub = k - radius;
+      sum += src[base + (add > last ? last : add) * step] - src[base + (sub < 0 ? 0 : sub) * step];
     }
+  }
+}
+
+/** The same box pass down the columns, done a row at a time with one running sum per column, so memory is
+ *  read in order (a column-by-column pass strides through the whole plane and is several times slower). */
+function boxColumns(src, dst, width, height, radius) {
+  const scale = 1 / (2 * radius + 1), last = height - 1, sum = new Float64Array(width);
+  for (let x = 0; x < width; x++) sum[x] = src[x] * (radius + 1);
+  for (let k = 1; k <= radius; k++) { const row = (k > last ? last : k) * width; for (let x = 0; x < width; x++) sum[x] += src[row + x]; }
+  for (let y = 0; y < height; y++) {
+    const out = y * width, add = (y + radius + 1 > last ? last : y + radius + 1) * width, sub = (y - radius < 0 ? 0 : y - radius) * width;
+    for (let x = 0; x < width; x++) { dst[out + x] = sum[x] * scale; sum[x] += src[add + x] - src[sub + x]; }
   }
 }
 
@@ -48,7 +61,7 @@ export function blur(plane, width, height, sigma) {
   const radius = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2));
   for (let pass = 0; pass < 3; pass++) {
     boxPass(out, tmp, height, width, width, 1, radius);
-    boxPass(tmp, out, width, height, 1, width, radius);
+    boxColumns(tmp, out, width, height, radius);
   }
   return out;
 }

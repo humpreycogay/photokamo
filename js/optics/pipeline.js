@@ -160,25 +160,27 @@ export function diffractionSigma(o) {
 function applyDiffraction(image, o) {
   const { data, width, height } = image, sigma = diffractionSigma(o) * Math.hypot(width / 2, height / 2);
   if (sigma < .25) return image; // under a quarter pixel: nothing to see at this size
-  const reach = Math.ceil(2.5 * sigma), kernel = new Float32Array(2 * reach + 1);
-  let sum = 0; for (let k = -reach; k <= reach; k++) sum += kernel[k + reach] = Math.exp(-k * k / (2 * sigma * sigma));
-  for (let k = 0; k < kernel.length; k++) kernel[k] /= sum;
-  const plane = new Uint16Array(width * height), line = new Float32Array(Math.max(width, height)), SCALE = 65535;
+  const reach = Math.ceil(2.5 * sigma), size = 2 * reach + 1, kernel = new Float32Array(size);
+  let sum = 0; for (let k = 0; k < size; k++) sum += kernel[k] = Math.exp(-((k - reach) ** 2) / (2 * sigma * sigma));
+  for (let k = 0; k < size; k++) kernel[k] /= sum;
+  // One channel at a time in a 16-bit linear plane. Rows: a padded line, so the inner loop has no clamping.
+  // Columns: a row at a time (output row y sums kernel-weighted input rows), so memory is read in order.
+  const plane = new Uint16Array(width * height), line = new Float32Array(width + 2 * reach), acc = new Float32Array(width), SCALE = 65535;
   for (let c = 0; c < 3; c++) {
-    for (let y = 0; y < height; y++) { // rows: decode and blur into the plane
+    for (let y = 0; y < height; y++) {
       const row = y * width;
-      for (let x = 0; x < width; x++) line[x] = toLinear[data[(row + x) * 4 + c]];
-      for (let x = 0; x < width; x++) {
-        let v = 0; for (let k = -reach; k <= reach; k++) v += kernel[k + reach] * line[Math.min(width - 1, Math.max(0, x + k))];
-        plane[row + x] = Math.round(v * SCALE);
-      }
+      for (let x = 0; x < width; x++) line[x + reach] = toLinear[data[(row + x) * 4 + c]];
+      for (let k = 0; k < reach; k++) { line[k] = line[reach]; line[width + reach + k] = line[width + reach - 1]; }
+      for (let x = 0; x < width; x++) { let v = 0; for (let k = 0; k < size; k++) v += kernel[k] * line[x + k]; plane[row + x] = v * SCALE + .5; }
     }
-    for (let x = 0; x < width; x++) { // columns: blur and encode back
-      for (let y = 0; y < height; y++) line[y] = plane[y * width + x] / SCALE;
-      for (let y = 0; y < height; y++) {
-        let v = 0; for (let k = -reach; k <= reach; k++) v += kernel[k + reach] * line[Math.min(height - 1, Math.max(0, y + k))];
-        data[(y * width + x) * 4 + c] = encode(v);
+    for (let y = 0; y < height; y++) {
+      acc.fill(0);
+      for (let k = 0; k < size; k++) {
+        const source = Math.min(height - 1, Math.max(0, y + k - reach)) * width, weight = kernel[k] / SCALE;
+        for (let x = 0; x < width; x++) acc[x] += weight * plane[source + x];
       }
+      const row = y * width;
+      for (let x = 0; x < width; x++) data[(row + x) * 4 + c] = encode(acc[x]);
     }
   }
   return image;
@@ -236,22 +238,28 @@ function applyFocus(image, o) {
     // A highlight pixel moves into the aperture shape as a whole (all of a defocused point's light images as
     // the aperture); pixels around the threshold move partly, so there is no hard edge.
     const v = o.bokehHighlights / 100, t = linearOf(.92 - .35 * v), boost = 1 + 2 * v;
+    // Only points of light become shapes: a pixel must also stand out from its surroundings. A uniformly
+    // bright area (sky) blurred by the aperture stays uniform, so it can stay in the Gaussian ladder; this
+    // also keeps the number of stamps small.
     const radius = weight.map(value => (value - .02) * rmax), hl = base.map(() => new Float32Array(n));
+    const lum = new Float32Array(n); for (let j = 0; j < n; j++) lum[j] = luma(low.r[j], low.g[j], low.b[j]);
+    const around = blur(lum, w, h, Math.max(1.5, rmax / 3));
     base = base.map(plane => Float32Array.from(plane));
     for (let j = 0; j < n; j++) {
-      const l = luma(low.r[j], low.g[j], low.b[j]);
-      const k = smoothstep(t * .7, t * 1.15, l) * smoothstep(1, 2.5, radius[j]);
+      const l = lum[j];
+      const k = smoothstep(t * .7, t * 1.15, l) * smoothstep(1, 2.5, radius[j]) * smoothstep(.15, .45, 1 - around[j] / Math.max(l, 1e-4));
       if (!k) continue;
       for (let c = 0; c < 3; c++) { const part = base[c][j] * k; base[c][j] -= part; hl[c][j] = part * boost; }
     }
     bokeh = bokehLayer(hl, radius, w, h, o);
   }
-  let num = base.map(plane => plane.map((v, j) => v * weight[j])), den = weight, previous = 0;
+  let num = base.map(plane => { const out = new Float32Array(n); for (let j = 0; j < n; j++) out[j] = plane[j] * weight[j]; return out; }), den = weight, previous = 0;
   const levels = [];
   for (const r of radii) { // cascade: each level blurs the last by √(σₖ² − σₖ₋₁²)
     const sigma = r / 2, step = Math.sqrt(sigma * sigma - previous * previous); previous = sigma;
     num = num.map(plane => blur(plane, w, h, step)); den = blur(den, w, h, step);
-    levels.push(...num.map(plane => plane.map((v, j) => v / Math.max(den[j], 1e-6))));
+    const inverse = new Float32Array(n); for (let j = 0; j < n; j++) inverse[j] = 1 / Math.max(den[j], 1e-6);
+    for (const plane of num) { const level = new Float32Array(n); for (let j = 0; j < n; j++) level[j] = plane[j] * inverse[j]; levels.push(level); }
   }
   if (bokeh) levels.push(...bokeh);
   const up = upsampler(w, h, width, height), { x0, x1, fx } = up, first = radii[0], put = bokeh ? encodeShoulder : encode, B = K * 3;

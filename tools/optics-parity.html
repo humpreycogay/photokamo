@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoKamo · optics preview/export parity (dev tool)</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <!-- Dev-only page (plan_optics.md Task 10). Not linked from the app. Serve the repo root
+       (python -m http.server 8080) and open http://localhost:8080/tools/optics-parity.html
+       Each case renders the sample photo through the optics pipeline at full size and at preview size, scales the
+       full render down to the preview size and compares them: the preview must look like the export. -->
+  <style>
+    body { margin:0; padding:24px; background:#121210; color:#f3f1ea; font:14px/1.45 system-ui, sans-serif; }
+    h1 { margin:0 0 6px; font-size:20px; }
+    p { max-width:75ch; color:#c9c7be; }
+    button { min-height:44px; padding:0 16px; border:0; border-radius:10px; background:#f3f1ea; color:#121210; font:inherit; font-weight:600; cursor:pointer; }
+    button:focus-visible { outline:2px solid #4fc4b4; outline-offset:2px; }
+    table { border-collapse:collapse; margin-top:16px; font-variant-numeric:tabular-nums; }
+    th, td { padding:6px 12px; border-bottom:1px solid #3a3a35; text-align:right; }
+    th:first-child, td:first-child { text-align:left; }
+    .pass { color:#4fc4b4; font-weight:600; } .fail { color:#ff8a7a; font-weight:700; } .note { color:#c9c7be; text-align:left; }
+    #status { min-height:1.45em; color:#4fc4b4; }
+  </style>
+</head>
+<body>
+  <h1>Optics preview/export parity</h1>
+  <p>Full size is the sample photo at <strong>3000 px</strong>, preview at <strong>1000 px</strong>. A case passes when the mean difference is under 2 / 255 and no 16 × 16 block differs by more than 8 / 255.</p>
+  <p><button type="button" id="run">Run</button></p>
+  <p id="status" aria-live="polite"></p>
+  <table id="results" hidden><thead><tr><th>Case</th><th>Full ms</th><th>Preview ms</th><th>Mean diff</th><th>Worst block</th><th>Result</th><th class="note">Note</th></tr></thead><tbody></tbody></table>
+  <script type="module">
+    import { applyOptics } from '../js/optics/pipeline.js';
+    import { normalizeOptics } from '../js/optics/params.js';
+    const FULL = 3000, PREVIEW = 1000, MEAN = 2, BLOCK = 8;
+    const cases = [
+      ['Light falloff', { falloff: -1.5 }],
+      ['Distortion + fringing', { distortion: -40, fringing: 70 }],
+      ['Diffusion', { diffusion: 60, diffusionHighlights: 40 }],
+      ['Bloom', { bloom: 70, bloomWarmth: 30 }],
+      ['Flare (brightest area)', { flare: 70 }],
+      ['Flare (by hand)', { flare: 70, flareSource: 'manual', flareX: 85, flareY: 15 }],
+      ['Depth of field', { focusMode: 'radial', aperture: 1.4, bokehHighlights: 0 }],
+      ['Depth of field + bokeh', { focusMode: 'band', aperture: 1.4, bokehBlades: 6, bokehCatEye: 60 }],
+      ['Diffraction f/22 MFT', { diffraction: 'on', aperture: 22, format: 'mft' }, 'Expected to differ: about 1 px at full size is below the preview’s resolution, so the preview skips it.'],
+      ['Everything', { falloff: -1, distortion: -20, fringing: 30, diffusion: 40, bloom: 40, flare: 30, focusMode: 'radial', aperture: 1.8, bokehBlades: 6 }],
+    ];
+    const $ = selector => document.querySelector(selector);
+    const sample = new Image(); sample.src = '../images/model.jpg';
+    const draw = (source, edge) => {
+      const scale = edge / Math.max(source.width, source.height), canvas = new OffscreenCanvas(Math.round(source.width * scale), Math.round(source.height * scale));
+      const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      return ctx;
+    };
+    /** Area-average `image` down to w × h (exact box filter, so the comparison isn't blurred by resampling). */
+    function shrink(image, w, h) {
+      const out = new Float32Array(w * h * 3), n = new Float32Array(w * h);
+      for (let y = 0; y < image.height; y++) { const ty = Math.min(h - 1, (y * h / image.height) | 0); for (let x = 0; x < image.width; x++) { const t = ty * w + Math.min(w - 1, (x * w / image.width) | 0), i = (y * image.width + x) * 4; out[t * 3] += image.data[i]; out[t * 3 + 1] += image.data[i + 1]; out[t * 3 + 2] += image.data[i + 2]; n[t]++; } }
+      for (let t = 0; t < w * h; t++) for (let c = 0; c < 3; c++) out[t * 3 + c] /= n[t];
+      return out;
+    }
+    $('#run').addEventListener('click', async () => {
+      await sample.decode();
+      const body = $('#results tbody'); body.innerHTML = ''; $('#results').hidden = false;
+      const fullCtx = draw(sample, FULL);
+      for (const [name, values, note = ''] of cases) {
+        $('#status').textContent = `Rendering ${name}…`; await new Promise(resolve => setTimeout(resolve, 20));
+        const optics = normalizeOptics(values);
+        const full = fullCtx.getImageData(0, 0, fullCtx.canvas.width, fullCtx.canvas.height);
+        let t = performance.now(); applyOptics(full, optics); const fullMs = Math.round(performance.now() - t);
+        const previewCtx = draw(sample, PREVIEW), preview = previewCtx.getImageData(0, 0, previewCtx.canvas.width, previewCtx.canvas.height);
+        t = performance.now(); applyOptics(preview, optics); const previewMs = Math.round(performance.now() - t);
+        const shrunk = shrink(full, preview.width, preview.height), base = shrink(preview, preview.width, preview.height);
+        let sum = 0, worst = 0; const B = 16;
+        for (let i = 0; i < shrunk.length; i++) sum += Math.abs(shrunk[i] - base[i]);
+        for (let by = 0; by < preview.height; by += B) for (let bx = 0; bx < preview.width; bx += B) {
+          let d = 0, n = 0;
+          for (let y = by; y < Math.min(preview.height, by + B); y++) for (let x = bx; x < Math.min(preview.width, bx + B); x++) for (let c = 0; c < 3; c++) { const i = (y * preview.width + x) * 3 + c; d += shrunk[i] - base[i]; n++; }
+          worst = Math.max(worst, Math.abs(d / n));
+        }
+        const mean = sum / shrunk.length, pass = mean < MEAN && worst < BLOCK;
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${name}</td><td>${fullMs}</td><td>${previewMs}</td><td>${mean.toFixed(2)}</td><td>${worst.toFixed(2)}</td><td class="${pass ? 'pass' : note ? 'note' : 'fail'}">${pass ? 'Pass' : note ? 'Expected' : 'Fail'}</td><td class="note">${note}</td>`;
+        row.dataset.result = JSON.stringify({ name, fullMs, previewMs, mean: +mean.toFixed(2), worst: +worst.toFixed(2), pass, expected: Boolean(note) });
+        body.append(row);
+      }
+      $('#status').textContent = 'Done.';
+    });
+  </script>
+</body>
+</html>
