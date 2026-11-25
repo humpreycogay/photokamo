@@ -27,8 +27,9 @@ const print = (x0, y0, x1, y1, z, border = true) => ({ x: x0, y: y0, w: x1 - x0,
 /** A round photo `d` of the sheet's height across, top-left at (x, y), above the rest. */
 const circle = (x, y, d) => ({ x, y, w: d * STYLE_ASPECT[1] / STYLE_ASPECT[0], h: d, z: 5, shape: { kind: 'circle' } });
 // A photo whose left (or right) edge is a wide curve, in the slot's own 0–1 box.
-const ARC_LEFT = { kind: 'path', d: 'M .1 0 L 1 0 L 1 1 L .2 1 C .02 .78 -.03 .32 .1 0 Z' };
-const ARC_RIGHT = { kind: 'path', d: 'M 0 0 L .9 0 C 1.03 .32 .98 .78 .8 1 L 0 1 Z' };
+const ARC_LEFT = { kind: 'path', d: 'M .22 0 L 1 0 L 1 1 L .32 1 C -.08 .76 -.12 .24 .22 0 Z' };
+const ARC_RIGHT = { kind: 'path', d: 'M 0 0 L .78 0 C 1.12 .24 1.08 .76 .68 1 L 0 1 Z' };
+const background = () => ({ x: 0, y: 0, w: 1, h: 1, z: -1, border: false, background: true });
 const style = (id, name, paper, slots) => ({ id, name, category: 'style', kind: 'free', aspect: STYLE_ASPECT, paper, border: { width: .005, color: '#ffffff' }, slots });
 const scrapbook = (id, name, slots) => ({ id, name, category: 'scrapbook', kind: 'free', aspect: [4, 5], paper: '#d8cbb2', texture: 'fibre', border: { width: .018, color: '#fffdfa' }, slots });
 const fill = (cols, rows) => Array.from({ length: cols * rows }, (_, i) => [i % cols, Math.floor(i / cols)]);
@@ -55,15 +56,16 @@ export const templates = [
   shaped('circle-pie-6', 'Circle · 6', { kind: 'circle' }, radial(6)),
   shaped('hex-honeycomb-7', 'Honeycomb · 7', { kind: 'hexagon' }, { kind: 'free', slots: honeycomb }),
   // Styles: overlapping prints on coloured paper, with a thin border (white by default) around each print.
-  style('prints-3', 'Prints · 3', TAUPE, [print(.04, .06, .58, .62, 1), print(.54, .16, .95, .82, 2), print(.16, .58, .52, .94, 3)]),
-  style('prints-4', 'Prints · 4', TAUPE, [print(.024, .035, .619, .637, 1), print(.619, .165, .978, .826, 2), print(.122, .637, .373, .903, 3), print(.373, .415, .667, .961, 4)]),
-  style('prints-5', 'Prints · 5', TAUPE, [print(.03, .05, .40, .47, 1), print(.36, .09, .68, .52, 3), print(.64, .04, .97, .58, 2), print(.07, .45, .45, .95, 4), print(.47, .50, .93, .95, 5)]),
-  style('feature-2', 'Feature + 2', TAUPE, [print(.314, .049, .966, .947, 0, false), print(.028, .086, .444, .50, 1), print(.028, .50, .444, .909, 1)]),
-  style('feature-3', 'Feature + 3', TAUPE, [print(.314, .049, .966, .947, 0, false), print(.028, .086, .444, .527, 1), print(.028, .527, .237, .909, 1), print(.237, .527, .444, .909, 1)]),
-  style('feature-4', 'Feature + 4', TAUPE, [print(.314, .049, .966, .947, 0, false), print(.028, .086, .236, .497, 1), print(.236, .086, .444, .497, 1), print(.028, .497, .236, .909, 1), print(.236, .497, .444, .909, 1)]),
-  style('arc-circle', 'Arc + circle', CLAY, [{ x: .15, y: 0, w: .85, h: 1, z: 0, shape: ARC_LEFT }, circle(.075, .385, .56)]),
-  style('arc-circle-right', 'Arc + circle, right', CLAY, [{ x: 0, y: 0, w: .85, h: 1, z: 0, shape: ARC_RIGHT }, circle(.925 - .4, .385, .56)]),
-  style('arc-2-circles', 'Arc + 2 circles', CLAY, [{ x: .22, y: 0, w: .78, h: 1, z: 0, shape: ARC_LEFT }, circle(.05, .05, .44), circle(.17, .51, .44)]),
+  style('prints-3', 'Prints · 3', TAUPE, [{ ...print(.04, .06, .58, .62, 1), rotate: -3 }, { ...print(.54, .16, .95, .82, 2), rotate: 2 }, { ...print(.16, .58, .52, .94, 3), rotate: -2 }]),
+  style('prints-4', 'Prints · 4', TAUPE, [{ ...print(.024, .035, .619, .637, 1), rotate: -2 }, { ...print(.619, .165, .978, .826, 2), rotate: 2.5 }, { ...print(.122, .637, .373, .903, 3), rotate: 1.5 }, { ...print(.373, .415, .667, .961, 4), rotate: -2.5 }]),
+  style('prints-5', 'Prints · 5', TAUPE, [{ ...print(.03, .05, .40, .47, 1), rotate: -2 }, { ...print(.36, .09, .68, .52, 3), rotate: 1.5 }, { ...print(.64, .04, .97, .58, 2), rotate: 2.5 }, { ...print(.07, .45, .45, .95, 4), rotate: 2 }, { ...print(.47, .50, .93, .95, 5), rotate: -2 }]),
+  style('feature-2', 'Feature + 2', TAUPE, [{ ...print(.314, .049, .966, .947, 0, false), rotate: 1 }, { ...print(.028, .086, .444, .50, 1), rotate: -2 }, { ...print(.028, .50, .444, .909, 1), rotate: 1.5 }]),
+  style('feature-3', 'Feature + 3', TAUPE, [{ ...print(.314, .049, .966, .947, 0, false), rotate: 1 }, { ...print(.028, .086, .444, .527, 1), rotate: -2 }, { ...print(.028, .527, .237, .909, 1), rotate: 1.5 }, { ...print(.237, .527, .444, .909, 1), rotate: -1 }]),
+  style('feature-4', 'Feature + 4', TAUPE, [{ ...print(.314, .049, .966, .947, 0, false), rotate: 1 }, { ...print(.028, .086, .236, .497, 1), rotate: -2 }, { ...print(.236, .086, .444, .497, 1), rotate: 1.5 }, { ...print(.028, .497, .236, .909, 1), rotate: 2 }, { ...print(.236, .497, .444, .909, 1), rotate: -1.5 }]),
+  style('arc-circle', 'Arc + circle', CLAY, [background(), { x: .12, y: 0, w: .88, h: 1, z: 0, shape: ARC_LEFT }, circle(.045, .29, .64)]),
+  style('arc-circle-right', 'Arc + circle, right', CLAY, [background(), { x: 0, y: 0, w: .88, h: 1, z: 0, shape: ARC_RIGHT }, circle(.498, .29, .64)]),
+  style('arc-2-circles', 'Arc + 2 circles', CLAY, [background(), { x: .16, y: 0, w: .84, h: 1, z: 0, shape: ARC_LEFT }, circle(.035, .025, .5), circle(.14, .445, .5)]),
+  style('arc-2-circles-right', 'Arc + 2 circles, right', CLAY, [background(), { x: 0, y: 0, w: .84, h: 1, z: 0, shape: ARC_RIGHT }, circle(.608, .025, .5), circle(.503, .445, .5)]),
   scrapbook('scrapbook-3', 'Scrapbook · 3', [
     { x: .08, y: .07, w: .62, h: .39, rotate: -6, z: 1, shadow: true, tape: ['tl', 'tr'] },
     { x: .38, y: .34, w: .54, h: .36, rotate: 5, z: 2, shadow: true, tape: ['tr'] },

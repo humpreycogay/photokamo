@@ -46,7 +46,8 @@ for (const t of templates) {
         inside++;
         if (!layout.slots.some(o => o.z > s.z && x >= o.x && x < o.x + o.w && y >= o.y && y < o.y + o.h && inShape(o, x, y))) shown++;
       }
-      check(inside > 0 && shown / inside >= .4, `${t.id} slot ${s.index} shows ${(100 * shown / inside).toFixed(0)} % of itself`);
+      const minShown = t.slots[s.index].background ? .08 : .4;
+      check(inside > 0 && shown / inside >= minShown, `${t.id} slot ${s.index} shows ${(100 * shown / inside).toFixed(0)} % of itself`);
     }
   } else if (t.kind === 'contact') {
     check(t.category === 'contact', `${t.id} bad contact category`);
@@ -59,6 +60,12 @@ for (const t of templates) {
 {
   const { createDoc, resetTransforms } = await import(`${repo}/js/collage/model.js`);
   for (const count of [3, 4, 5]) check(slotCount(byId(`scrapbook-${count}`)) === count, `scrapbook-${count} slot count`);
+  for (const id of ['arc-circle', 'arc-circle-right', 'arc-2-circles', 'arc-2-circles-right']) {
+    const t = byId(id);
+    check(t.slots[0].x === 0 && t.slots[0].y === 0 && t.slots[0].w === 1 && t.slots[0].h === 1 && t.slots[0].z < 0 && t.slots[0].border === false && t.slots[0].background, `${id} has a full-sheet background photo`);
+  }
+  check(slotCount(byId('arc-circle')) === 3 && slotCount(byId('arc-circle-right')) === 3, 'arc + circle variants hold a background, arc and circle photo');
+  check(slotCount(byId('arc-2-circles')) === 4 && slotCount(byId('arc-2-circles-right')) === 4, 'arc + 2 circles variants hold a background, arc and two circle photos');
   const t = byId('scrapbook-3'), doc = { slots: [{ layout: { x: .2, y: .3, rotate: 17, z: 9 } }, {}, {}] };
   const moved = layoutTemplate(t, 1000, 1250, doc).slots[0];
   check(moved.x === 200 && moved.y === 375 && moved.rotate === 17 && moved.z === 9, `free override ${JSON.stringify(moved)}`);
