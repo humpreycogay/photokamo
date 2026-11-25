@@ -354,10 +354,12 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 ### Release 4: creative layouts
 
 #### Task 9: Masks, free layouts, scrapbook
-- [ ] Per-slot shapes from `shapes.js` on normal (rect) sheets; free templates with overlap and z-order (Bring forward / Send back buttons); hit test by shape, top-most first
-- [ ] Scrapbook: rotated prints with white borders and soft shadows, generated tape corners, generated paper textures (seeded fibre noise, resolution-independent)
-- [ ] Rotation handle + slider, drag to move in free layouts, snap to 0° within 2°
-- [ ] Scrapbook 3/4/5 templates
+- [x] Per-slot shapes from `shapes.js` on normal (rect) sheets; free templates with overlap and z-order (Bring forward / Send back buttons); hit test by shape, top-most first
+- [x] Scrapbook: rotated prints with white borders and soft shadows, generated tape corners, generated paper textures (seeded fibre noise, resolution-independent)
+- [x] Rotation handle + slider, drag to move in free layouts, snap to 0° within 2°
+- [x] Scrapbook 3/4/5 templates
+
+*Done 2026-11-25: added document-driven free-slot position/rotation/z overrides, rotation-aware rendering and hit tests, accessible stacking and movement controls, three scrapbook templates, generated tape, shadows, and deterministic vector fibre texture. 9,528 automated collage checks pass with 0 errors; all edited JavaScript passes syntax checks, the duplicate-ID scan passes, and `git diff --check` passes. Browser visual QA of mask-edge scaling and interaction/export appearance remains release QA because no browser runner is installed in this workspace.*
 
 **Check:** circle/heart slot masks clip the same in preview and export; overlapping slots select the top one; move/rotate (one undo per gesture); textures look the same at 1080 and 4000 px.
 **Done when:** mask edges ± 1 px scaled between preview and export; no bundled image assets without a licence line.

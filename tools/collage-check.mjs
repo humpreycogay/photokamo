@@ -5,11 +5,13 @@ const { templates, slotCount } = await import(`${repo}/js/collage/templates.js`)
 const { layoutTemplate, sheetSize } = await import(`${repo}/js/collage/layout.js`);
 const { shapePolygon, polygonArea, pointInPolygon, SHAPE_KINDS } = await import(`${repo}/js/collage/shapes.js`);
 const { DEFAULT_FILM, filmSettings, frameNumber, stripTransform } = await import(`${repo}/js/collage/contact.js`);
+const { fibres, tapeRect, unrotatePoint } = await import(`${repo}/js/collage/scrapbook.js`);
 
 let errors = 0, checks = 0;
 const fail = message => { errors++; console.log('ERR', message); };
 const check = (ok, message) => { checks++; if (!ok) fail(message); };
 const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const byId = id => templates.find(t => t.id === id);
 
 // ---------- Templates ----------
 const ids = new Set();
@@ -32,7 +34,7 @@ for (const t of templates) {
     check(['grid', 'radial', 'free'].includes(t.fill?.kind), `${t.id} bad fill`);
     check(!t.sheet.hole || (t.sheet.hole > 0 && t.sheet.hole < .8), `${t.id} bad hole`);
   } else if (t.kind === 'free') {
-    check(t.category === 'style' && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} style needs a paper colour`);
+    check(['style', 'scrapbook'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
     check(slotCount(t) >= 2 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (styles hold 2–9)`);
     for (const [i, s] of t.slots.entries()) check(s.w > 0 && s.h > 0 && s.x >= -1e-9 && s.y >= -1e-9 && s.x + s.w <= 1 + 1e-9 && s.y + s.h <= 1 + 1e-9, `${t.id} slot ${i} leaves the sheet`);
     // Every print shows at least 40 % of itself (sampled on a 120 × 120 grid over its box, inside its shape).
@@ -53,10 +55,24 @@ for (const t of templates) {
   } else fail(`${t.id} unexpected kind ${t.kind}`);
 }
 
+// ---------- Scrapbook/free transforms (Task 9) ----------
+{
+  for (const count of [3, 4, 5]) check(slotCount(byId(`scrapbook-${count}`)) === count, `scrapbook-${count} slot count`);
+  const t = byId('scrapbook-3'), doc = { slots: [{ layout: { x: .2, y: .3, rotate: 17, z: 9 } }, {}, {}] };
+  const moved = layoutTemplate(t, 1000, 1250, doc).slots[0];
+  check(moved.x === 200 && moved.y === 375 && moved.rotate === 17 && moved.z === 9, `free override ${JSON.stringify(moved)}`);
+  const p = unrotatePoint({ x: 100, y: 100, w: 200, h: 100, rotate: 90 }, 200, 50);
+  check(Math.abs(p.x - 100) < 1e-9 && Math.abs(p.y - 150) < 1e-9, `unrotatePoint ${JSON.stringify(p)}`);
+  const a = fibres(1080, 1350), b = fibres(4000, 5000);
+  check(JSON.stringify(a) === JSON.stringify(b), 'fibre geometry is resolution-independent at the same aspect');
+  check(JSON.stringify(a) === JSON.stringify(fibres(1080, 1350)), 'fibre geometry is deterministic');
+  const tape = tapeRect({ x: 100, y: 80, w: 500, h: 300, index: 2 }, 'tl');
+  check(tape.w > tape.h && Number.isFinite(tape.rotate), `tape geometry ${JSON.stringify(tape)}`);
+}
+
 // ---------- Layout: golden numbers ----------
 const rects = layout => layout.slots.map(({ x, y, w, h }) => [x, y, w, h]);
 const golden = (name, actual, expected) => check(JSON.stringify(actual) === JSON.stringify(expected), `${name}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
-const byId = id => templates.find(t => t.id === id);
 golden('grid-4 1000² g.02 m.04', rects(layoutTemplate(byId('grid-4'), 1000, 1000, { gutter: .02, margin: .04 })),
   [[40, 40, 450, 450], [510, 40, 450, 450], [40, 510, 450, 450], [510, 510, 450, 450]]);
 golden('grid-9 1000² g.01 m.03', rects(layoutTemplate(byId('grid-9'), 1000, 1000, { gutter: .01, margin: .03 })).slice(0, 3),

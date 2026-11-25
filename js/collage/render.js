@@ -5,6 +5,7 @@ import { fillGeometry } from './fill.js';
 import { drawOriented, drawTexts } from '../renderer.js';
 import { perforations, filmWear } from '../film.js';
 import { filmSettings, frameNumber } from './contact.js';
+import { fibres, tapeRect } from './scrapbook.js';
 
 /** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
  *  1 px on each side, so resampling never lets paper show along a slot's edge. */
@@ -72,6 +73,14 @@ export function drawPaper(ctx, doc, layout, { shadow = true } = {}) {
   if (doc.sheet.background !== 'paper') return;
   ctx.fillStyle = doc.paper.color;
   if (layout.shaped) ctx.fill(sheetPath(layout.paper), 'evenodd'); else ctx.fillRect(0, 0, layout.width, layout.height);
+  if (doc.paper.texture === 'fibre') {
+    const short = Math.min(layout.width, layout.height); ctx.save(); ctx.lineWidth = Math.max(.45, short * .00045); ctx.lineCap = 'round';
+    for (const fibre of fibres(layout.width, layout.height)) {
+      const x = fibre.x * short, y = fibre.y * short, dx = Math.cos(fibre.angle) * fibre.length * short, dy = Math.sin(fibre.angle) * fibre.length * short;
+      ctx.strokeStyle = `rgba(71,55,35,${fibre.alpha})`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx, y + dy); ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 /** For formats without alpha (JPEG): fills what is still transparent with `color`, under everything drawn, which
  *  composites exactly as drawing over that colour would, so edges never darken. */
@@ -82,16 +91,28 @@ export function flattenSheet(ctx, layout, color) {
  *  print border (styles; its full width), centred on the outline, so a print laid over another covers that one's border too. */
 export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
   if (!image && !emptyFill) return;
+  const path = slotPath(slot), cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+  if (slot.shadow) {
+    ctx.save(); if (slot.rotate) { ctx.translate(cx, cy); ctx.rotate(slot.rotate * Math.PI / 180); ctx.translate(-cx, -cy); }
+    ctx.shadowColor = 'rgba(20,15,10,.3)'; ctx.shadowBlur = Math.min(slot.w, slot.h) * .045; ctx.shadowOffsetY = Math.min(slot.w, slot.h) * .025;
+    ctx.fillStyle = '#fff'; ctx.fill(path); ctx.restore();
+  }
   ctx.save();
+  if (slot.rotate) { ctx.translate(cx, cy); ctx.rotate(slot.rotate * Math.PI / 180); ctx.translate(-cx, -cy); }
   if (slot.clip) ctx.clip(sheetPath(slot.clip), 'evenodd');
-  const path = slotPath(slot);
   ctx.clip(path);
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   if (image) drawCover(ctx, image, slot, doc.slots[slot.index]);
   else { ctx.fillStyle = emptyFill; ctx.fillRect(slot.x, slot.y, slot.w, slot.h); }
   ctx.restore();
   if (slot.border) {
-    ctx.save(); ctx.strokeStyle = slot.border.color; ctx.lineWidth = slot.border.width; ctx.lineJoin = 'miter'; ctx.stroke(path); ctx.restore();
+    ctx.save();
+    if (slot.rotate) { ctx.translate(cx, cy); ctx.rotate(slot.rotate * Math.PI / 180); ctx.translate(-cx, -cy); }
+    ctx.strokeStyle = slot.border.color; ctx.lineWidth = slot.border.width; ctx.lineJoin = 'miter'; ctx.stroke(path); ctx.restore();
+  }
+  if (slot.tape) for (const corner of slot.tape) {
+    const tape = tapeRect(slot, corner); ctx.save(); ctx.translate(tape.x + tape.w / 2, tape.y + tape.h / 2); ctx.rotate((slot.rotate + tape.rotate) * Math.PI / 180);
+    ctx.fillStyle = 'rgba(225,211,165,.72)'; ctx.fillRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.strokeStyle = 'rgba(110,92,56,.13)'; ctx.lineWidth = Math.max(1, tape.h * .025); ctx.strokeRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.restore();
   }
 }
 /** Slots in drawing order (z, then layout order). */

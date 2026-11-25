@@ -1,7 +1,7 @@
 // Collage document (CollagePlan.md, "Document model"). Plain data: undo snapshots are JSON copies.
 // Slots reference strip photos by id; a missing photo leaves its slot empty.
 
-/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, angle: number, flip: boolean }} SlotFill
+/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, angle: number, flip: boolean, layout?: {x:number,y:number,rotate:number,z:number} }} SlotFill
  *  The photo's framing in its slot (js/collage/fill.js): pan 0–1 (0.5 = centred) within the photo's own crop;
  *  zoom 1–5 (1 = cover); rotate in 90° steps; angle −45…45° on top; flip mirrors it. `id` stays with the slot. */
 /** @typedef {{ v: 1, templateId: string, aspect: { w: number, h: number }, aspectAuto: boolean,

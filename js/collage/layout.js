@@ -79,14 +79,16 @@ export function layoutGrid(template, width, height, { gutter = 0, margin = 0, ra
  *  corner radius don't apply. Styles give their prints a border ({ width: fraction of the short edge, color }; the
  *  document's `border` overrides the template's), stroked centred on each print's outline. Slots with a shape other
  *  than a rect carry `visible`, their outline polygon (hit tests, the stage overlay). */
-export function layoutFree(template, width, height, { border = null } = {}) {
+export function layoutFree(template, width, height, { border = null, slots: fills = [] } = {}) {
   const short = Math.min(width, height), spec = border || template.border || null;
   const slots = template.slots.map((item, index) => {
-    const x = Math.round(item.x * width), y = Math.round(item.y * height);
+    const override = fills[index]?.layout || null;
+    const nx = override?.x ?? item.x, ny = override?.y ?? item.y;
+    const x = Math.round(nx * width), y = Math.round(ny * height);
     const rect = { x, y, w: Math.round((item.x + item.w) * width) - x, h: Math.round((item.y + item.h) * height) - y };
     const shape = item.shape && item.shape.kind !== 'rect' ? item.shape : null;
     const line = spec && item.border !== false && spec.width > 0 ? { width: Math.max(1, spec.width * short), color: spec.color } : null;
-    return slot(index, rect, { rotate: item.rotate || 0, z: item.z || 0, shape, shadow: Boolean(item.shadow), border: line, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
+    return slot(index, rect, { rotate: override?.rotate ?? item.rotate ?? 0, z: override?.z ?? item.z ?? 0, shape, shadow: Boolean(item.shadow), tape: item.tape || null, border: line, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
   });
   return { width, height, margin: 0, gutter: 0, slots };
 }

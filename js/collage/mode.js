@@ -8,6 +8,7 @@ import { templates, templateById, slotCount } from './templates.js';
 import { layoutTemplate, paddedAspect, stickerPad, splitAxis, defaultSplits, clampSplits, moveSplit } from './layout.js';
 import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
+import { unrotatePoint } from './scrapbook.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
 import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
 import { DEFAULT_FILM, filmSettings } from './contact.js';
@@ -47,6 +48,7 @@ export function createCollageMode(deps) {
   let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
   const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
     zoom: byId('collageZoom'), angle: byId('collageAngle'), rotate: byId('collageRotate'), flip: byId('collageFlip'), reset: byId('collageReset'),
+    free: byId('collageFreeTools'), layoutRotate: byId('collageLayoutRotate'), layoutRotateOutput: byId('collageLayoutRotateOutput'), back: byId('collageSendBack'), forward: byId('collageBringForward'),
     move: byId('collageMove'), photos: byId('collagePhotos'), add: byId('collageAddPhoto'), empty: byId('collageEmpty'), edit: byId('collageEdit'), file: byId('collageFileInput') };
   let active = false, doc = null, docPhotos = '', undoStack = [], redoStack = [], frame = 0, slider = null;
   // The slot being edited (index into the layout) or null; the last drawn layout and device px per CSS px.
@@ -202,6 +204,7 @@ export function createCollageMode(deps) {
     else if (!next.paper && d.paper.auto) { d.paper.color = deps.paperColors[0].hex; delete d.paper.auto; }
     fitAspect(d, next);
     fitSlots(d, slotCount(next));
+    d.paper.texture = next.texture || 'none';
   }
   function fitAspect(d, t) {
     if (t.lockAspect) d.aspect = paddedAspect(t.aspect[0] / t.aspect[1], stickerPad(d.sheet));
@@ -316,6 +319,20 @@ export function createCollageMode(deps) {
       const extra = added.length - placed.length;
       say(`${plural(placed.length, 'photo')} added${extra ? `; ${extra} more in the strip` : ''}`);
     });
+    const beginLayout = () => { slider ||= cloneDoc(doc); };
+    slotUi.layoutRotate.addEventListener('pointerdown', beginLayout); slotUi.layoutRotate.addEventListener('focus', beginLayout);
+    slotUi.layoutRotate.addEventListener('input', () => {
+      if (selected == null) return; beginLayout(); const item = template().slots[selected], fill = doc.slots[selected]; fill.layout ||= {};
+      let angle = Number(slotUi.layoutRotate.value); if (Math.abs(angle) <= 2) angle = 0; fill.layout.rotate = angle; syncFreeValues(); scheduleDraw();
+    });
+    slotUi.layoutRotate.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); });
+    slotUi.layoutRotate.addEventListener('blur', () => { slider = null; });
+    const reorder = delta => {
+      if (selected == null || template().kind !== 'free') return;
+      change(d => { const zs = view.layout.slots.map(s => s.z), current = view.layout.slots[selected].z, target = delta > 0 ? Math.max(...zs) + 1 : Math.min(...zs) - 1; (d.slots[selected].layout ||= {}).z = target; });
+      say(delta > 0 ? 'Brought forward' : 'Sent back');
+    };
+    slotUi.forward.addEventListener('click', () => reorder(1)); slotUi.back.addEventListener('click', () => reorder(-1));
   }
   function moveTo(target) {
     if (selected == null || target === selected || !(target >= 0)) return;
@@ -335,6 +352,11 @@ export function createCollageMode(deps) {
     slotUi.angle.value = slot.angle; byId('collageAngleOutput').value = `${slot.angle}°`;
     slotUi.flip.setAttribute('aria-pressed', slot.flip);
   }
+  function syncFreeValues() {
+    if (selected == null || template().kind !== 'free') return;
+    const angle = doc.slots[selected].layout?.rotate ?? template().slots[selected].rotate ?? 0;
+    slotUi.layoutRotate.value = angle; slotUi.layoutRotateOutput.value = `${angle}°`;
+  }
   function syncSlotPanel() {
     const count = slotCount(template());
     if (selected != null && selected >= count) selected = null;
@@ -342,6 +364,7 @@ export function createCollageMode(deps) {
     slotUi.tools.hidden = selected == null; slotUi.hint.hidden = selected != null;
     slotUi.title.textContent = selected == null ? 'Photo' : `Slot ${selected + 1} · ${photo ? photo.name : 'empty'}`;
     if (selected == null) return;
+    slotUi.free.hidden = template().kind !== 'free'; syncFreeValues();
     slotUi.photoTools.hidden = !photo; slotUi.edit.hidden = !photo; slotUi.empty.hidden = !photo;
     syncFillValues();
     slotUi.move.innerHTML = doc.slots.slice(0, count).map((s, i) => `<option value="${i}"${i === selected ? ' selected' : ''}>Slot ${i + 1} · ${escapeHtml(deps.photoById(s.photoId)?.name || 'empty')}</option>`).join('');
@@ -564,16 +587,19 @@ export function createCollageMode(deps) {
     }
     layout.slots.forEach((slot, i) => {
       const option = slotsEl.children[i], photo = deps.photoById(doc.slots[i]?.photoId);
-      Object.assign(option.style, { left: `${slot.x / k}px`, top: `${slot.y / k}px`, width: `${slot.w / k}px`, height: `${slot.h / k}px`, borderRadius: `${slot.radius / k}px`, zIndex: slot.z + 1 });
+      Object.assign(option.style, { left: `${slot.x / k}px`, top: `${slot.y / k}px`, width: `${slot.w / k}px`, height: `${slot.h / k}px`, borderRadius: `${slot.radius / k}px`, zIndex: slot.z + 1, transform: slot.rotate ? `rotate(${slot.rotate}deg)` : '' });
       // Shaped slots: the box is clipped to the slot's visible part, so taps outside the shape (and in the hole) miss it.
       const shaped = Boolean(slot.visible);
       option.classList.toggle('is-shaped', shaped);
-      option.style.clipPath = shaped ? `path(evenodd, "${visibleCss(slot, k)}")` : '';
+      option.style.clipPath = shaped && !slot.rotate ? `path(evenodd, "${visibleCss(slot, k)}")` : '';
       if (shaped) { const [cx, cy] = polygonCentroid(slot.visible); option.style.setProperty('--cx', `${(cx - slot.x) / k}px`); option.style.setProperty('--cy', `${(cy - slot.y) / k}px`); }
       option.setAttribute('aria-selected', i === selected); option.tabIndex = i === (selected ?? 0) ? 0 : -1;
       option.classList.toggle('is-empty', !photo);
       option.classList.toggle('is-drop-target', gesture?.mode === 'swap' && gesture.target === i);
       option.classList.toggle('is-dragged', gesture?.mode === 'swap' && gesture.index === i);
+      option.classList.toggle('is-free', template().kind === 'free');
+      if (template().kind === 'free' && i === selected && !option.querySelector('.collage-rotate-handle')) option.insertAdjacentHTML('beforeend', '<button class="collage-rotate-handle" type="button" aria-label="Rotate print" title="Drag to rotate"></button>');
+      else if (!(template().kind === 'free' && i === selected)) option.querySelector('.collage-rotate-handle')?.remove();
       option.setAttribute('aria-label', `Slot ${i + 1} of ${count}: ${photo ? photo.name : 'empty'}`);
     });
   }
@@ -584,7 +610,7 @@ export function createCollageMode(deps) {
   /** Slot index under a client point (top-most first), or null. */
   function slotAt(clientX, clientY) {
     const box = canvas.getBoundingClientRect(), x = (clientX - box.left) * view.k, y = (clientY - box.top) * view.k;
-    const inside = s => (s.visible ? pointInPolygon(s.visible, x, y) && !(s.holeVisible?.length && pointInPolygon(s.holeVisible, x, y)) : x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    const inside = s => { const p = unrotatePoint(s, x, y); return s.visible ? pointInPolygon(s.visible, p.x, p.y) && !(s.holeVisible?.length && pointInPolygon(s.holeVisible, p.x, p.y)) : p.x >= s.x && p.x < s.x + s.w && p.y >= s.y && p.y < s.y + s.h; };
     const hit = [...view.layout.slots].sort((a, b) => b.z - a.z || b.index - a.index).find(inside);
     return hit ? hit.index : null;
   }
@@ -600,10 +626,17 @@ export function createCollageMode(deps) {
     if (!option) { select(null); return; } // gutters, margins and transparent areas hold nothing
     const index = Number(option.dataset.slot);
     select(index);
+    if (event.target.closest('.collage-rotate-handle')) {
+      event.preventDefault(); pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); try { slotsEl.setPointerCapture(event.pointerId); } catch { /* gone */ }
+      const box = canvas.getBoundingClientRect(), slot = view.layout.slots[index], cx = box.left + (slot.x + slot.w / 2) / view.k, cy = box.top + (slot.y + slot.h / 2) / view.k;
+      gesture = { index, start: cloneDoc(doc), mode: 'rotate-layout', cx, cy, startPointer: Math.atan2(event.clientY - cy, event.clientX - cx) * 180 / Math.PI, angle: slot.rotate };
+      return;
+    }
     if (event.target.closest('.collage-slot-empty')) return; // its click opens the file picker (no capture, or click goes elsewhere)
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     try { slotsEl.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
-    if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: 'pan', target: null, moved: false };
+    if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: template().kind === 'free' ? 'move' : 'pan', target: null, moved: false,
+      layout: template().kind === 'free' ? { x: doc.slots[index].layout?.x ?? template().slots[index].x, y: doc.slots[index].layout?.y ?? template().slots[index].y } : null };
     else if (pointers.size === 2 && gesture && gesture.mode !== 'swap') {
       const [a, b] = [...pointers.values()];
       Object.assign(gesture, { mode: 'pinch', distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom: doc.slots[gesture.index].zoom });
@@ -614,6 +647,10 @@ export function createCollageMode(deps) {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (!gesture || gesture.mode === 'ended') return;
     const slot = doc.slots[gesture.index];
+    if (gesture.mode === 'rotate-layout') {
+      let angle = gesture.angle + Math.atan2(event.clientY - gesture.cy, event.clientX - gesture.cx) * 180 / Math.PI - gesture.startPointer;
+      angle = clamp(Math.round(angle), -45, 45); if (Math.abs(angle) <= 2) angle = 0; (slot.layout ||= {}).rotate = angle; syncFreeValues(); scheduleDraw(); return;
+    }
     if (gesture.mode === 'pinch') {
       const [a, b] = [...pointers.values()]; if (!b) return;
       slot.zoom = clamp(gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / gesture.distance, ZOOM_MIN, ZOOM_MAX);
@@ -622,6 +659,10 @@ export function createCollageMode(deps) {
     const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
     if (!gesture.moved && Math.hypot(dx, dy) < 3) return;
     gesture.moved = true;
+    if (gesture.mode === 'move') {
+      const item = template().slots[gesture.index], fill = doc.slots[gesture.index], nx = gesture.layout.x + dx * view.k / view.layout.width, ny = gesture.layout.y + dy * view.k / view.layout.height;
+      fill.layout ||= {}; fill.layout.x = clamp(nx, 0, 1 - item.w); fill.layout.y = clamp(ny, 0, 1 - item.h); scheduleDraw(); return;
+    }
     const over = slotAt(event.clientX, event.clientY);
     if (over != null && over !== gesture.index && deps.photoById(slot.photoId)) {
       if (gesture.mode !== 'swap') { slot.pan = { ...gesture.pan }; gesture.mode = 'swap'; }
@@ -668,6 +709,12 @@ export function createCollageMode(deps) {
     const option = event.target.closest('[data-slot]'); if (!option) return;
     const index = Number(option.dataset.slot), count = view.layout.slots.length, key = event.key;
     const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    if (arrow && template().kind === 'free' && event.shiftKey && !event.altKey) {
+      event.preventDefault(); const item = template().slots[index], step = event.ctrlKey || event.metaKey ? .05 : .01;
+      change(d => { const fill = d.slots[index], current = fill.layout || {}; fill.layout = { ...current,
+        x: clamp((current.x ?? item.x) + arrow[0] * step, 0, 1 - item.w), y: clamp((current.y ?? item.y) + arrow[1] * step, 0, 1 - item.h) }; });
+      say('Print moved'); return;
+    }
     if (arrow && event.altKey) {
       event.preventDefault(); const g = geometry(index); if (!g) return;
       const s = view.layout.slots[index], step = Math.min(s.w, s.h) * (event.shiftKey ? .2 : .05);
@@ -683,6 +730,7 @@ export function createCollageMode(deps) {
       r: () => editFill(slot => { slot.rotate += 90; }, slot => `Rotated to ${slot.rotate}°`),
       R: () => editFill(slot => { slot.rotate -= 90; }, slot => `Rotated to ${slot.rotate}°`),
       f: () => editFill(slot => { slot.flip = !slot.flip; }, slot => (slot.flip ? 'Flipped' : 'Not flipped')),
+      '[': () => { if (template().kind === 'free') slotUi.back.click(); }, ']': () => { if (template().kind === 'free') slotUi.forward.click(); },
       Delete: emptySelected, Backspace: emptySelected,
       Enter: () => { if (!slotPhoto()) slotUi.file.click(); } // an empty slot: choose a photo file for it
     };

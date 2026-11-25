@@ -30,6 +30,7 @@ const circle = (x, y, d) => ({ x, y, w: d * STYLE_ASPECT[1] / STYLE_ASPECT[0], h
 const ARC_LEFT = { kind: 'path', d: 'M .1 0 L 1 0 L 1 1 L .2 1 C .02 .78 -.03 .32 .1 0 Z' };
 const ARC_RIGHT = { kind: 'path', d: 'M 0 0 L .9 0 C 1.03 .32 .98 .78 .8 1 L 0 1 Z' };
 const style = (id, name, paper, slots) => ({ id, name, category: 'style', kind: 'free', aspect: STYLE_ASPECT, paper, border: { width: .005, color: '#ffffff' }, slots });
+const scrapbook = (id, name, slots) => ({ id, name, category: 'scrapbook', kind: 'free', aspect: [4, 5], paper: '#d8cbb2', texture: 'fibre', border: { width: .018, color: '#fffdfa' }, slots });
 const fill = (cols, rows) => Array.from({ length: cols * rows }, (_, i) => [i % cols, Math.floor(i / cols)]);
 const contact = (id, name, strips, frames, frame) => ({ id, name, category: 'contact', kind: 'contact', aspect: [17, 22], strips, frames, frame });
 
@@ -62,7 +63,25 @@ export const templates = [
   style('feature-4', 'Feature + 4', TAUPE, [print(.314, .049, .966, .947, 0, false), print(.028, .086, .236, .497, 1), print(.236, .086, .444, .497, 1), print(.028, .497, .236, .909, 1), print(.236, .497, .444, .909, 1)]),
   style('arc-circle', 'Arc + circle', CLAY, [{ x: .15, y: 0, w: .85, h: 1, z: 0, shape: ARC_LEFT }, circle(.075, .385, .56)]),
   style('arc-circle-right', 'Arc + circle, right', CLAY, [{ x: 0, y: 0, w: .85, h: 1, z: 0, shape: ARC_RIGHT }, circle(.925 - .4, .385, .56)]),
-  style('arc-2-circles', 'Arc + 2 circles', CLAY, [{ x: .22, y: 0, w: .78, h: 1, z: 0, shape: ARC_LEFT }, circle(.05, .05, .44), circle(.17, .51, .44)])
+  style('arc-2-circles', 'Arc + 2 circles', CLAY, [{ x: .22, y: 0, w: .78, h: 1, z: 0, shape: ARC_LEFT }, circle(.05, .05, .44), circle(.17, .51, .44)]),
+  scrapbook('scrapbook-3', 'Scrapbook · 3', [
+    { x: .08, y: .07, w: .62, h: .39, rotate: -6, z: 1, shadow: true, tape: ['tl', 'tr'] },
+    { x: .38, y: .34, w: .54, h: .36, rotate: 5, z: 2, shadow: true, tape: ['tr'] },
+    { x: .1, y: .64, w: .57, h: .3, rotate: -3, z: 3, shadow: true, tape: ['tl'] }
+  ]),
+  scrapbook('scrapbook-4', 'Scrapbook · 4', [
+    { x: .06, y: .06, w: .55, h: .34, rotate: -5, z: 1, shadow: true, tape: ['tl'] },
+    { x: .46, y: .18, w: .48, h: .34, rotate: 6, z: 3, shadow: true, tape: ['tr'] },
+    { x: .09, y: .47, w: .49, h: .4, rotate: 4, z: 2, shadow: true, tape: ['tl'] },
+    { x: .46, y: .62, w: .45, h: .3, rotate: -4, z: 4, shadow: true, tape: ['tr'] }
+  ]),
+  scrapbook('scrapbook-5', 'Scrapbook · 5', [
+    { x: .05, y: .04, w: .48, h: .29, rotate: -6, z: 1, shadow: true, tape: ['tl'] },
+    { x: .49, y: .08, w: .45, h: .33, rotate: 5, z: 2, shadow: true, tape: ['tr'] },
+    { x: .13, y: .33, w: .58, h: .34, rotate: 2, z: 4, shadow: true, tape: ['tl', 'tr'] },
+    { x: .04, y: .65, w: .43, h: .29, rotate: 5, z: 3, shadow: true, tape: ['tl'] },
+    { x: .5, y: .64, w: .44, h: .31, rotate: -5, z: 5, shadow: true, tape: ['tr'] }
+  ])
 ];
 
 export const templateById = id => templates.find(template => template.id === id) || null;
