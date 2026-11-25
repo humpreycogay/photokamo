@@ -185,6 +185,13 @@
           <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
           <div class="collage-dividers" id="collageDividers"></div>
         </div>
+        <div class="collage-stage-tools" id="collageStageTools" hidden>
+          <span id="collageDragModeLabel">Drag</span>
+          <div class="segmented collage-drag-mode" id="collageDragMode" role="radiogroup" aria-labelledby="collageDragModeLabel">
+            <button type="button" role="radio" data-drag-mode="pan" aria-checked="true">Photo</button>
+            <button type="button" role="radio" data-drag-mode="move" aria-checked="false">Print</button>
+          </div>
+        </div>
         <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot, Enter on an empty slot adds a photo. In a free layout, Shift with arrow keys moves the print, and brackets send it back or bring it forward. Drag a photo onto another to swap them; drag a free-layout print to move it.</p>
       </div>
 
@@ -478,7 +485,7 @@
               <div class="collage-free-tools" id="collageFreeTools" hidden>
                 <div class="slider-row"><label class="slider-label" for="collageLayoutRotate"><span>Print rotation</span><output id="collageLayoutRotateOutput" for="collageLayoutRotate">0°</output></label><input id="collageLayoutRotate" type="range" min="-45" max="45" step="1"></div>
                 <div class="collage-order-actions"><button class="button button-secondary" id="collageSendBack" type="button">Send back</button><button class="button button-secondary" id="collageBringForward" type="button">Bring forward</button></div>
-                <p class="collage-hint">Drag the print to move it. Rotation snaps straight within 2°.</p>
+                <p class="collage-hint">Use the Drag control over the preview to move the photo or print. Rotation snaps straight within 2°.</p>
               </div>
               <div class="crop-platform collage-move"><label for="collageMove">Move to slot</label><select id="collageMove"></select></div>
               <p class="collage-label collage-photos-label" id="collagePhotosLabel">Photo in this slot</p>
@@ -491,7 +498,7 @@
             </div>
             <input id="collageFileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple aria-label="Choose photos for the collage" tabindex="-1">
           </section>
-          <h3 class="collage-label" id="collageLayoutTitle">Layout</h3>
+          <div class="panel-heading"><h3 class="collage-label" id="collageLayoutTitle">Layout</h3><button class="button button-ghost" id="collageResetTransforms" type="button">Reset transformations</button></div>
           <p class="collage-sublabel" id="collageGridsTitle">Grids</p>
           <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle collageGridsTitle" aria-orientation="horizontal"></div>
           <p class="collage-sublabel" id="collageStylesTitle">Styles <span>· masks and overlapping prints</span></p>

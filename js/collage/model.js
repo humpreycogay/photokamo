@@ -24,6 +24,17 @@ export const emptySlot = (photoId = null) => ({ id: `s${++slotSeq}`, photoId, ..
 const cloneFraming = ({ pan, zoom, rotate, angle, flip }) => ({ pan: { ...pan }, zoom, rotate, angle, flip });
 /** Puts the default framing back on a slot (its photo stays). */
 export const resetFraming = slot => Object.assign(slot, cloneFraming(FRAMING));
+/** Restores a slot's photo framing and template-defined placement. The photo and slot id stay. */
+export function resetTransform(slot) {
+  resetFraming(slot);
+  delete slot.layout;
+  return slot;
+}
+/** Restores every photo/print transform in a collage without changing its photos or other settings. */
+export function resetTransforms(doc) {
+  doc.slots.forEach(resetTransform);
+  return doc;
+}
 /** Swaps the photos of two slots, each keeping its framing (the slots' ids, and so their captions, stay). */
 export function swapSlots(doc, a, b) {
   const first = doc.slots[a], second = doc.slots[b];

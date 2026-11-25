@@ -10,7 +10,7 @@ import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { unrotatePoint } from './scrapbook.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
-import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
+import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, resetTransforms, swapSlots } from './model.js';
 import { DEFAULT_FILM, filmSettings } from './contact.js';
 
 const MAX_SLOT_EDGE = 1600; // preview renders: long edge cap per photo
@@ -48,9 +48,9 @@ export function createCollageMode(deps) {
   let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
   const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
     zoom: byId('collageZoom'), angle: byId('collageAngle'), rotate: byId('collageRotate'), flip: byId('collageFlip'), reset: byId('collageReset'),
-    free: byId('collageFreeTools'), layoutRotate: byId('collageLayoutRotate'), layoutRotateOutput: byId('collageLayoutRotateOutput'), back: byId('collageSendBack'), forward: byId('collageBringForward'),
+    free: byId('collageFreeTools'), stageTools: byId('collageStageTools'), dragMode: byId('collageDragMode'), layoutRotate: byId('collageLayoutRotate'), layoutRotateOutput: byId('collageLayoutRotateOutput'), back: byId('collageSendBack'), forward: byId('collageBringForward'),
     move: byId('collageMove'), photos: byId('collagePhotos'), add: byId('collageAddPhoto'), empty: byId('collageEmpty'), edit: byId('collageEdit'), file: byId('collageFileInput') };
-  let active = false, doc = null, docPhotos = '', undoStack = [], redoStack = [], frame = 0, slider = null;
+  let active = false, doc = null, docPhotos = '', undoStack = [], redoStack = [], frame = 0, slider = null, freeDragMode = 'pan';
   // The slot being edited (index into the layout) or null; the last drawn layout and device px per CSS px.
   let selected = null, view = { layout: null, k: 1 }, gesture = null, wheel = null, photosKey = '';
   const pointers = new Map();
@@ -123,6 +123,10 @@ export function createCollageMode(deps) {
     buildSticker();
     buildPrints();
     buildSlotPanel();
+    byId('collageResetTransforms').addEventListener('click', () => {
+      change(resetTransforms);
+      say('Photo and print transformations reset');
+    });
     buildTextPanel();
     buildFilmPanel();
   }
@@ -194,7 +198,10 @@ export function createCollageMode(deps) {
    *  user chose one); proportional shapes size the sheet to themselves, other layouts get the user's aspect back. */
   function applyTemplate(d, next) {
     const shaped = next.kind === 'shaped', was = templateById(d.templateId);
-    if (was?.id !== next.id) d.splits = null; // dividers start where the new layout puts them
+    if (was?.id !== next.id) {
+      d.splits = null; // dividers start where the new layout puts them
+      resetTransforms(d); // framing and scrapbook placement belong to the previous layout
+    }
     if (was && was.kind !== next.kind) d.border = null; // grid borders and print borders don't carry over
     d.templateId = next.id;
     if (next.kind === 'contact') d.film = filmSettings(d.film);
@@ -307,6 +314,11 @@ export function createCollageMode(deps) {
     slotUi.empty.addEventListener('click', emptySelected);
     slotUi.edit.addEventListener('click', () => { const photo = slotPhoto(); if (photo) deps.editPhoto(photo.id); });
     slotUi.add.addEventListener('click', () => slotUi.file.click());
+    radioGroup(slotUi.dragMode, '[data-drag-mode]', button => {
+      freeDragMode = button.dataset.dragMode;
+      syncRadios(slotUi.dragMode, 'data-drag-mode', freeDragMode);
+      say(freeDragMode === 'pan' ? 'Drag moves the photo' : 'Drag moves the print');
+    });
     slotUi.file.addEventListener('change', async () => {
       const files = [...slotUi.file.files]; slotUi.file.value = '';
       if (selected == null || !files.length) return;
@@ -359,6 +371,7 @@ export function createCollageMode(deps) {
   }
   function syncSlotPanel() {
     const count = slotCount(template());
+    slotUi.stageTools.hidden = template().kind !== 'free';
     if (selected != null && selected >= count) selected = null;
     const slot = slotFill(), photo = slotPhoto();
     slotUi.tools.hidden = selected == null; slotUi.hint.hidden = selected != null;
@@ -635,7 +648,7 @@ export function createCollageMode(deps) {
     if (event.target.closest('.collage-slot-empty')) return; // its click opens the file picker (no capture, or click goes elsewhere)
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     try { slotsEl.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
-    if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: template().kind === 'free' ? 'move' : 'pan', target: null, moved: false,
+    if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: template().kind === 'free' ? freeDragMode : 'pan', target: null, moved: false,
       layout: template().kind === 'free' ? { x: doc.slots[index].layout?.x ?? template().slots[index].x, y: doc.slots[index].layout?.y ?? template().slots[index].y } : null };
     else if (pointers.size === 2 && gesture && gesture.mode !== 'swap') {
       const [a, b] = [...pointers.values()];
@@ -663,7 +676,7 @@ export function createCollageMode(deps) {
       const item = template().slots[gesture.index], fill = doc.slots[gesture.index], nx = gesture.layout.x + dx * view.k / view.layout.width, ny = gesture.layout.y + dy * view.k / view.layout.height;
       fill.layout ||= {}; fill.layout.x = clamp(nx, 0, 1 - item.w); fill.layout.y = clamp(ny, 0, 1 - item.h); scheduleDraw(); return;
     }
-    const over = slotAt(event.clientX, event.clientY);
+    const over = template().kind === 'free' ? gesture.index : slotAt(event.clientX, event.clientY);
     if (over != null && over !== gesture.index && deps.photoById(slot.photoId)) {
       if (gesture.mode !== 'swap') { slot.pan = { ...gesture.pan }; gesture.mode = 'swap'; }
       if (gesture.target !== over) { gesture.target = over; say(`Drop to swap with slot ${over + 1}`); }

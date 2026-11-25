@@ -1294,6 +1294,9 @@ body.collage-mode :is(#viewport,#viewPill,#fullscreenButton,#cropStage,#engineWa
 body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-stage { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:28px 24px; }
 .collage-stage canvas { display:block; box-shadow:var(--shadow-photo); }
+.collage-stage-tools { position:absolute; left:50%; bottom:16px; z-index:30; display:flex; align-items:center; gap:10px; min-height:52px; padding:4px 4px 4px 14px; border:1px solid var(--line-strong); border-radius:14px; background:color-mix(in srgb,var(--surface) 94%,transparent); box-shadow:var(--shadow-photo); color:var(--text-2); font-size:var(--fs-sm); font-weight:600; transform:translateX(-50%); backdrop-filter:blur(10px); }
+.collage-stage-tools[hidden] { display:none; }
+.collage-stage-tools .collage-drag-mode { width:190px; margin:0; }
 .collage-back { display:inline-flex; align-items:center; gap:6px; min-height:40px; padding:0 14px 0 10px; }
 .collage-panel { flex:1; min-height:0; }
 .collage-count { color:var(--text-muted); font-size:var(--fs-md); }
@@ -1367,6 +1370,7 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-rotate-handle::after { content:"↻"; position:absolute; inset:0; display:grid; place-items:center; border:2px solid var(--accent); border-radius:50%; background:var(--bg); color:var(--accent); font-size:18px; line-height:1; }
 .collage-rotate-handle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:50%; }
 .collage-free-tools { margin:12px 0; padding:12px 0; border-block:1px solid var(--line); }
+.collage-drag-mode { grid-template-columns:1fr 1fr; }
 .collage-order-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
 .collage-order-actions .button { min-height:var(--tap); }
 .collage-slot-empty { display:none; min-height:var(--tap); padding:0 14px; align-items:center; border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:var(--fs-sm); font-weight:600; cursor:pointer; }
@@ -1397,6 +1401,8 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
   body.collage-mode.has-image .app-shell > .stage { grid-column:1 / -1; }
   body.collage-mode.has-image .controls { flex:none; height:46dvh!important; max-height:none!important; background:var(--bg)!important; }
   .collage-stage { padding:12px; }
+  .collage-stage-tools { bottom:8px; min-height:48px; }
+  .collage-stage-tools .collage-drag-mode { width:160px; }
   .collage-stage canvas { box-shadow:none; }
   .collage-back { min-height:var(--tap); }
   #collagePanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; padding:12px 16px max(24px,env(safe-area-inset-bottom)); }

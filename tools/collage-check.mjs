@@ -57,6 +57,7 @@ for (const t of templates) {
 
 // ---------- Scrapbook/free transforms (Task 9) ----------
 {
+  const { createDoc, resetTransforms } = await import(`${repo}/js/collage/model.js`);
   for (const count of [3, 4, 5]) check(slotCount(byId(`scrapbook-${count}`)) === count, `scrapbook-${count} slot count`);
   const t = byId('scrapbook-3'), doc = { slots: [{ layout: { x: .2, y: .3, rotate: 17, z: 9 } }, {}, {}] };
   const moved = layoutTemplate(t, 1000, 1250, doc).slots[0];
@@ -68,6 +69,11 @@ for (const t of templates) {
   check(JSON.stringify(a) === JSON.stringify(fibres(1080, 1350)), 'fibre geometry is deterministic');
   const tape = tapeRect({ x: 100, y: 80, w: 500, h: 300, index: 2 }, 'tl');
   check(tape.w > tape.h && Number.isFinite(tape.rotate), `tape geometry ${JSON.stringify(tape)}`);
+  const transformed = createDoc([10, 20], byId('scrapbook-3'), '#fff');
+  Object.assign(transformed.slots[0], { pan: { x: .1, y: .8 }, zoom: 3, rotate: 90, angle: 21, flip: true, layout: { x: .4, y: .2, rotate: -17, z: 12 } });
+  resetTransforms(transformed);
+  check(JSON.stringify(transformed.slots[0]) === JSON.stringify({ id: transformed.slots[0].id, photoId: 10, pan: { x: .5, y: .5 }, zoom: 1, rotate: 0, angle: 0, flip: false }), 'resetTransforms restores framing and template placement');
+  check(transformed.slots[1].photoId === 20 && !('layout' in transformed.slots[1]), 'resetTransforms keeps photos and clears every layout override');
 }
 
 // ---------- Layout: golden numbers ----------
