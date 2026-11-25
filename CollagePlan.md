@@ -368,9 +368,11 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 
 #### Task 10: Saving collages and QA
 - [ ] With session recovery (`plan_workflow.md` Task 5): store collage documents in the session; missing photos → empty slots
-- [ ] "Collages (N)" list in `#fileMenu` to reopen or delete
+- [x] "Collages (N)" list in `#fileMenu` to reopen or delete
 - [ ] `docs/collage/PERF.md`: preview/export time and peak memory for 4, 9 and 36 photos (Basic-only and 3-film mixes) at Share/Full/Print, laptop and phone
-- [ ] About dialog, README, `docs/collage/REFERENCES.md` complete; CLAUDE.md "Current redesign" updated and this plan archived
+- [x] About dialog, README, `docs/collage/REFERENCES.md` complete; CLAUDE.md "Current redesign" updated
+
+*Partial 2026-11-25: added a validated in-session collage repository, automatic document updates, accessible reopen/delete menu, and missing-photo sanitization with Node coverage; completed product/licence documentation and added the full performance measurement matrix. Cross-reload persistence is intentionally pending `plan_workflow.md` Task 5 because current photo ids and source files do not survive reload. Laptop/phone browser measurements and the cross-browser regression remain manual release QA; therefore this plan is not archived yet.*
 
 **Check:** build a collage, reload, reopen; delete a photo used in a collage; full regression list.
 **Done when:** every success criterion below holds on Chrome, Firefox, Safari (macOS), iOS Safari, Android Chrome.

@@ -15,6 +15,7 @@ import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
 import { createCollageMode } from './collage/mode.js';
 import { createCollageExport } from './collage/export.js';
+import { createCollageStore } from './collage/store.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -70,13 +71,16 @@ let toastTimer;
 // Collage mode (js/collage/mode.js): slots show each photo's own edit without frame or text. A fast pass from the
 // queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
 const collageEngines = new Set(), CONTACT_MAX = 36;
+let activeCollageId = null;
+const collageStore = createCollageStore({ photoExists: id => Boolean(photoById(id)) });
 const collage = createCollageMode({
   photos: () => app.photos, photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
   addFiles: files => addFiles(files, { view: false }),
   editPhoto: id => editFromCollage(id),
   renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
   textFonts, textFont,
-  onHistory: () => updateButtons()
+  onHistory: () => updateButtons(),
+  onDocument: doc => { if (activeCollageId) { collageStore.save(doc, { id: activeCollageId }); syncSavedCollages(); } }
 });
 const collageExport = createCollageExport({
   doc: () => collage.snapshot(), update: mutator => collage.update(mutator), paperColors, photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
@@ -2183,6 +2187,7 @@ function removePhotos(ids) {
     renderQueue.remove(photo.id);
     app.photos.splice(app.photos.indexOf(photo), 1); app.selected.delete(photo.id); photo.el.remove();
   }
+  collageStore.restore(collageStore.list()); syncSavedCollages();
   toast(one ? `Removed ${targets[0].name}.` : `Removed ${targets.length} photos.`);
   if (!removingActive) {
     if (!app.selected.size && active) app.selected.add(active.id);
@@ -2370,7 +2375,20 @@ function enterCollage({ resume = false } = {}) {
   collageReturnFocus = document.activeElement;
   document.body.classList.add('collage-mode');
   collage.open(ids);
+  if (!resume || !activeCollageId) activeCollageId = collageStore.save(collage.snapshot())?.id || null;
+  syncSavedCollages();
   updateButtons();
+}
+function openSavedCollage(id) {
+  const saved = collageStore.get(id); if (!saved || !state.image) return;
+  setCollageReturn(false); const current = activePhoto(); if (current) current.settings = snapshot();
+  setHolding(false); closeFullscreen(); collageReturnFocus = document.activeElement;
+  document.body.classList.add('collage-mode'); activeCollageId = id; collage.load(saved.doc); updateButtons();
+}
+function syncSavedCollages() {
+  const saved = collageStore.list(), box = $('#collageMenuSaved'), list = $('#collageMenuList');
+  box.hidden = !saved.length; $('#collageMenuHeading').textContent = `Collages (${saved.length})`;
+  list.innerHTML = saved.map(entry => `<div class="file-menu-collage"><button class="file-menu-item" role="menuitem" type="button" data-collage-open="${entry.id}"><span class="file-menu-collage-name">${entry.name}</span></button><button class="file-menu-delete" role="menuitem" type="button" data-collage-delete="${entry.id}" aria-label="Delete ${entry.name}" title="Delete collage">×</button></div>`).join('');
 }
 function exitCollage({ keepCache = false } = {}) {
   if (!collage.active) return;
@@ -3193,6 +3211,9 @@ $('#sampleButton').addEventListener('click', loadSample);
 $('#cameraButton').addEventListener('click', openCamera);
 $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click());
 elements.fileMenu.addEventListener('click', event => {
+  const open = event.target.closest('[data-collage-open]'), remove = event.target.closest('[data-collage-delete]');
+  if (open) { elements.fileMenu.hidePopover(); openSavedCollage(open.dataset.collageOpen); return; }
+  if (remove) { const saved = collageStore.get(remove.dataset.collageDelete); if (saved && confirm(`Delete ${saved.name}?`)) { collageStore.remove(saved.id); if (activeCollageId === saved.id) activeCollageId = null; syncSavedCollages(); } return; }
   const item = event.target.closest('[data-action]'); if (!item) return;
   elements.fileMenu.hidePopover();
   if (item.dataset.action === 'open') elements.fileInput.click(); else if (item.dataset.action === 'collage') enterCollage(); else openCamera();
@@ -3206,7 +3227,7 @@ elements.fileMenu.addEventListener('toggle', event => {
 });
 elements.fileMenu.addEventListener('keydown', event => {
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden])')];
+  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden]),[data-collage-open],[data-collage-delete]')];
   const next = items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
   event.preventDefault(); next.focus();
 });

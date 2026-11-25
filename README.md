@@ -1,6 +1,6 @@
 # PhotoKamo
 
-PhotoKamo is a privacy-first, browser-native photo editor for camera-inspired color, film looks, manual adjustments, physical film simulation, cropping, and print frames. Images are processed locally and are never uploaded.
+PhotoKamo is a privacy-first, browser-native photo editor for camera-inspired color, film looks, manual adjustments, physical film simulation, cropping, print frames, and multi-photo collages. Images are processed locally and are never uploaded.
 
 ## Run locally
 
@@ -21,7 +21,7 @@ Open <http://localhost:8080>.
 - Crop: 10 aspect ratios with Swap W×H, zoom, drag and resize, straighten (no empty corners), rotate 90°, flip, and the output size in pixels
 - Frames: Paper print (border width, extra at the bottom, paper colour, match the print paper), classic, instant and film strip, all drawn into the exported image
 - Apply the look, adjustments, frame or crop ratio of the photo in view to the other selected photos, or edit them together live
-- Collages of 2–9 photos: 12 grid layouts, sheet aspect, spacing, margin, rounded corners and paper colour; each slot keeps its photo's own look, and you can pan, zoom, rotate, flip, swap or replace photos in their slots (mouse, touch or keyboard); export for sharing, at full size (capped to what the device can draw) or for print at 300 dpi
+- Collages of 2–9 photos, plus contact sheets up to 36: grids, adjustable diptychs/triptychs, transparent shapes, film contact sheets and scrapbook layouts; per-slot framing and masks, overlapping movable/rotatable prints, text, borders, shadows, generated tape and paper fibres; reopen or delete collages from the photo menu during the session; export for Share, Full or 300 dpi Print (capped to what the device can draw)
 - Per-photo undo/redo, hold to compare, and saved looks
 - JPEG, PNG and WebP export, a size for sharing, Web Share on supported phones, and batch export of the selected photos as one ZIP or separate files
 - Dark, responsive and keyboard-accessible UI
@@ -29,6 +29,8 @@ Open <http://localhost:8080>.
 ## Privacy and accuracy
 
 There is no backend, account, telemetry, or image upload. Camera and film names describe creative approximations rather than measured emulations.
+
+Collage layouts, shape paths, film markings, paper fibres and tape are original or generated in code. No third-party collage images or textures are bundled; see [`docs/collage/REFERENCES.md`](docs/collage/REFERENCES.md). Saved collage documents currently last for the open photo session. Cross-reload recovery will use the planned IndexedDB photo-session store, because collage slots reference those recovered photos.
 
 Among the Basic looks, the **Spektrafilm-inspired** ones are approximations made with PhotoKamo's own renderer, informed by Andrea Volpato's [spektrafilm](https://github.com/andreavolpato/spektrafilm); RawTherapee-inspired labels likewise describe workflow inspiration, not bundled profiles.
 

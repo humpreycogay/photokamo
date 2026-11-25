@@ -335,5 +335,23 @@ const { fillGeometry, photoPoint, panBy, normalizeFill } = await import(`${repo}
   check(slotEdge(3000, 2000, 300, 300, {}) === Math.ceil(3000 * 302 / 2000) && slotEdge(3000, 2000, 5000, 5000, {}) === Infinity, 'slotEdge');
 }
 
+// ---------- Saved collage documents (Task 10) ----------
+{
+  const { createCollageStore, sanitizeCollageDoc } = await import(`${repo}/js/collage/store.js`);
+  const { createDoc } = await import(`${repo}/js/collage/model.js`);
+  const doc = createDoc([1, 2], byId('grid-2-side'), '#ffffff');
+  let time = 100;
+  const store = createCollageStore({ photoExists: id => id === 1, now: () => ++time });
+  const saved = store.save(doc);
+  check(saved.name === 'Collage 1' && saved.doc.slots[0].photoId === 1 && saved.doc.slots[1].photoId === null, 'saved collage empties missing photos');
+  saved.doc.gutter = .09;
+  check(store.get(saved.id).doc.gutter !== .09, 'saved collage reads are copies');
+  doc.margin = .08; store.save(doc, { id: saved.id });
+  check(store.list().length === 1 && store.get(saved.id).doc.margin === .08, 'saved collage updates in place');
+  check(store.restore([{ ...saved, doc }, { id: 'bad', name: 'Bad', doc: {} }]).length === 1, 'restore skips invalid collage records');
+  check(store.remove(saved.id) && !store.remove(saved.id) && store.list().length === 0, 'saved collage deletion');
+  check(sanitizeCollageDoc({}) === null, 'invalid collage document rejected');
+}
+
 console.log(`${errors ? 'FAIL' : 'OK'}: ${checks} checks, ${errors} errors (${templates.length} templates, ${SHAPE_KINDS.length} shapes)`);
 process.exit(errors ? 1 : 0);

@@ -63,13 +63,13 @@ export function createCollageMode(deps) {
   function commit(previous) {
     if (JSON.stringify(previous) === JSON.stringify(doc)) return;
     undoStack.push(previous); if (undoStack.length > HISTORY_LIMIT) undoStack.shift(); redoStack = [];
-    historyChanged();
+    historyChanged(); deps.onDocument?.(cloneDoc(doc));
   }
   function change(mutator) { const previous = cloneDoc(doc); mutator(doc); commit(previous); refresh(); }
   function step(from, to, word) {
     if (!from.length) return;
     to.push(cloneDoc(doc)); doc = from.pop();
-    refresh(); historyChanged(); say(word);
+    refresh(); historyChanged(); deps.onDocument?.(cloneDoc(doc)); say(word);
   }
 
   // ---------- Panel ----------
@@ -826,6 +826,12 @@ export function createCollageMode(deps) {
       historyChanged(); refresh();
       // After the first draw, which creates the slot boxes.
       requestAnimationFrame(() => (selected != null ? slotsEl.children[selected] : panel.querySelector('[data-template][aria-selected="true"]'))?.focus({ preventScroll: true }));
+    },
+    /** Reopens a saved document. Missing photos are already emptied by the session repository. */
+    load(value) {
+      doc = cloneDoc(value); docPhotos = ''; undoStack = []; redoStack = []; selected = null;
+      active = true; failed.clear(); generation++; historyChanged(); refresh();
+      requestAnimationFrame(() => panel.querySelector('[data-template][aria-selected="true"]')?.focus({ preventScroll: true }));
     },
     /** Leaves collage mode: drops pending renders (the document and history stay). The slot images are freed unless
      *  `keepCache` (leaving to edit one photo: the others need no new render on return). */

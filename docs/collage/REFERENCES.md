@@ -1,6 +1,6 @@
 # Collage: references and licence register
 
-PhotoKamo's collage mode (`js/collage/`, `tools/collage-check.mjs`) is **original code**, written for this repository from `CollagePlan.md`. The licence question for new code (GPL-3.0 as in `LICENSE`, or proprietary) is open decision #1 in that plan; nothing here depends on the answer, because nothing third-party is used.
+PhotoKamo's collage mode (`js/collage/`, `tools/collage-check.mjs`) is **original GPL-3.0 code**, written for this repository from `CollagePlan.md`. Nothing third-party is used.
 
 Rules:
 - No third-party code, libraries, templates, shapes, masks, textures, fonts or images are copied or bundled. No CDNs and no runtime dependencies (`CLAUDE.md`).
@@ -23,3 +23,9 @@ Rules:
 | Flattening cubic Béziers | Wang's formula (segment count from the control polygon's second differences) | `shapePolygon()` tolerance |
 | Cubic Bézier bounding box | Roots of the derivative (a quadratic) | Fitting the heart to its box |
 | Polygon area, point in polygon | Shoelace formula; even-odd crossing rule | `polygonArea()`, `pointInPolygon()`, checks |
+| Polygon clipping | Sutherland–Hodgman clipping and half-plane intersection | Cut grid, radial and free-layout slots to shaped sheets |
+| Deterministic pseudo-random values | Integer hash/mixing functions implemented in `scrapbook.js` | Resolution-independent fibre and tape variation; no copied texture assets |
+
+## Persistence and privacy
+
+Saved collage records contain only PhotoKamo document data and references to photos in the local session. They contain no network identifiers and are never uploaded. Until `plan_workflow.md` Task 5 supplies the IndexedDB photo-session store, the list is intentionally memory-only: persisting numeric slot references without their source photos would create broken, misleading records.

@@ -89,6 +89,13 @@ svg { flex:none; }
 .file-menu { position:fixed; inset:auto; margin:0; min-width:220px; padding:6px; background:var(--raised); color:var(--text); border:1px solid var(--line-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow-photo); }
 .file-menu-item { display:flex; align-items:center; gap:10px; width:100%; min-height:var(--tap); padding:0 12px; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text); font-weight:500; text-align:left; cursor:pointer; }
 .file-menu-item:hover,.file-menu-item:focus-visible { background:var(--control); }
+.file-menu-collages { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); }
+.file-menu-heading { margin:4px 12px 6px; color:var(--text-muted); font-size:var(--fs-sm); font-weight:600; }
+.file-menu-collage { display:grid; grid-template-columns:minmax(0,1fr) var(--tap); align-items:center; }
+.file-menu-collage .file-menu-item { min-width:0; }
+.file-menu-collage-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-menu-delete { width:var(--tap); height:var(--tap); border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; }
+.file-menu-delete:hover,.file-menu-delete:focus-visible { background:var(--control); color:var(--text); }
 .history-actions { display:flex; align-items:center; gap:6px; }
 .topbar-actions { display:flex; align-items:center; gap:10px; }
 body:not(.has-image) .editing-only { display:none!important; }

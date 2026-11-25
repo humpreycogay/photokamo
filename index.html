@@ -64,6 +64,10 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg>
           Make collage…
         </button>
+        <div class="file-menu-collages" id="collageMenuSaved" hidden>
+          <p class="file-menu-heading" id="collageMenuHeading">Collages (0)</p>
+          <div id="collageMenuList" role="group" aria-labelledby="collageMenuHeading"></div>
+        </div>
       </div>
     </div>
 
@@ -763,7 +767,7 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="about-brand"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></p>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
-      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, and export them one by one or together. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
+      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, or arrange them as grids, shaped stickers, contact sheets and scrapbook collages. Export one photo, a batch or a finished collage. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
       <p>The Basic looks are creative approximations, not exact reproductions. Film looks use Kamo, PhotoKamo’s calibrated spectral engine, and run entirely in your browser. Kamo’s calibration assets download only when you choose a film look.</p>
       <p>The Lens tab’s camera effects (distortion, colour fringing, light falloff, diffusion, bloom, lens flare, simulated depth of field and bokeh, diffraction) are PhotoKamo’s own code, written from the textbook optics below. Lens profiles are illustrative, not measurements of real lenses, and depth of field comes from the focus area you draw, because a photo holds no depth.</p>
       <p>PhotoKamo is free software under the GNU General Public License v3. Kamo keeps its own licence and credits, available through the ⓘ button beside the engine controls.</p>
@@ -781,6 +785,7 @@
         <li>PhotoKamo · <a href="LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>
         <li>Inter, Playfair Display, Caveat fonts · <a href="fonts/OFL-Inter.txt" target="_blank" rel="noopener noreferrer">SIL OFL 1.1<span class="visually-hidden"> (opens in a new tab)</span></a></li>
       </ul>
+      <p>Collage layouts, masks, film markings, paper fibres and tape are original PhotoKamo code and generated geometry; no third-party collage assets are bundled. <a href="docs/collage/REFERENCES.md" target="_blank" rel="noopener noreferrer">Collage references and asset register<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
       <p class="engine-storage" id="engineStorage" hidden><span id="engineStorageText"></span> <button class="text-button" id="engineStorageRemove" type="button">Remove</button></p>
       <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://humpreycogay.github.io/" target="_blank" rel="noopener noreferrer">humpreycogay.github.io <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
       <p class="about-version">rel. 11222026</p>
