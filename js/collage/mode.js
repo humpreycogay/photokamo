@@ -302,6 +302,7 @@ export function createCollageMode(deps) {
     if (!option || event.button > 0) return;
     const index = Number(option.dataset.slot);
     select(index);
+    if (event.target.closest('.collage-slot-empty')) return; // its click opens the file picker (no capture, or click goes elsewhere)
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     try { slotsEl.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
     if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: 'pan', target: null, moved: false };
@@ -345,6 +346,12 @@ export function createCollageMode(deps) {
   };
   slotsEl.addEventListener('pointerup', endPointer);
   slotsEl.addEventListener('pointercancel', endPointer);
+  // "+ Add photo" on an empty slot: choose files for it (click is a user gesture, so the picker may open).
+  slotsEl.addEventListener('click', event => {
+    const option = event.target.closest('[data-slot]');
+    if (!option || !event.target.closest('.collage-slot-empty')) return;
+    select(Number(option.dataset.slot)); slotUi.file.click();
+  });
   slotsEl.addEventListener('dblclick', event => { if (event.target.closest('[data-slot]')) editFill(resetFraming, 'Framing reset'); });
   slotsEl.addEventListener('wheel', event => {
     const option = event.target.closest('[data-slot]'); if (!option) return;
@@ -378,7 +385,8 @@ export function createCollageMode(deps) {
       r: () => editFill(slot => { slot.rotate += 90; }, slot => `Rotated to ${slot.rotate}°`),
       R: () => editFill(slot => { slot.rotate -= 90; }, slot => `Rotated to ${slot.rotate}°`),
       f: () => editFill(slot => { slot.flip = !slot.flip; }, slot => (slot.flip ? 'Flipped' : 'Not flipped')),
-      Delete: emptySelected, Backspace: emptySelected
+      Delete: emptySelected, Backspace: emptySelected,
+      Enter: () => { if (!slotPhoto()) slotUi.file.click(); } // an empty slot: choose a photo file for it
     };
     const action = actions[key] || (key === 'F' ? actions.f : null);
     if (action) { event.preventDefault(); select(index); action(); }

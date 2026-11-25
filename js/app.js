@@ -14,6 +14,7 @@ import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
 import { createCollageMode } from './collage/mode.js';
+import { createCollageExport } from './collage/export.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -76,6 +77,13 @@ const collage = createCollageMode({
   renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
   onHistory: () => updateButtons()
 });
+const collageExport = createCollageExport({
+  doc: () => collage.snapshot(), photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
+  photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
+  renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => collageEngines.add(module), onProgress }),
+  download: file => downloadBlob(file, file.name)
+});
+const openExport = () => (collage.active ? collageExport.open() : openSave());
 let sliderStart = null;
 let cameraStream = null;
 let cameraFacingMode = 'environment';
@@ -2265,7 +2273,7 @@ function syncStrip() {
   $('#collageMenuItem').hidden = count < 2;
   $('#liveEdit').checked = app.liveEdit;
   // Export N / Save N when several photos are selected (batch export)
-  const batchCount = isBatchExport() ? selected : 0;
+  const batchCount = isBatchExport() && !collage.active ? selected : 0;
   elements.exportLabel.textContent = batchCount ? `Export ${batchCount}` : 'Export';
   $('#saveButton').textContent = batchCount ? `Save ${batchCount}` : 'Save';
 }
@@ -2952,7 +2960,7 @@ buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges(), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
-$('#saveButton').addEventListener('click', openSave);
+$('#saveButton').addEventListener('click', openExport);
 mobileQuery.addEventListener('change', () => { if (mobileQuery.matches) { setZoom('fit'); if (state.split !== null) setSplit(null); } syncAdvancedPanel(); placeLookTools(); });
 // Surprise me · Favorites: under the Looks grid on desktop; phones have no room there, so they sit in the look-name row by the gear.
 function placeLookTools() {
@@ -3259,7 +3267,7 @@ $('#surpriseButton').addEventListener('click', async () => {
   elements.lookGrid.querySelector(`[data-preset="${pick.id}"],[data-film="${pick.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
-elements.export.addEventListener('click', openSave);
+elements.export.addEventListener('click', openExport);
 $('#exportClose').addEventListener('click', () => elements.exportDialog.close());
 elements.exportDialog.addEventListener('close', () => clearTimeout(prepareTimer));
 elements.exportDialog.addEventListener('click', event => { if (event.target === elements.exportDialog) elements.exportDialog.close(); });

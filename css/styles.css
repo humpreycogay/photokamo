@@ -611,7 +611,7 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .size-options button:disabled { cursor:not-allowed; color:var(--text-muted); }
 .quality-label { display:flex; justify-content:space-between; margin:0; }
 .quality-label output { color:var(--text); font-variant-numeric:tabular-nums; }
-#exportQuality { width:100%; height:28px; margin:6px 0 0; accent-color:var(--accent); }
+#exportQuality,#collageQuality { width:100%; height:28px; margin:6px 0 0; accent-color:var(--accent); }
 .export-actions { display:flex; flex-direction:column; gap:8px; }
 .button-xl { min-height:52px; border-radius:var(--radius-lg); font-size:15px; gap:10px; }
 .dialog-card>p.export-status { margin:-8px 0 0; min-height:1.2em; font-size:var(--fs-sm); color:var(--text-muted); text-align:center; }
@@ -1277,7 +1277,7 @@ body.is-film {
 
 /* ---------- Collage mode (CollagePlan.md): the collage stage and panel cover the editor, which stays as it was ---------- */
 body:not(.collage-mode) .collage-only { display:none!important; }
-body.collage-mode :is(#viewport,#viewPill,#fullscreenButton,#cropStage,#engineWait,#photoLookBadge,.filmstrip,.control-tabs,.apply-bar,.file-chip,.topbar-divider,#revertButton,#exportButton,#saveButton,#closeButton) { display:none!important; }
+body.collage-mode :is(#viewport,#viewPill,#fullscreenButton,#cropStage,#engineWait,#photoLookBadge,.filmstrip,.control-tabs,.apply-bar,.file-chip,.topbar-divider,#revertButton,#closeButton) { display:none!important; }
 body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-stage { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:28px 24px; }
 .collage-stage canvas { display:block; box-shadow:var(--shadow-photo); }
@@ -1292,19 +1292,23 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-template[aria-selected=true] { border-color:var(--accent); color:var(--text); box-shadow:0 0 0 1px var(--accent); }
 .collage-template:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .collage-aspects { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:22px; }
+.collage-sizes { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.collage-limit { margin:10px 0 0; color:var(--text-2); font-size:var(--fs-md); }
+.collage-progress .text-button { min-height:var(--tap); margin-top:4px; }
 .strip-collage { flex:none; height:84px; margin-top:5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:0 12px; border:1px solid var(--accent); border-radius:8px; background:var(--accent-tint); color:var(--accent); font-size:var(--fs-sm); font-weight:600; cursor:pointer; }
 .strip-collage:hover { background:var(--control); }
 .strip-collage[hidden] { display:none; }
 .collage-sheet { position:relative; }
-.collage-slots { position:absolute; inset:0; touch-action:none; }
+.collage-slots { position:absolute; inset:0; touch-action:none; user-select:none; -webkit-user-select:none; }
 .collage-slot { position:absolute; display:grid; place-items:center; cursor:grab; outline-offset:2px; }
 .collage-slot:active { cursor:grabbing; }
 .collage-slot[aria-selected=true] { box-shadow:inset 0 0 0 3px var(--accent); }
 .collage-slot:focus-visible { outline:2px solid var(--accent); }
 .collage-slot.is-drop-target { box-shadow:inset 0 0 0 3px var(--accent); background:rgba(12,12,11,.25); }
 .collage-slot.is-dragged { background:rgba(12,12,11,.45); }
-.collage-slot-empty { display:none; padding:6px 10px; border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:var(--fs-sm); font-weight:600; pointer-events:none; }
-.collage-slot.is-empty .collage-slot-empty { display:block; }
+.collage-slot-empty { display:none; min-height:var(--tap); padding:0 14px; align-items:center; border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:var(--fs-sm); font-weight:600; cursor:pointer; }
+.collage-slot-empty:hover { background:var(--control); }
+.collage-slot.is-empty .collage-slot-empty { display:flex; }
 .collage-slot-panel { margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid var(--line); }
 .collage-hint { margin:0 0 4px; color:var(--text-muted); font-size:var(--fs-md); line-height:1.45; }
 .collage-photo-tools .collage-hint { margin-top:10px; }
@@ -1321,6 +1325,7 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-return[hidden] { display:none; }
 @media (max-width:900px) {
   .collage-return { min-height:var(--tap); padding:0 10px; }
+  body.collage-mode #topbarTitle { display:none; } /* Back to photo says where you are */
   .collage-return-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
   .collage-slot-actions { grid-template-columns:1fr 1fr; }
 }

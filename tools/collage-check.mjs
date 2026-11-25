@@ -177,5 +177,27 @@ const { fillGeometry, photoPoint, panBy, normalizeFill } = await import(`${repo}
   check(n.zoom === 5 && n.angle === -45 && n.rotate === 270 && n.pan.x === 1 && n.pan.y === 0, `normalizeFill ${JSON.stringify(n)}`);
 }
 
+// ---------- Export sizes (Task 3) ----------
+{
+  const { shareSize, printSize, fullSize, capSize, slotEdge } = await import(`${repo}/js/collage/sizes.js`);
+  const { createDoc, fitSlots } = await import(`${repo}/js/collage/model.js`);
+  golden('share sizes', [[1, 1], [4, 5], [3, 2], [2, 3], [9, 16], [16, 9]].map(([w, h]) => Object.values(shareSize({ w, h }))),
+    [[1080, 1080], [1080, 1350], [1620, 1080], [1080, 1620], [1080, 1920], [1920, 1080]]);
+  golden('print A4 4:5 / 3:2 / 8×10', [printSize({ w: 4, h: 5 }, 'a4'), printSize({ w: 3, h: 2 }, 'a4'), printSize({ w: 4, h: 5 }, '8x10')].map(Object.values),
+    [[2481, 3101], [3507, 2338], [2400, 3000]]);
+  const capped = capSize({ width: 9000, height: 6000 }, 16.7e6);
+  check(capped.capped && capped.width * capped.height <= 16.7e6 && Math.abs(capped.width / capped.height - 1.5) < .001, `capSize ${JSON.stringify(capped)}`);
+  check(!capSize({ width: 1000, height: 1000 }, 4e6).capped, 'capSize leaves small sizes');
+  // Full size: the most detailed slot shows its photo 1:1.
+  const t = byId('grid-2-side'), doc = fitSlots(createDoc([1, 2], t, '#fff'), 2);
+  doc.slots[1].zoom = 2;
+  const sizes = { 1: { width: 3000, height: 2000 }, 2: { width: 1200, height: 1600 } };
+  const full = fullSize(doc, t, fill => sizes[fill.photoId] || null);
+  const layout = layoutTemplate(t, full.width, full.height, doc);
+  const scales = layout.slots.map(s => fillGeometry(sizes[doc.slots[s.index].photoId].width, sizes[doc.slots[s.index].photoId].height, s.w, s.h, doc.slots[s.index]).scale);
+  check(Math.abs(Math.min(...scales) - 1) < .01, `full size shows the most detailed photo 1:1, no photo below 1:1 (scales ${scales.map(v => v.toFixed(3))})`);
+  check(slotEdge(3000, 2000, 300, 300, {}) === Math.ceil(3000 * 302 / 2000) && slotEdge(3000, 2000, 5000, 5000, {}) === Infinity, 'slotEdge');
+}
+
 console.log(`${errors ? 'FAIL' : 'OK'}: ${checks} checks, ${errors} errors (${templates.length} templates, ${SHAPE_KINDS.length} shapes)`);
 process.exit(errors ? 1 : 0);

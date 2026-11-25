@@ -246,11 +246,23 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** slot crop at preview and export matches within 1 output px; no gaps at any pan/zoom/angle; every action has a keyboard path and a status message.
 
 #### Task 3: Collage export
-- [ ] Export sheet in collage mode: format (JPEG, PNG, WebP), quality, size **Share** (1080 long edge / platform), **Full** (device limit), **Print** (A4, Letter, 4×6, 5×7, 8×10 @ 300 dpi)
-- [ ] Device canvas limit: measure once (allocate, write and read a pixel at the far corner, cache in localStorage per user agent); cap Full/Print and show "Limited to N MP on this device"
-- [ ] Export: photos one at a time through `renderPhotoEdit` at their export slot size (film: full-size input then downscale, V1), drawn and **closed immediately**; progress + Cancel; composite on the main thread (V6)
-- [ ] Share via `preparedExport` (ready before the tap); file extension from `blob.type` (V8); name `PhotoKamo-collage-<yyyy-mm-dd>.<ext>`
-- [ ] Check the single-photo export for the V8 extension issue and record the result (fix in its own commit if real)
+- [x] Export sheet in collage mode: format (JPEG, PNG, WebP), quality, size **Share** (1080 long edge / platform), **Full** (device limit), **Print** (A4, Letter, 4×6, 5×7, 8×10 @ 300 dpi)
+- [x] Device canvas limit: measure once (allocate, write and read a pixel at the far corner, cache in localStorage per user agent); cap Full/Print and show "Limited to N MP on this device"
+- [x] Export: photos one at a time through `renderPhotoEdit` at their export slot size (film: full-size input then downscale, V1), drawn and **closed immediately**; progress + Cancel; composite on the main thread (V6)
+- [x] Share via `preparedExport` (ready before the tap); file extension from `blob.type` (V8); name `PhotoKamo-collage-<yyyy-mm-dd>.<ext>`
+- [x] Check the single-photo export for the V8 extension issue and record the result (fix in its own commit if real)
+
+*Done:*
+- **Code:** `js/collage/export.js` (sheet, device limit, render), `js/collage/sizes.js` (pure sizes, checked in Node), and `drawPaper`/`drawSlot` split out of the compositor.
+- **Sizes:** Share is 1080 on the short edge, at most 1920 on the long. Full is the sheet at which the most detailed slot shows its photo 1:1, capped by the device limit. Print fits the paper at 300 dpi and shows the dpi when capped.
+- **V8 was real:** single and batch exports saved a PNG fallback as `.webp`. Fixed in its own commit, which names files after `blob.type` and adds a toast; simulated no-WebP browser → `….png`.
+- **Speed:** Chrome laptop, 9 photos from 24 MP sources, 3 with Kamo looks, Full at 8000 × 8000 (capped by the measured 64 MP): prepared in 6.6 s.
+- **Layout:** export vs preview slot edges are within 1 px scaled (30/383/397/749 vs 31/382/398/749).
+- **Robustness:** Cancel works. 10 repeated offline exports succeed with no network requests, and browser memory stays flat.
+- **Phones:** the sharing size is the default and no target is under 44 px. Phone memory/iOS and Share-on-first-tap still need a real device.
+- **Film fidelity:** a Kamo slot is that photo's full render scaled down, the same pipeline as exporting it alone and scaling.
+- **Not measured:** peak memory per export was not measured on its own; the design keeps one photo render plus the sheet.
+- **Timings:** `docs/collage/PERF.md`.
 
 **Check:** 9-photo collage with 3 Kamo photos at Full on laptop and phone; a Kamo slot looks the same (grain size) as that photo exported alone and scaled; Share opens on first tap; 10 repeated exports; offline after load still exports.
 **Done when:** layout matches preview within 1 px scaled; peak memory ≤ one full photo render + the sheet canvas + ~20 % (DevTools Memory); no growth over 10 exports; no iOS crash at the capped size; no network requests; 9-photo export with 3 film photos at 24 MP < 15 s on laptop (recorded in PERF).

@@ -21,21 +21,27 @@ export function slotPath(slot) {
   return shapePath({ kind: 'rect' }, slot);
 }
 
+/** The sheet under the slots: cleared, then the paper colour unless the background is transparent. */
+export function drawPaper(ctx, doc, layout) {
+  ctx.clearRect(0, 0, layout.width, layout.height);
+  if (doc.sheet.background === 'paper') { ctx.fillStyle = doc.paper.color; ctx.fillRect(0, 0, layout.width, layout.height); }
+}
+/** One laid-out slot: its photo clipped to the slot, or `emptyFill` (preview only) when it has none. */
+export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
+  if (!image && !emptyFill) return;
+  ctx.save();
+  ctx.clip(slotPath(slot));
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  if (image) drawCover(ctx, image, slot, doc.slots[slot.index]);
+  else { ctx.fillStyle = emptyFill; ctx.fillRect(slot.x, slot.y, slot.w, slot.h); }
+  ctx.restore();
+}
+/** Slots in drawing order (z, then layout order). */
+export const drawOrder = layout => [...layout.slots].sort((a, b) => a.z - b.z || a.index - b.index);
+
 /** Draws the collage `doc` laid out as `layout` (js/collage/layout.js) on ctx (sized layout.width × height).
  *  imageFor(index) → the slot's photo edit (canvas or ImageBitmap) or null (empty or still rendering). */
 export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)' } = {}) {
-  ctx.save();
-  ctx.clearRect(0, 0, layout.width, layout.height);
-  if (doc.sheet.background === 'paper') { ctx.fillStyle = doc.paper.color; ctx.fillRect(0, 0, layout.width, layout.height); }
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  const order = [...layout.slots].sort((a, b) => a.z - b.z || a.index - b.index);
-  for (const slot of order) {
-    const image = imageFor(slot.index);
-    ctx.save();
-    ctx.clip(slotPath(slot));
-    if (image) drawCover(ctx, image, slot, doc.slots[slot.index]);
-    else { ctx.fillStyle = emptyFill; ctx.fillRect(slot.x, slot.y, slot.w, slot.h); }
-    ctx.restore();
-  }
-  ctx.restore();
+  drawPaper(ctx, doc, layout);
+  for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, imageFor(slot.index), emptyFill);
 }

@@ -21,6 +21,7 @@ Open <http://localhost:8080>.
 - Crop: 10 aspect ratios with Swap W×H, zoom, drag and resize, straighten (no empty corners), rotate 90°, flip, and the output size in pixels
 - Frames: Paper print (border width, extra at the bottom, paper colour, match the print paper), classic, instant and film strip, all drawn into the exported image
 - Apply the look, adjustments, frame or crop ratio of the photo in view to the other selected photos, or edit them together live
+- Collages of 2–9 photos: 12 grid layouts, sheet aspect, spacing, margin, rounded corners and paper colour; each slot keeps its photo's own look, and you can pan, zoom, rotate, flip, swap or replace photos in their slots (mouse, touch or keyboard); export for sharing, at full size (capped to what the device can draw) or for print at 300 dpi
 - Per-photo undo/redo, hold to compare, and saved looks
 - JPEG, PNG and WebP export, a size for sharing, Web Share on supported phones, and batch export of the selected photos as one ZIP or separate files
 - Dark, responsive and keyboard-accessible UI

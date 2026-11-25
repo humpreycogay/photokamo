@@ -9,7 +9,7 @@
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
-  <link rel="stylesheet" href="css/styles.css?v=2026-11-25c">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25f">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -180,7 +180,7 @@
           <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
           <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
         </div>
-        <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot. Drag a photo onto another to swap them.</p>
+        <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot, Enter on an empty slot adds a photo. Drag a photo onto another to swap them.</p>
       </div>
 
       <div class="engine-wait" id="engineWait" hidden>
@@ -556,6 +556,51 @@
         <button class="button button-primary button-xl" id="confirmExport" type="submit">Download file</button>
       </div>
       <p class="export-status" id="exportStatus" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog id="collageExportDialog" class="sheet-dialog" aria-labelledby="collageExportTitle">
+    <form method="dialog" class="dialog-card export-card" id="collageExportForm">
+      <span class="sheet-handle" aria-hidden="true"></span>
+      <div class="export-head">
+        <div><h2 id="collageExportTitle">Save collage</h2><p class="export-summary" id="collageExportSummary"></p></div>
+        <button class="dialog-close" id="collageExportClose" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <fieldset>
+        <legend>Format</legend>
+        <div class="segmented" id="collageFormats">
+          <button type="button" data-format="image/jpeg" aria-pressed="true">JPEG</button>
+          <button type="button" data-format="image/png" aria-pressed="false">PNG</button>
+          <button type="button" data-format="image/webp" aria-pressed="false">WebP</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Size</legend>
+        <div class="size-options collage-sizes" id="collageSizes">
+          <button type="button" data-size="share" aria-pressed="false"><span>For sharing</span><span class="size-detail" id="collageShareDetail"></span></button>
+          <button type="button" data-size="full" aria-pressed="false"><span>Full size</span><span class="size-detail" id="collageFullDetail"></span></button>
+          <button type="button" data-size="print" aria-pressed="false"><span>Print</span><span class="size-detail" id="collagePrintDetail"></span></button>
+        </div>
+        <div class="crop-platform" id="collagePrintRow" hidden><label for="collagePrintPaper">Paper (300 dpi)</label><select id="collagePrintPaper"></select></div>
+        <p class="collage-limit" id="collageLimit" hidden></p>
+      </fieldset>
+      <div class="quality-group" id="collageQualityGroup">
+        <label class="quality-label" for="collageQuality"><span>Quality</span><output id="collageQualityOutput" for="collageQuality">High · 92%</output></label>
+        <input id="collageQuality" type="range" min="60" max="100" value="92">
+      </div>
+      <div class="batch-progress collage-progress" id="collageProgress" hidden>
+        <div class="batch-progress-head" aria-live="polite"><span id="collageProgressText">Rendering</span><span id="collageProgressCount"></span></div>
+        <div class="batch-bar"><span id="collageBar"></span></div>
+        <button class="text-button" id="collageCancel" type="button">Cancel</button>
+      </div>
+      <div class="export-actions">
+        <button class="button button-primary button-xl" id="collageShare" type="button" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v7h14v-7"/></svg>
+          Share or save to Photos
+        </button>
+        <button class="button button-primary button-xl" id="collageDownload" type="submit">Download file</button>
+      </div>
+      <p class="export-status" id="collageExportStatus" role="status"></p>
     </form>
   </dialog>
 
