@@ -1300,6 +1300,19 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-sheet[data-backdrop=light] { background:var(--paper); }
 .collage-sheet[data-backdrop=dark] { background:var(--bg); }
 #collagePaper { margin-bottom:22px; }
+/* Shapes (Task 5) */
+.collage-sublabel { margin:0 0 8px; color:var(--text-muted); font-size:var(--fs-sm); font-weight:600; }
+.collage-sublabel span { font-weight:400; }
+#collageTemplates, #collageStyles { margin-bottom:16px; }
+#collageBorderColor { margin:0 0 6px; }
+.collage-aspect-hint { margin:-14px 0 18px; }
+.collage-aspects button:disabled { color:var(--text-muted); cursor:default; }
+.collage-sticker { margin-top:6px; padding-top:16px; border-top:1px solid var(--line); }
+#collageOutlineColor { margin:0 0 6px; }
+.collage-sticker .check-row { margin-top:8px; }
+.collage-slot.is-shaped, .collage-slot.is-shaped[aria-selected=true], .collage-slot.is-shaped.is-drop-target { box-shadow:none; border-radius:0; }
+.collage-slot.is-shaped .collage-slot-empty { position:absolute; left:var(--cx); top:var(--cy); transform:translate(-50%,-50%); width:var(--tap); padding:0; justify-content:center; border-radius:50%; font-size:var(--fs-lg); }
+.collage-slot.is-shaped .collage-slot-empty-word { display:none; } /* a round + fits narrow slices; the slot's label says "empty" */
 .collage-backdrop { margin:-10px 0 22px; }
 .collage-backdrop .segmented { margin-bottom:8px; }
 .collage-alpha { margin-top:10px; }

@@ -40,11 +40,15 @@
   <p id="status" role="status" aria-live="polite"></p>
   <table><thead><tr><th scope="col">Format</th><th scope="col">Outside (alpha 0)</th><th scope="col">Inside (alpha 255)</th><th scope="col">Edges</th><th scope="col">Result</th></tr></thead><tbody id="results"></tbody></table>
   <div class="previews" id="previews"></div>
+  <h2>Shaped sheets with a sticker outline (Task 5)</h2>
+  <p>Each shape at preview size (600 px) and export size (1800 px), PNG, transparent, 2 % gutter, a 2 % blue outline over red photos. Pass means: the corner pixels are alpha 0; the visible pixels reach the canvas edges (no wasted transparent border); the outline measures its width ± 0.5 px at every sampled point along the edge (normals, corners skipped); and the outer edge in the export sits within 1 preview px of the preview's.</p>
+  <table><thead><tr><th scope="col">Template</th><th scope="col">Corners</th><th scope="col">Canvas fit</th><th scope="col">Outline width</th><th scope="col">Preview vs export</th><th scope="col">Result</th></tr></thead><tbody id="shapeResults"></tbody></table>
+  <div class="previews" id="shapePreviews"></div>
   <script type="module">
     import { templateById } from '../js/collage/templates.js';
-    import { layoutTemplate } from '../js/collage/layout.js';
+    import { layoutTemplate, paddedAspect, stickerPad, sheetSize } from '../js/collage/layout.js';
     import { createDoc } from '../js/collage/model.js';
-    import { drawPaper, drawSlot, drawOrder, slotPath } from '../js/collage/render.js';
+    import { drawPaper, drawSlot, drawOrder, slotPath, flattenSheet } from '../js/collage/render.js';
 
     const $ = id => document.getElementById(id);
     const COLORS = [[200, 60, 40], [40, 150, 210], [240, 200, 60], [90, 170, 90]];
@@ -64,8 +68,9 @@
     /** Renders exactly as js/collage/export.js does (flatten only for JPEG). */
     function render(size, radius, flatten, format) {
       const { canvas, ctx, doc, layout } = compose(size, radius, flatten);
-      drawPaper(ctx, doc, layout, { flatten: format === 'image/jpeg' ? doc.flatten : null });
+      drawPaper(ctx, doc, layout);
       for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, solid(COLORS[slot.index], slot.index === 2 ? 300 : 640, slot.index === 2 ? 900 : 420));
+      if (format === 'image/jpeg') flattenSheet(ctx, layout, doc.flatten);
       return { canvas, layout };
     }
     /** Per-slot coverage masks (the slot clip paths filled): 255 inside, 0 outside, partial along edges. */
@@ -140,8 +145,117 @@
       $('status').textContent = allPass ? 'All formats pass.' : 'Some checks failed — see the table.';
       console.log(allPass ? 'collage-alpha: PASS' : 'collage-alpha: FAIL');
     }
+    // ---------- Shaped sheets ----------
+    const RED = [220, 30, 30], BLUE = '#1e3cdc', MID = (220 + 30) / 2; // photo red ↔ outline red, half way
+    // Honeycomb photos only meet the sheet edge with no gutter; the stamp's perforations need a thin outline to leave
+    // straight runs to measure on.
+    const SHAPE_CASES = { 'hex-honeycomb-7': { gutter: 0 }, 'stamp-4': { outline: .008 } };
+    function renderShape(id, longEdge, { shadow = false } = {}) {
+      const { gutter = .02, outline = .02 } = SHAPE_CASES[id] || {};
+      const template = templateById(id), doc = createDoc([1, 2, 3, 4, 5, 6, 7, 8, 9], template, '#f3efe6');
+      Object.assign(doc, { gutter, margin: 0 }); doc.sheet.background = 'transparent'; doc.sheet.outline = { width: outline, color: BLUE }; doc.sheet.shadow = shadow;
+      const aspect = template.lockAspect ? paddedAspect(template.aspect[0] / template.aspect[1], stickerPad(doc.sheet)) : { w: template.aspect[0], h: template.aspect[1] };
+      const { width, height } = sheetSize([aspect.w, aspect.h], longEdge);
+      const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d'), layout = layoutTemplate(template, width, height, doc);
+      drawPaper(ctx, doc, layout);
+      for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, solid(RED, 500, 400));
+      return { canvas, layout, ow: outline * Math.min(width, height) };
+    }
+    /** Premultiplied RGBA at a fractional pixel position (bilinear between pixel centres). */
+    function sampler(data, w, h) {
+      return (x, y) => {
+        x -= .5; y -= .5;
+        const fx = x - Math.floor(x), fy = y - Math.floor(y), out = [0, 0, 0, 0];
+        const fx0 = Math.floor(x), fy0 = Math.floor(y); // beyond the canvas is transparent (not its edge pixel)
+        for (const [px, py, wt] of [[fx0, fy0, (1 - fx) * (1 - fy)], [fx0 + 1, fy0, fx * (1 - fy)], [fx0, fy0 + 1, (1 - fx) * fy], [fx0 + 1, fy0 + 1, fx * fy]]) {
+          if (px < 0 || py < 0 || px >= w || py >= h) continue;
+          const i = (py * w + px) * 4, a = data[i + 3] / 255;
+          out[0] += data[i] * a * wt; out[1] += data[i + 1] * a * wt; out[2] += data[i + 2] * a * wt; out[3] += data[i + 3] * wt;
+        }
+        return out;
+      };
+    }
+    /** Edge points with outward normals along the sheet outline (and into the hole), every `spacing` px; points
+     *  closer than `keep` px to a corner or cusp (a turn over .2 rad) are left out. */
+    function edgePoints(layout, spacing, keep) {
+      const out = [];
+      for (const [poly, sign] of [[layout.sheetPolygon, 1], [layout.holePolygon, -1]]) {
+        if (!poly) continue;
+        const n = poly.length / 2, at = i => [poly[((i % n) + n) % n * 2], poly[((i % n) + n) % n * 2 + 1]];
+        const dir = i => { const [x, y] = at(i), [nx, ny] = at(i + 1); return Math.atan2(ny - y, nx - x); };
+        const sharp = [];
+        for (let i = 0; i < n; i++) if (Math.abs(((dir(i) - dir(i - 1) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) > .2) sharp.push(at(i));
+        let walked = 0;
+        for (let i = 0; i < n; i++) {
+          const [x, y] = at(i), [nx, ny] = at(i + 1), len = Math.hypot(nx - x, ny - y), dx = (nx - x) / len, dy = (ny - y) / len;
+          for (let d = (spacing - walked) % spacing; d < len; d += spacing) {
+            const px = x + dx * d, py = y + dy * d;
+            if (sharp.some(([sx, sy]) => Math.hypot(sx - px, sy - py) < keep)) continue;
+            out.push({ x: px, y: py, nx: sign * dy, ny: -sign * dx }); // clockwise outline: outward is to the right
+          }
+          walked = (walked + len) % spacing;
+        }
+      }
+      return out;
+    }
+    /** Along the outward normal: where red (the photos) gives way to the outline, and where the outline ends. */
+    function measure(get, p, ow) {
+      // Only where photo meets the edge on both sides (not next to a gutter, the hole or a gap).
+      for (const side of [-4, 0, 4]) if (get(p.x - p.nx * 2 - p.ny * side, p.y - p.ny * 2 + p.nx * side)[0] < 200) return null;
+      if (get(p.x - p.nx * 4, p.y - p.ny * 4)[0] < 200) return null;
+      if (get(p.x + p.nx * (ow + 3), p.y + p.ny * (ow + 3))[3] > 8) return null; // a concave dip, where two outlines meet
+      // Edge positions by integrating coverage along the normal (steadier than one threshold crossing on diagonal
+      // antialiased edges): photo coverage f = (red − 30·alpha) / 190 is 1 on photo, 0 on the outline and beyond.
+      let inner = -4, outer = -4;
+      for (let t = -4; t < ow + 4; t += .05) {
+        const c = get(p.x + p.nx * (t + .025), p.y + p.ny * (t + .025)), alpha = c[3] / 255;
+        inner += .05 * Math.max(0, Math.min(1, (c[0] - 30 * alpha) / 190)); outer += .05 * alpha;
+      }
+      return { width: outer - inner, edge: [p.x + p.nx * outer, p.y + p.ny * outer] };
+    }
+    async function decodePng(canvas) {
+      const blob = await encode(canvas, 'image/png');
+      return (await decode(blob, canvas.width, canvas.height)).data;
+    }
+    async function runShapes() {
+      $('shapeResults').textContent = ''; $('shapePreviews').textContent = '';
+      let allPass = true;
+      for (const id of ['heart-4', 'circle-pie-6', 'donut-6', 'star-5', 'hex-honeycomb-7', 'stamp-4']) {
+        const small = renderShape(id, 600), big = renderShape(id, 1800);
+        const [ds, db] = [await decodePng(small.canvas), await decodePng(big.canvas)];
+        const W = big.canvas.width, H = big.canvas.height, alphaAt = (x, y) => db[(y * W + x) * 4 + 3];
+        const corners = [alphaAt(0, 0), alphaAt(W - 1, 0), alphaAt(0, H - 1), alphaAt(W - 1, H - 1)];
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (alphaAt(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        const waste = Math.max(x0, y0, W - 1 - x1, H - 1 - y1);
+        const getS = sampler(ds, small.canvas.width, small.canvas.height), getB = sampler(db, W, H), scale = W / small.canvas.width;
+        let worstWidth = 0, worstSmall = 0, worstBig = 0, worstEdge = 0, measured = 0, sum = 0;
+        for (const p of edgePoints(small.layout, 6, small.ow + 6)) {
+          const a = measure(getS, p, small.ow), b = measure(getB, { x: p.x * scale, y: p.y * scale, nx: p.nx, ny: p.ny }, big.ow);
+          if (!a || !b) continue;
+          measured++;
+          worstSmall = Math.max(worstSmall, Math.abs(a.width - small.ow)); worstBig = Math.max(worstBig, Math.abs(b.width - big.ow));
+          worstWidth = Math.max(worstSmall, worstBig); sum += Math.abs(a.width - small.ow);
+          worstEdge = Math.max(worstEdge, Math.hypot(a.edge[0] - b.edge[0] / scale, a.edge[1] - b.edge[1] / scale));
+        }
+        const checks = [corners.every(v => v === 0), waste <= 1, measured >= 10 && worstWidth <= .5, worstEdge <= 1], pass = checks.every(Boolean); allPass &&= pass;
+        const row = document.createElement('tr'), cls = ok => (ok ? 'pass' : 'fail');
+        row.innerHTML = `<th scope="row">${templateById(id).name}</th><td class="${cls(checks[0])}">${corners.join(', ')}</td><td class="${cls(checks[1])}">${waste} px spare</td>`
+          + `<td class="${cls(checks[2])}">${small.ow.toFixed(1)} / ${big.ow.toFixed(1)} px, worst ± ${worstSmall.toFixed(2)} / ${worstBig.toFixed(2)} (${measured} points, mean ${(sum / (measured || 1)).toFixed(2)})</td><td class="${cls(checks[3])}">${worstEdge.toFixed(2)} px</td><td class="${cls(pass)}">${pass ? 'Pass' : 'Fail'}</td>`;
+        $('shapeResults').append(row);
+        const figure = document.createElement('figure'); figure.innerHTML = `<figcaption>${templateById(id).name}</figcaption>`;
+        small.canvas.setAttribute('role', 'img'); small.canvas.setAttribute('aria-label', `${templateById(id).name} preview`); figure.append(small.canvas); $('shapePreviews').append(figure);
+      }
+      const shadowed = renderShape('heart-4', 600, { shadow: true }), figure = document.createElement('figure');
+      figure.innerHTML = '<figcaption>Heart · 4 with soft shadow (visual check)</figcaption>';
+      shadowed.canvas.setAttribute('role', 'img'); shadowed.canvas.setAttribute('aria-label', 'Heart with outline and shadow'); figure.append(shadowed.canvas); $('shapePreviews').append(figure);
+      console.log(allPass ? 'collage-shapes: PASS' : 'collage-shapes: FAIL');
+      return allPass;
+    }
+
     $('form').addEventListener('submit', event => { event.preventDefault(); run().catch(error => { $('status').textContent = error.message; console.error(error); }); });
-    run().catch(error => { $('status').textContent = error.message; console.error(error); });
+    run().then(runShapes).catch(error => { $('status').textContent = error.message; console.error(error); });
   </script>
 </body>
 </html>

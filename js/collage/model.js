@@ -13,6 +13,8 @@
 
 /** Sheet aspects offered in the panel: [label, w, h]. */
 export const ASPECTS = [['1:1', 1, 1], ['4:5', 4, 5], ['3:2', 3, 2], ['2:3', 2, 3], ['9:16', 9, 16], ['16:9', 16, 9]];
+/** Collage-only paper colours, sampled from the owner's reference layouts (styles default to them). */
+export const COLLAGE_PAPERS = [{ id: 'taupe', name: 'Taupe', hex: '#a89a78' }, { id: 'clay', name: 'Clay', hex: '#a69480' }];
 export const SPACING = { gutter: { min: 0, max: .1, step: .005 }, margin: { min: 0, max: .15, step: .005 }, radius: { min: 0, max: .1, step: .005 } };
 
 let slotSeq = 0;

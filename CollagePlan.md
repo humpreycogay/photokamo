@@ -286,13 +286,30 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** exported alpha is exactly 0 in gutters/margins and exactly 255 inside photo areas (pixel check on the fixture page), antialiased only along edges; no dark fringes on edges (premultiplied-alpha check: edge pixels' colour equals the photo colour within 2/255 after un-premultiplying).
 
 #### Task 5: Shaped collage templates
-- [ ] `kind: 'shaped'` templates: sheet shape clips the fill layout; slots are `slot ∩ sheet shape`; slots that keep < 15 % of their area inside the shape are not created (template validation fails)
-- [ ] Shapes: circle, rounded square, heart, star (5, 6), hexagon, arch, stamp (perforated edges), ellipse
-- [ ] Fill layouts: grid (clipped), **radial** slices/rings (pie, donut) and free slots (honeycomb hexagons inside a hexagon, circles in a circle)
-- [ ] Starter set (≈ 12): Heart 1/2/4, Circle 1/4-pie/6-pie, Donut 6, Star 1/5-point split, Hexagon 1/honeycomb 7, Arch 2, Stamp 1/4
-- [ ] **Sticker options:** outline keyline (width, colour; drawn outside the clip so it isn't cut in half), soft drop shadow (off by default; PNG/WebP only)
-- [ ] One-photo shaped templates allowed ("photo in a heart"); collage requires 1+ photos only for `category: 'shape'`
-- [ ] Export canvas = the shape's bounding box plus the outline/shadow margin (no wasted transparent pixels beyond that)
+- [x] `kind: 'shaped'` templates: sheet shape clips the fill layout; slots are `slot ∩ sheet shape`; slots that keep < 15 % of their area inside the shape are not created (template validation fails)
+- [x] Shapes: circle, rounded square, heart, star (5, 6), hexagon, arch, stamp (perforated edges), ellipse
+- [x] Fill layouts: grid (clipped), **radial** slices/rings (pie, donut) and free slots (honeycomb hexagons inside a hexagon, circles in a circle)
+- [x] Starter set (≈ 12): Heart 1/2/4, Circle 1/4-pie/6-pie, Donut 6, Star 1/5-point split, Hexagon 1/honeycomb 7, Arch 2, Stamp 1/4 → **owner review 2026-11-25: only Circle · 6 and Honeycomb · 7 kept** (the rest looked unprofessional); the shape engine stays
+- [x] **Sticker options:** outline keyline (width, colour; drawn outside the clip so it isn't cut in half), soft drop shadow (off by default; PNG/WebP only)
+- [ ] ~~One-photo shaped templates allowed ("photo in a heart")~~ → reverted with the one-slot shapes; collages need 2+ photos again
+- [x] Export canvas = the shape's bounding box plus the outline/shadow margin (no wasted transparent pixels beyond that)
+
+*Done:*
+- **Code:** `layoutShaped` in `js/collage/layout.js`. Grid, radial and free fills are cut by the sheet shape with Sutherland–Hodgman clipping (`clipConvex`/`clipHalfPlane` in `shapes.js`). Radial gutters are offset slice edges. The donut is a `hole` (the sheet shape scaled about its own centre, `shapeCenter`), not rings: no starter template needed rings, so they're left out. 14 starter templates are in `templates.js`. Proportional shapes lock the sheet aspect to `paddedAspect(shape, stickerPad)`, so the shape plus its outline/shadow pad fills the canvas exactly.
+- **Rendering (`render.js`):** paper fills only the shape. Photos are clipped by the sheet path, then by their slot polygon. The outline is the shape grown by its width, cut out inside, plus a 2 px stroke that the photos overlap by 1 px (no seam). The shadow comes from an off-canvas copy and is cut away inside the shape. JPEG flattening moved to the end (`flattenSheet`, `destination-over`), and the shadow is left out of JPEG (the export sheet says so).
+- **UI:** Layout is two listboxes, Grids and Shapes, with checkerboard shape thumbnails. A Sticker section (outline 0–4 %, colours White/Warm/Aged/Black, Soft shadow checkbox) shows for shapes. Corners hides for shapes, and Margin hides on transparent shapes, where it would only part the photos from the outline. Sheet buttons are disabled for proportional shapes ("This shape keeps its own proportions"). Picking a shape turns Paper to None, and leaving it brings paper back unless the user chose. Slot boxes use `clip-path: path(evenodd, …)`, so taps outside the shape, in gutters and in the donut hole select nothing (checked: slice → selected; box corner, gutter, hole → none). The selection ring is drawn on the preview canvas, and empty shaped slots show a round + at the slot's centroid. "Make collage…" works with one open photo (opens Heart); collages of 2–9 photos still open on a grid.
+- **Checks:** `collage-check.mjs` passes 11 052 checks: every shaped template at 2–3 sizes × 3 spacings × 3 sticker settings. Each slot keeps ≥ 15 % of its area inside the shape (lowest: Star · 5 point, 36 %), shared area between slots < 1 px², grid/radial coverage at gutter 0 within 0.2 %, and the shape spans the canvas less the pad within 1 px. `tools/collage-alpha.html` (Chrome), 6 shapes at 600 and 1800 px: corner alpha 0, 0 px of spare canvas, outline width within ± 0.45 px at 264–376 points per shape (mean 0.1 px; edge coverage integrated along the normals), and the outer edge in the export within 0.55 px of the preview's. The Task 4 grid checks still pass.
+- **End to end:** Heart · 4 with a 1.5 % outline → Export → PNG Share gives `PhotoKamo-collage-….png`, 1080 × 1197, corners alpha 0, visible pixels reaching all four edges. No console errors, desktop or phone (390 px).
+- **Not run:** Safari, Firefox, real touch devices.
+
+#### Task 5b: Styles from the owner's references (added 2026-11-25, pulls part of Release 4 forward)
+- [x] Three reference layouts rebuilt as `kind: 'free'`, `category: 'style'` templates on a 7:5 sheet: **Prints · 4** (overlapping white-bordered prints), **Feature + 3** (a big photo with a bordered panel of three over its edge), **Arc + circle** (a photo with a curved edge and a round photo over it, white keylines)
+- [x] Similar styles: Prints · 3, Prints · 5, Feature + 2, Feature + 4, Arc + circle (right), Arc + 2 circles
+- [x] Collage-only papers sampled from the references, **Taupe** `#a89a78` and **Clay** `#a69480` (`COLLAGE_PAPERS`); a style sets its paper, and the default comes back when leaving it unless the user picked one
+- [x] **Prints** section (styles): border width 0–2 % (full width, centred on each print's outline, drawn right after its photo so prints above cover it) and colour; Spacing, Margin and Corners hide for styles
+- [x] Overlap: slot boxes stack by `z`; curved and round prints are clipped to their outline (`visible`), so taps hit the top-most print under the finger and paper selects nothing
+
+*Done:* `collage-check.mjs` 8 120 checks (every print stays on the sheet and shows ≥ 40 % of itself past the prints above). In Chrome: tap circle → circle, arc → arc, paper → none; Prints · 4 → JPEG Share export 1512 × 1080 matching the preview (borders, Taupe paper); no console errors. Rotated prints, tape and shadows stay in Task 9 (scrapbook).
 
 **Check:** Heart · 4 with gutters → PNG over a coloured backdrop: heart edge clean, gutters transparent; keyline on/off; shadow; pan/zoom inside a pie slice; tap outside the heart selects nothing; phone touch; one-photo heart from a single selected photo.
 **Done when:** shape edges in export match the preview shape within 1 px scaled; outline width exact (± 0.5 px scaled) all the way round; every starter template passes `collage-check.mjs` (areas, slot coverage, no slivers); transparent pixels outside the shape are alpha 0 (corner pixels of the bounding box checked).

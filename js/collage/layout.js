@@ -2,6 +2,7 @@
 // A template + a sheet size in px → integer slot rects. Gutter, margin and corner radius are fractions of the
 // sheet's short edge, rounded to whole px once, so every row and column adds up to the sheet size exactly
 // (margin + tracks + gutters + margin); the last track absorbs the rounding.
+import { shapePolygon, shapeCenter, clipConvex, clipHalfPlane, polygonArea, polygonBounds } from './shapes.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect  integer px */
 /** @typedef {Rect & { index: number, rotate: number, z: number, radius: number, shape: object|null, shadow: boolean }} SlotRect */
@@ -36,13 +37,18 @@ export function layoutGrid(template, width, height, { gutter = 0, margin = 0, ra
   return { width, height, margin: m, gutter: g, cols, rows, slots };
 }
 
-/** Free: slots in normalised sheet coordinates { x, y, w, h, rotate, z, shape, shadow }; margin and gutter don't apply. */
-export function layoutFree(template, width, height, { radius = 0 } = {}) {
-  const r = px(radius, Math.min(width, height));
+/** Free: slots in normalised sheet coordinates { x, y, w, h, rotate, z, shape, shadow, border }; margin, gutter and
+ *  corner radius don't apply. Styles give their prints a border ({ width: fraction of the short edge, color }; the
+ *  document's `border` overrides the template's), stroked centred on each print's outline. Slots with a shape other
+ *  than a rect carry `visible`, their outline polygon (hit tests, the stage overlay). */
+export function layoutFree(template, width, height, { border = null } = {}) {
+  const short = Math.min(width, height), spec = border || template.border || null;
   const slots = template.slots.map((item, index) => {
     const x = Math.round(item.x * width), y = Math.round(item.y * height);
     const rect = { x, y, w: Math.round((item.x + item.w) * width) - x, h: Math.round((item.y + item.h) * height) - y };
-    return slot(index, rect, { rotate: item.rotate || 0, z: item.z || 0, shape: item.shape || null, shadow: Boolean(item.shadow), radius: cornerRadius(r, rect) });
+    const shape = item.shape && item.shape.kind !== 'rect' ? item.shape : null;
+    const line = spec && item.border !== false && spec.width > 0 ? { width: Math.max(1, spec.width * short), color: spec.color } : null;
+    return slot(index, rect, { rotate: item.rotate || 0, z: item.z || 0, shape, shadow: Boolean(item.shadow), border: line, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
   });
   return { width, height, margin: 0, gutter: 0, slots };
 }
@@ -68,12 +74,85 @@ export function layoutContact(template, width, height, { gutter = 0, margin = 0 
   return { width, height, margin: m, gutter: g, frameGap: gap, strips, slots };
 }
 
+// ---------- Shaped sheets (Task 5) ----------
+/** Room around a shaped sheet for its sticker outline and shadow, as a fraction of the canvas's short edge. */
+export const SHADOW_PAD = .05;
+export const stickerPad = sheet => (sheet?.outline?.width || 0) + (sheet?.shadow ? SHADOW_PAD : 0);
+/** Canvas aspect { w, h } that makes a proportional shape (aspect `a` = w / h) fill the canvas exactly once the
+ *  sticker pad (fraction f of the short edge) is taken off each side. */
+export function paddedAspect(a, f) {
+  const round = v => Math.round(v * 1e4) / 1e4;
+  return a >= 1 ? { w: round(a * (1 - 2 * f) + 2 * f), h: 1 } : { w: 1, h: round((1 - 2 * f) / a + 2 * f) };
+}
+/** A rect scaled about its centre by s. */
+const scaled = (r, s) => ({ x: r.x + r.w * (1 - s) / 2, y: r.y + r.h * (1 - s) / 2, w: r.w * s, h: r.h * s });
+/** A rect of size w × h centred on (cx, cy). */
+const centred = (cx, cy, w, h) => ({ x: cx - w / 2, y: cy - h / 2, w, h });
+const rectPolygon = r => [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h];
+
+/** Shaped: a sheet shape (template.sheet.shape, optional centre `hole` as a fraction of the shape's size) filled by
+ *  `template.fill`, every slot clipped by the shape:
+ *    { kind: 'grid', cols, rows, cells }  a grid over the shape's box (gutter between tracks)
+ *    { kind: 'radial', slices, rotate }   pie slices from the shape's centre, the first edge at `rotate` degrees
+ *    { kind: 'free', slots: [{ x, y, w, h, shape }] }  normalised slots in the shape's box (each inset by gutter / 2)
+ *  The shape fills the canvas less the sticker pad; margin shrinks the shape the photos are clipped by (a paper rim,
+ *  so only with paper).
+ *  Each slot carries `outline` (its own straight-edged polygon, px), `clip` (the sheet shape it is cut by), `visible`
+ *  (outline ∩ shape, flat polygon) and `holeVisible` (the hole's part in it); its x, y, w, h bound `visible`. */
+export function layoutShaped(template, width, height, { gutter = 0, margin = 0, sheet = null } = {}) {
+  const short = Math.min(width, height), pad = px(stickerPad(sheet), short), g = px(gutter, short);
+  const shape = template.sheet.shape, outer = { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
+  // Margin is a paper rim inside the shape; on a transparent sheet it would only part the photos from the outline.
+  const rim = sheet?.background === 'transparent' ? 0 : margin;
+  const m = Math.min(px(rim, short), Math.floor(Math.min(outer.w, outer.h) / 2) - 1);
+  const inner = scaled(outer, (Math.min(outer.w, outer.h) - 2 * m) / Math.min(outer.w, outer.h));
+  const [cx, cy] = shapeCenter(shape, inner), holeFor = (rect, grow) => template.sheet.hole
+    ? { shape, rect: centred(cx, cy, rect.w * template.sheet.hole + 2 * grow, rect.h * template.sheet.hole + 2 * grow) } : null;
+  const paper = { shape, rect: outer, hole: holeFor(outer, 0) }, clip = { shape, rect: inner, hole: holeFor(outer, m) };
+  const sheetPoly = shapePolygon(shape, inner, .25), holePoly = clip.hole ? shapePolygon(shape, clip.hole.rect, .25) : null;
+  const fill = template.fill, outlines = [];
+  if (fill.kind === 'grid') {
+    const cols = splitTracks(inner.x, inner.w, fill.cols, g), rows = splitTracks(inner.y, inner.h, fill.rows, g);
+    for (const [col, row, colSpan = 1, rowSpan = 1] of fill.cells) {
+      const first = cols[col], last = cols[col + colSpan - 1], top = rows[row], bottom = rows[row + rowSpan - 1];
+      outlines.push(rectPolygon({ x: first.start, y: top.start, w: last.start + last.size - first.start, h: bottom.start + bottom.size - top.start }));
+    }
+  } else if (fill.kind === 'radial') {
+    const n = fill.slices, box = rectPolygon(inner), step = 2 * Math.PI / n, start = (fill.rotate || 0) * Math.PI / 180;
+    for (let k = 0; k < n; k++) {
+      if (n === 1) { outlines.push(box); break; }
+      let poly = box;
+      for (const [angle, sign] of [[start + k * step, 1], [start + (k + 1) * step, -1]]) {
+        // Keep the slice's side of the edge, g / 2 away from it.
+        const dx = Math.cos(angle) * sign, dy = Math.sin(angle) * sign, a = [cx - dy * g / 2, cy + dx * g / 2];
+        poly = clipHalfPlane(poly, a, [a[0] + dx, a[1] + dy]);
+      }
+      outlines.push(poly);
+    }
+  } else if (fill.kind === 'free') {
+    for (const item of fill.slots) {
+      const r = { x: inner.x + item.x * inner.w + g / 2, y: inner.y + item.y * inner.h + g / 2, w: item.w * inner.w - g, h: item.h * inner.h - g };
+      outlines.push(shapePolygon(item.shape || { kind: 'rect' }, r, .25));
+    }
+  } else throw new Error(`Unknown fill ${fill.kind}`);
+  const slots = outlines.map((outline, index) => {
+    const visible = clipConvex(sheetPoly, outline), holeVisible = holePoly ? clipConvex(holePoly, outline) : null;
+    const b = visible.length ? polygonBounds(visible) : polygonBounds(outline);
+    // Whole px, grown to hold the visible part (the photo covers this box).
+    const x = Math.max(0, Math.floor(b.x) - 1), y = Math.max(0, Math.floor(b.y) - 1);
+    const rect = { x, y, w: Math.min(width, Math.ceil(b.x + b.w) + 1) - x, h: Math.min(height, Math.ceil(b.y + b.h) + 1) - y };
+    return { ...slot(index, rect), outline, clip, visible, holeVisible, area: Math.abs(polygonArea(visible)) - (holeVisible ? Math.abs(polygonArea(holeVisible)) : 0), slotArea: Math.abs(polygonArea(outline)) };
+  });
+  return { width, height, margin: m, gutter: g, pad, shaped: true, paper, clip, sheetPolygon: sheetPoly, holePolygon: holePoly, slots };
+}
+
 /** Slot rects for any template kind on a width × height px sheet. */
 export function layoutTemplate(template, width, height, spacing = {}) {
   if (!(width > 0 && height > 0)) throw new Error(`Bad sheet size ${width} × ${height}`);
   if (template.kind === 'grid') return layoutGrid(template, width, height, spacing);
   if (template.kind === 'free') return layoutFree(template, width, height, spacing);
   if (template.kind === 'contact') return layoutContact(template, width, height, spacing);
+  if (template.kind === 'shaped') return layoutShaped(template, width, height, spacing);
   throw new Error(`Unknown template kind ${template.kind}`);
 }
 

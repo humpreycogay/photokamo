@@ -9,7 +9,7 @@
 // collage's `flatten` colour (never left to the encoder, which would turn it black).
 import { templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
-import { drawPaper, drawSlot, drawOrder } from './render.js';
+import { drawPaper, drawSlot, drawOrder, flattenSheet } from './render.js';
 import { shareSize, printSize, fullSize, capSize, slotEdge, PRINT_PAPERS, PRINT_DPI } from './sizes.js';
 
 const LIMIT_KEY = 'photokamo:canvas-limit';
@@ -78,7 +78,7 @@ export function createCollageExport(deps) {
   function syncAlpha(doc) {
     ui.alpha.hidden = !transparent(doc); if (ui.alpha.hidden) return;
     const jpeg = options.format === 'image/jpeg';
-    ui.alphaNote.textContent = jpeg ? `JPEG has no transparency — background filled with ${colorName(doc.flatten)}.`
+    ui.alphaNote.textContent = jpeg ? `JPEG has no transparency — background filled with ${colorName(doc.flatten)}.${doc.sheet.shadow && templateById(doc.templateId)?.kind === 'shaped' ? ' The shadow is left out.' : ''}`
       : `Transparent background kept${options.format === 'image/webp' ? ' (WebP saved lossless, so edges stay clean)' : ''}. Some apps add a background to transparent images when you share them.`;
     ui.flattenRow.hidden = !jpeg;
     ui.flatten.querySelectorAll('[data-flatten]').forEach(button => { const on = button.dataset.flatten === doc.flatten; button.setAttribute('aria-checked', on); button.tabIndex = on ? 0 : -1; });
@@ -93,7 +93,7 @@ export function createCollageExport(deps) {
     const doc = deps.doc(), all = sizes(doc), template = templateById(doc.templateId);
     const count = slotCount(template), filled = doc.slots.slice(0, count).filter(fill => deps.photoById(fill.photoId)).length;
     syncAlpha(doc);
-    ui.summary.textContent = [`${template.name} · ${filled} photo${filled === 1 ? '' : 's'}`, `${doc.aspect.w}:${doc.aspect.h}`, transparent(doc) ? 'transparent' : '', filled < count ? `${count - filled} empty slot${count - filled === 1 ? '' : 's'} stay ${transparent(doc) ? 'transparent' : 'paper'}` : ''].filter(Boolean).join(' · ');
+    ui.summary.textContent = [`${template.name} · ${filled} photo${filled === 1 ? '' : 's'}`, template.lockAspect ? 'shape' : `${doc.aspect.w}:${doc.aspect.h}`, transparent(doc) ? 'transparent' : '', filled < count ? `${count - filled} empty slot${count - filled === 1 ? '' : 's'} stay ${transparent(doc) ? 'transparent' : 'paper'}` : ''].filter(Boolean).join(' · ');
     ui.formats.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', button.dataset.format === options.format));
     ui.sizes.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === options.size));
     ui.shareDetail.textContent = `${all.share.width} × ${all.share.height}`;
@@ -127,7 +127,8 @@ export function createCollageExport(deps) {
     const canvas = document.createElement('canvas'); canvas.width = size.width; canvas.height = size.height;
     const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('This device cannot make a canvas that large');
     const layout = layoutTemplate(template, size.width, size.height, doc);
-    drawPaper(ctx, doc, layout, { flatten: flattenFor(doc, current.format) });
+    const flatten = flattenFor(doc, current.format);
+    drawPaper(ctx, doc, layout, { shadow: !flatten }); // sticker shadows are for PNG/WebP
     const slots = drawOrder(layout).filter(slot => deps.photoById(doc.slots[slot.index].photoId));
     for (const [n, slot] of slots.entries()) {
       if (current.cancelled) throw cancelled();
@@ -139,6 +140,7 @@ export function createCollageExport(deps) {
       drawSlot(ctx, doc, slot, image);
       freeImage(image); // one full photo render at a time
     }
+    if (flatten) flattenSheet(ctx, layout, flatten);
     if (job === current) showProgress(true, 'Encoding', slots.length, slots.length);
     return canvas;
   }

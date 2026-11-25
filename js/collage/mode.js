@@ -5,10 +5,11 @@
 //   addFiles(files) → the photos added to the strip, editPhoto(id) to leave for the editor,
 //   onHistory() after the undo/redo state changes.
 import { templates, templateById, slotCount } from './templates.js';
-import { layoutTemplate } from './layout.js';
-import { drawCollage } from './render.js';
+import { layoutTemplate, paddedAspect, stickerPad } from './layout.js';
+import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
+import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
-import { ASPECTS, SPACING, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
+import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
 
 const MAX_SLOT_EDGE = 1600; // preview renders: long edge cap per photo
 const HISTORY_LIMIT = 50;
@@ -19,18 +20,21 @@ const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.ch
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-/** The template that fits `count` photos best: the same count, else the smallest that holds them all. */
+/** The template that fits `count` photos best: the grid with the same count, else the smallest grid that holds them all. */
 export function templateFor(count) {
-  const sorted = [...templates].sort((a, b) => slotCount(a) - slotCount(b));
+  const sorted = templates.filter(t => t.kind === 'grid').sort((a, b) => slotCount(a) - slotCount(b));
   return sorted.find(t => slotCount(t) === count) || sorted.find(t => slotCount(t) >= count) || sorted[sorted.length - 1];
 }
 
 export function createCollageMode(deps) {
   const stage = document.getElementById('collageStage'), canvas = document.getElementById('collageCanvas');
   const panel = document.getElementById('collagePanel'), status = document.getElementById('collageStatus');
-  const list = document.getElementById('collageTemplates'), aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
+  const lists = [document.getElementById('collageTemplates'), document.getElementById('collageShapes'), document.getElementById('collageStyles')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
+  const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
+  const prints = { box: byId('collagePrints'), border: byId('collageBorder'), output: byId('collageBorderOutput'), colors: byId('collageBorderColor') };
+  const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
   let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
   const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
@@ -61,19 +65,22 @@ export function createCollageMode(deps) {
   // ---------- Panel ----------
   const template = () => templateById(doc.templateId) || templates[0];
   function buildPanel() {
-    list.innerHTML = templates.map(t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`).join('');
+    const optionHtml = t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`;
+    lists[0].innerHTML = templates.filter(t => t.category === 'grid').map(optionHtml).join('');
+    lists[1].innerHTML = templates.filter(t => t.category === 'shape').map(optionHtml).join('');
+    lists[2].innerHTML = templates.filter(t => t.category === 'style').map(optionHtml).join('');
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
-    paper.innerHTML = deps.paperColors.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
+    paper.innerHTML = papers.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
       + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
     // Layout listbox: selection follows focus (arrows, Home, End); click or Enter picks.
     const pickTemplate = option => {
       if (!option || option.getAttribute('aria-selected') === 'true') return;
-      const next = templateById(option.dataset.template);
-      change(d => { d.templateId = next.id; if (d.aspectAuto) d.aspect = { w: next.aspect[0], h: next.aspect[1] }; fitSlots(d, slotCount(next)); });
-      say(`Layout: ${next.name}`);
+      const next = templateById(option.dataset.template), was = doc.sheet.background;
+      change(d => applyTemplate(d, next));
+      say(`Layout: ${next.name}${doc.sheet.background !== was ? (doc.sheet.background === 'transparent' ? '. Paper: none (transparent outside the shape)' : '. Paper back on') : ''}`);
     };
-    list.addEventListener('click', event => { const option = event.target.closest('[data-template]'); if (option) { pickTemplate(option); option.focus(); } });
-    list.addEventListener('keydown', event => {
+    for (const list of lists) list.addEventListener('click', event => { const option = event.target.closest('[data-template]'); if (option) { pickTemplate(option); option.focus(); } });
+    for (const list of lists) list.addEventListener('keydown', event => {
       const options = [...list.querySelectorAll('[data-template]')], index = options.indexOf(document.activeElement);
       const target = { ArrowRight: index + 1, ArrowDown: index + 1, ArrowLeft: index - 1, ArrowUp: index - 1, Home: 0, End: options.length - 1 }[event.key];
       if (target === undefined) return;
@@ -83,11 +90,11 @@ export function createCollageMode(deps) {
     });
     radioGroup(aspects, '[data-aspect]', button => {
       const [, w, h] = ASPECTS.find(([label]) => label === button.dataset.aspect);
-      change(d => { d.aspect = { w, h }; d.aspectAuto = false; });
+      change(d => { d.aspect = { w, h }; d.aspectChoice = { w, h }; d.aspectAuto = false; });
     });
     radioGroup(paper, '[data-paper]', button => {
       const none = button.dataset.paper === 'none';
-      change(d => { d.sheet.background = none ? 'transparent' : 'paper'; if (!none) d.paper.color = button.dataset.paper; });
+      change(d => { d.sheet.background = none ? 'transparent' : 'paper'; delete d.sheet.autoTransparent; delete d.paper.auto; if (!none) d.paper.color = button.dataset.paper; });
       say(none ? 'Paper: none. The background is transparent in PNG and WebP.' : `Paper: ${button.title}`);
     });
     // Preview backdrop behind a transparent sheet (never exported); remembered on this device.
@@ -102,7 +109,77 @@ export function createCollageMode(deps) {
       input.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); });
       input.addEventListener('blur', () => { slider = null; });
     }
+    buildSticker();
+    buildPrints();
     buildSlotPanel();
+  }
+  /** Switches the document to template `next`: shapes start transparent (paper comes back when leaving them, unless
+   *  the user chose it); styles bring their own paper colour (the default comes back when leaving them, unless the
+   *  user chose one); proportional shapes size the sheet to themselves, other layouts get the user's aspect back. */
+  function applyTemplate(d, next) {
+    const shaped = next.kind === 'shaped';
+    d.templateId = next.id;
+    if (shaped && d.sheet.background === 'paper' && !d.sheet.autoTransparent) { d.sheet.background = 'transparent'; d.sheet.autoTransparent = true; }
+    if (!shaped && d.sheet.autoTransparent) { d.sheet.background = 'paper'; delete d.sheet.autoTransparent; }
+    if (next.paper && (d.paper.auto || d.paper.color === deps.paperColors[0].hex)) { d.paper.color = next.paper; d.paper.auto = true; }
+    else if (!next.paper && d.paper.auto) { d.paper.color = deps.paperColors[0].hex; delete d.paper.auto; }
+    fitAspect(d, next);
+    fitSlots(d, slotCount(next));
+  }
+  function fitAspect(d, t) {
+    if (t.lockAspect) d.aspect = paddedAspect(t.aspect[0] / t.aspect[1], stickerPad(d.sheet));
+    else if (d.aspectAuto || !d.aspectChoice) d.aspect = { w: t.aspect[0], h: t.aspect[1] };
+    else d.aspect = { ...d.aspectChoice };
+  }
+  // Collage-only papers (from the owner's reference layouts), after the frame papers.
+  const papers = [...deps.paperColors, ...COLLAGE_PAPERS];
+  const borderOf = d => d.border || template().border || { width: .005, color: '#ffffff' };
+  /** Print borders for styles: width (live, one undo step per gesture) and colour. */
+  function buildPrints() {
+    prints.colors.innerHTML = outlineColors.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-border="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
+    const input = prints.border, begin = () => { slider ||= cloneDoc(doc); };
+    input.addEventListener('pointerdown', begin); input.addEventListener('focus', begin);
+    input.addEventListener('input', () => { begin(); doc.border = { ...borderOf(doc), width: Number(input.value) / 100 }; syncPrints(); draw(); });
+    input.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); say(doc.border.width ? `Border ${input.value}%` : 'Border off'); });
+    input.addEventListener('blur', () => { slider = null; });
+    radioGroup(prints.colors, '[data-border]', button => {
+      change(d => { d.border = { ...borderOf(d), color: button.dataset.border }; if (!d.border.width) d.border.width = .005; });
+      say(`Border: ${button.title}`);
+    });
+  }
+  function syncPrints() {
+    const border = borderOf(doc), value = Math.round(border.width * 1000) / 10;
+    prints.border.value = value; prints.output.value = border.width ? `${value}%` : 'Off';
+    syncRadios(prints.colors, 'data-border', border.color);
+  }
+  const outlineOf = d => d.sheet.outline || { width: 0, color: outlineColors[0][0] };
+  const outlineColors = [['#ffffff', 'White'], ...deps.paperColors.filter(color => color.id !== 'bright').map(color => [color.hex, color.name])]; // pure white replaces the near-white paper
+  /** Sticker options for shaped sheets: outline width (live, one undo step per gesture) and colour, soft shadow. */
+  function buildSticker() {
+    sticker.colors.innerHTML = outlineColors.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-outline="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
+    const input = sticker.outline, begin = () => { slider ||= cloneDoc(doc); };
+    input.addEventListener('pointerdown', begin); input.addEventListener('focus', begin);
+    input.addEventListener('input', () => {
+      begin(); doc.sheet.outline = { ...outlineOf(doc), width: Number(input.value) / 100 };
+      fitAspect(doc, template()); syncSticker(); draw();
+    });
+    input.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); say(doc.sheet.outline.width ? `Outline ${input.value}%` : 'Outline off'); });
+    input.addEventListener('blur', () => { slider = null; });
+    radioGroup(sticker.colors, '[data-outline]', button => {
+      change(d => { d.sheet.outline = { ...outlineOf(d), color: button.dataset.outline }; if (!d.sheet.outline.width) d.sheet.outline.width = .015; fitAspect(d, template()); });
+      say(`Outline: ${button.title}`);
+    });
+    sticker.shadow.addEventListener('change', () => {
+      const on = sticker.shadow.checked;
+      change(d => { d.sheet.shadow = on; fitAspect(d, template()); });
+      say(on ? 'Soft shadow on (PNG and WebP)' : 'Soft shadow off');
+    });
+  }
+  function syncSticker() {
+    const outline = outlineOf(doc), percentValue = Math.round(outline.width * 10000) / 100;
+    sticker.outline.value = percentValue; sticker.output.value = outline.width ? `${percentValue}%` : 'Off';
+    syncRadios(sticker.colors, 'data-outline', outline.color);
+    sticker.shadow.checked = Boolean(doc.sheet.shadow);
   }
 
   // ---------- Slot editing: the selected slot's photo (panel) ----------
@@ -230,11 +307,22 @@ export function createCollageMode(deps) {
   }
   function syncPanel() {
     const t = template(), aspect = ASPECTS.find(([, w, h]) => w === doc.aspect.w && h === doc.aspect.h);
-    for (const option of list.querySelectorAll('[data-template]')) {
-      const selected = option.dataset.template === t.id;
-      option.setAttribute('aria-selected', selected); option.tabIndex = selected ? 0 : -1;
+    for (const list of lists) {
+      const options = [...list.querySelectorAll('[data-template]')];
+      for (const option of options) {
+        const selected = option.dataset.template === t.id;
+        option.setAttribute('aria-selected', selected); option.tabIndex = selected ? 0 : -1;
+      }
+      if (!options.some(option => option.tabIndex === 0)) options[0].tabIndex = 0; // each listbox stays reachable
     }
-    syncRadios(aspects, 'data-aspect', aspect ? aspect[0] : '');
+    syncRadios(aspects, 'data-aspect', aspect && !t.lockAspect ? aspect[0] : '');
+    aspects.querySelectorAll('[data-aspect]').forEach(button => { button.disabled = Boolean(t.lockAspect); });
+    aspectHint.hidden = !t.lockAspect;
+    const shaped = t.kind === 'shaped', free = t.kind === 'free';
+    sticker.box.hidden = !shaped; radiusRow.hidden = shaped || free; prints.box.hidden = !free; gutterRow.hidden = free;
+    marginRow.hidden = free || (shaped && doc.sheet.background === 'transparent'); // a shape's margin is a paper rim
+    if (shaped) syncSticker();
+    if (free) syncPrints();
     syncRadios(paper, 'data-paper', doc.sheet.background === 'transparent' ? 'none' : doc.paper.color);
     syncBackdrop();
     syncSliders();
@@ -242,25 +330,49 @@ export function createCollageMode(deps) {
     drawThumbs();
     const filled = doc.slots.slice(0, slotCount(t)).filter(slot => deps.photoById(slot.photoId)).length;
     document.getElementById('collageCount').textContent = `${filled} of ${plural(slotCount(t), 'photo')}`;
-    canvas.setAttribute('aria-label', `Collage preview: ${t.name} layout, ${filled} of ${plural(slotCount(t), 'slot')} filled, ${aspect ? aspect[0] : `${doc.aspect.w}:${doc.aspect.h}`} sheet`);
+    canvas.setAttribute('aria-label', `Collage preview: ${t.name} layout, ${filled} of ${plural(slotCount(t), 'slot')} filled, ${t.lockAspect ? 'shaped' : aspect ? aspect[0] : `${doc.aspect.w}:${doc.aspect.h}`} sheet`);
   }
-  /** Layout thumbnails at the current sheet aspect, in the panel's token colours. */
+  /** Layout thumbnails at the current sheet aspect (shapes at their own), in the panel's token colours. A checkerboard
+   *  shows where the sheet is transparent: around every shape, and between the slots with Paper: none. */
   function drawThumbs() {
     const style = getComputedStyle(document.documentElement), sheetColor = style.getPropertyValue('--line-strong').trim(), slotColor = style.getPropertyValue('--text-muted').trim();
-    const checkerLight = style.getPropertyValue('--raised').trim();
-    const dpr = Math.min(2, devicePixelRatio || 1), box = 52, a = doc.aspect.w / doc.aspect.h;
-    const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
-    for (const option of list.querySelectorAll('[data-template]')) {
-      const thumb = option.querySelector('canvas'), layout = layoutTemplate(templateById(option.dataset.template), w, h, { gutter: .06, margin: .06 });
+    const checkerLight = style.getPropertyValue('--raised').trim(), transparent = doc.sheet.background === 'transparent';
+    const dpr = Math.min(2, devicePixelRatio || 1), box = 52;
+    for (const list of lists) for (const option of list.querySelectorAll('[data-template]')) {
+      const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', a = shaped ? t.aspect[0] / t.aspect[1] : doc.aspect.w / doc.aspect.h;
+      const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
+      const thumb = option.querySelector('canvas'), layout = layoutTemplate(t, w, h, { gutter: .06, margin: shaped ? 0 : .06, border: { width: 1.5 * dpr / Math.min(w, h), color: checkerLight } });
       thumb.width = w; thumb.height = h; thumb.style.width = `${w / dpr}px`; thumb.style.height = `${h / dpr}px`;
       const ctx = thumb.getContext('2d');
-      if (doc.sheet.background === 'transparent') { // checkerboard: see-through sheet
+      if (transparent || shaped) {
         const cell = Math.max(2, Math.round(4 * dpr));
         ctx.fillStyle = checkerLight; ctx.fillRect(0, 0, w, h); ctx.fillStyle = sheetColor;
         for (let y = 0; y < h; y += cell) for (let x = (y / cell) % 2 ? cell : 0; x < w; x += cell * 2) ctx.fillRect(x, y, cell, cell);
-      } else { ctx.fillStyle = sheetColor; ctx.fillRect(0, 0, w, h); }
-      ctx.fillStyle = slotColor; for (const s of layout.slots) ctx.fillRect(s.x, s.y, s.w, s.h);
+      }
+      if (!transparent) { ctx.fillStyle = sheetColor; if (shaped) ctx.fill(sheetPath(layout.paper), 'evenodd'); else ctx.fillRect(0, 0, w, h); }
+      ctx.fillStyle = slotColor;
+      for (const s of drawOrder(layout)) {
+        if (shaped) { ctx.fill(visiblePath(s), 'evenodd'); continue; }
+        const path = slotPath(s); ctx.fill(path);
+        if (s.border) { ctx.strokeStyle = s.border.color; ctx.lineWidth = s.border.width; ctx.stroke(path); } // overlapping prints stay apart
+      }
     }
+  }
+  /** A shaped slot's visible part (less the hole) as a Path2D, in the layout's px; fill with 'evenodd'. */
+  function visiblePath(slot, offsetX = 0, offsetY = 0, k = 1) {
+    const path = new Path2D();
+    for (const poly of [slot.visible, slot.holeVisible]) {
+      if (!poly?.length) continue;
+      path.moveTo((poly[0] - offsetX) / k, (poly[1] - offsetY) / k);
+      for (let i = 2; i < poly.length; i += 2) path.lineTo((poly[i] - offsetX) / k, (poly[i + 1] - offsetY) / k);
+      path.closePath();
+    }
+    return path;
+  }
+  /** The same outline as CSS path() data, relative to the slot's box in CSS px. */
+  function visibleCss(slot, k) {
+    const ring = poly => `M ${poly.map((v, i) => ((v - (i % 2 ? slot.y : slot.x)) / k).toFixed(1)).join(' ').replace(/^(\S+ \S+)/, '$1 L')} Z`;
+    return [slot.visible, slot.holeVisible].filter(poly => poly?.length >= 6).map(ring).join(' ');
   }
 
   // ---------- Stage ----------
@@ -277,9 +389,21 @@ export function createCollageMode(deps) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
     canvas.style.width = `${cssW}px`; canvas.style.height = `${cssH}px`;
     const layout = layoutTemplate(template(), width, height, doc);
-    drawCollage(canvas.getContext('2d'), doc, layout, imageOf);
+    const ctx = canvas.getContext('2d');
+    drawCollage(ctx, doc, layout, imageOf);
     view = { layout, k: width / cssW };
+    if (layout.slots.some(slot => slot.visible)) drawShapedHighlight(ctx, layout);
     syncSlots();
+  }
+  /** Shaped slots can't use the CSS box ring (their boxes are clipped to the slot's shape): the selected slot and the
+   *  drop target get a 3 px accent ring inside their visible outline on the preview canvas (never exported). */
+  function drawShapedHighlight(ctx, layout) {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), k = view.k;
+    for (const index of new Set([selected, gesture?.mode === 'swap' ? gesture.target : null])) {
+      const slot = index == null ? null : layout.slots[index]; if (!slot) continue;
+      const path = visiblePath(slot);
+      ctx.save(); ctx.clip(path, 'evenodd'); ctx.strokeStyle = accent; ctx.lineWidth = 6 * k; ctx.lineJoin = 'round'; ctx.stroke(path); ctx.restore();
+    }
   }
   const imageOf = index => cache.get(doc.slots[index]?.photoId)?.image || null;
 
@@ -290,12 +414,17 @@ export function createCollageMode(deps) {
     while (slotsEl.children.length < count) {
       const option = document.createElement('div');
       option.className = 'collage-slot'; option.setAttribute('role', 'option'); option.dataset.slot = slotsEl.children.length;
-      option.innerHTML = '<span class="collage-slot-empty" aria-hidden="true">+ Add photo</span>';
+      option.innerHTML = '<span class="collage-slot-empty" aria-hidden="true">+<span class="collage-slot-empty-word">&nbsp;Add photo</span></span>';
       slotsEl.append(option);
     }
     layout.slots.forEach((slot, i) => {
       const option = slotsEl.children[i], photo = deps.photoById(doc.slots[i]?.photoId);
-      Object.assign(option.style, { left: `${slot.x / k}px`, top: `${slot.y / k}px`, width: `${slot.w / k}px`, height: `${slot.h / k}px`, borderRadius: `${slot.radius / k}px` });
+      Object.assign(option.style, { left: `${slot.x / k}px`, top: `${slot.y / k}px`, width: `${slot.w / k}px`, height: `${slot.h / k}px`, borderRadius: `${slot.radius / k}px`, zIndex: slot.z + 1 });
+      // Shaped slots: the box is clipped to the slot's visible part, so taps outside the shape (and in the hole) miss it.
+      const shaped = Boolean(slot.visible);
+      option.classList.toggle('is-shaped', shaped);
+      option.style.clipPath = shaped ? `path(evenodd, "${visibleCss(slot, k)}")` : '';
+      if (shaped) { const [cx, cy] = polygonCentroid(slot.visible); option.style.setProperty('--cx', `${(cx - slot.x) / k}px`); option.style.setProperty('--cy', `${(cy - slot.y) / k}px`); }
       option.setAttribute('aria-selected', i === selected); option.tabIndex = i === (selected ?? 0) ? 0 : -1;
       option.classList.toggle('is-empty', !photo);
       option.classList.toggle('is-drop-target', gesture?.mode === 'swap' && gesture.target === i);
@@ -310,7 +439,8 @@ export function createCollageMode(deps) {
   /** Slot index under a client point (top-most first), or null. */
   function slotAt(clientX, clientY) {
     const box = canvas.getBoundingClientRect(), x = (clientX - box.left) * view.k, y = (clientY - box.top) * view.k;
-    const hit = [...view.layout.slots].sort((a, b) => b.z - a.z || b.index - a.index).find(s => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    const inside = s => (s.visible ? pointInPolygon(s.visible, x, y) && !(s.holeVisible?.length && pointInPolygon(s.holeVisible, x, y)) : x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    const hit = [...view.layout.slots].sort((a, b) => b.z - a.z || b.index - a.index).find(inside);
     return hit ? hit.index : null;
   }
   /** Fill geometry of slot `index` on the stage (device px), or null when it has no photo yet. */
@@ -495,13 +625,13 @@ export function createCollageMode(deps) {
       const key = photoIds && [...photoIds].sort((a, b) => a - b).join();
       if (!doc || (photoIds && docPhotos !== key)) {
         const t = templateFor(photoIds.length);
-        doc = fitSlots(createDoc(photoIds, t, deps.paperColors[0].hex), slotCount(t)); docPhotos = key;
+        doc = createDoc(photoIds, t, deps.paperColors[0].hex); applyTemplate(doc, t); docPhotos = key;
         undoStack = []; redoStack = []; selected = null;
       }
       active = true; failed.clear(); generation++;
       historyChanged(); refresh();
       // After the first draw, which creates the slot boxes.
-      requestAnimationFrame(() => (selected != null ? slotsEl.children[selected] : list.querySelector('[aria-selected="true"]'))?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => (selected != null ? slotsEl.children[selected] : panel.querySelector('[data-template][aria-selected="true"]'))?.focus({ preventScroll: true }));
     },
     /** Leaves collage mode: drops pending renders (the document and history stay). The slot images are freed unless
      *  `keepCache` (leaving to edit one photo: the others need no new render on return). */

@@ -9,7 +9,7 @@
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
-  <link rel="stylesheet" href="css/styles.css?v=2026-11-25h">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25j">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -482,9 +482,15 @@
             <input id="collageFileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple aria-label="Choose photos for the collage" tabindex="-1">
           </section>
           <h3 class="collage-label" id="collageLayoutTitle">Layout</h3>
-          <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageGridsTitle">Grids</p>
+          <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle collageGridsTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageStylesTitle">Styles <span>· overlapping prints on paper</span></p>
+          <div class="collage-templates" id="collageStyles" role="listbox" aria-labelledby="collageLayoutTitle collageStylesTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageShapesTitle">Shapes <span>· transparent outside the shape</span></p>
+          <div class="collage-templates" id="collageShapes" role="listbox" aria-labelledby="collageLayoutTitle collageShapesTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
-          <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle"></div>
+          <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle" aria-describedby="collageAspectHint"></div>
+          <p class="collage-hint collage-aspect-hint" id="collageAspectHint" hidden>This shape keeps its own proportions.</p>
           <h3 class="collage-label" id="collagePaperTitle">Paper</h3>
           <div class="paper-swatches" id="collagePaper" role="radiogroup" aria-labelledby="collagePaperTitle"></div>
           <div class="collage-backdrop" id="collageBackdropRow" hidden>
@@ -496,9 +502,22 @@
             </div>
             <p class="collage-hint" id="collageBackdropHint">Only for viewing here; the file stays transparent.</p>
           </div>
-          <div class="slider-row"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
-          <div class="slider-row"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
-          <div class="slider-row"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
+          <div class="slider-row" id="collageGutterRow"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
+          <div class="slider-row" id="collageMarginRow"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
+          <div class="slider-row" id="collageRadiusRow"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
+          <div class="collage-sticker" id="collagePrints" hidden>
+            <h3 class="collage-label" id="collagePrintsTitle">Prints</h3>
+            <div class="slider-row"><label class="slider-label" for="collageBorder"><span>Border</span><output id="collageBorderOutput" for="collageBorder">0.5%</output></label><input id="collageBorder" type="range" min="0" max="2" step="0.1"></div>
+            <div class="paper-swatches" id="collageBorderColor" role="radiogroup" aria-label="Border colour"></div>
+          </div>
+          <div class="collage-sticker" id="collageSticker" hidden>
+            <h3 class="collage-label" id="collageStickerTitle">Sticker</h3>
+            <div class="slider-row"><label class="slider-label" for="collageOutline"><span>Outline</span><output id="collageOutlineOutput" for="collageOutline">Off</output></label><input id="collageOutline" type="range" min="0" max="4" step="0.25" aria-describedby="collageOutlineHint"></div>
+            <div class="paper-swatches" id="collageOutlineColor" role="radiogroup" aria-label="Outline colour"></div>
+            <p class="collage-hint" id="collageOutlineHint">A die-cut edge around the shape, like a sticker.</p>
+            <label class="check-row"><input type="checkbox" id="collageShadow" aria-describedby="collageShadowHint"> Soft shadow</label>
+            <p class="collage-hint" id="collageShadowHint">Outside the shape, in PNG and WebP.</p>
+          </div>
         </section>
       </div>
 

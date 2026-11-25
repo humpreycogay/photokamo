@@ -25,7 +25,27 @@ for (const t of templates) {
       for (let r = row; r < row + rowSpan; r++) for (let c = col; c < col + colSpan; c++) covered[r][c]++;
     }
     check(covered.flat().every(n => n === 1), `${t.id} cells must cover every grid cell exactly once`);
-  } else fail(`${t.id} unexpected kind ${t.kind} (Task 0 ships grids only)`);
+  } else if (t.kind === 'shaped') {
+    check(t.category === 'shape' && SHAPE_KINDS.includes(t.sheet?.shape?.kind), `${t.id} bad sheet shape`);
+    check(slotCount(t) >= 1 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (shapes hold 1–9)`);
+    check(['grid', 'radial', 'free'].includes(t.fill?.kind), `${t.id} bad fill`);
+    check(!t.sheet.hole || (t.sheet.hole > 0 && t.sheet.hole < .8), `${t.id} bad hole`);
+  } else if (t.kind === 'free') {
+    check(t.category === 'style' && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} style needs a paper colour`);
+    check(slotCount(t) >= 2 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (styles hold 2–9)`);
+    for (const [i, s] of t.slots.entries()) check(s.w > 0 && s.h > 0 && s.x >= -1e-9 && s.y >= -1e-9 && s.x + s.w <= 1 + 1e-9 && s.y + s.h <= 1 + 1e-9, `${t.id} slot ${i} leaves the sheet`);
+    // Every print shows at least 40 % of itself (sampled on a 120 × 120 grid over its box, inside its shape).
+    const layout = layoutTemplate(t, 1400, 1000), inShape = (s, x, y) => (s.visible ? pointInPolygon(s.visible, x, y) : true);
+    for (const s of layout.slots) {
+      let inside = 0, shown = 0;
+      for (let i = 0; i < 120; i++) for (let j = 0; j < 120; j++) {
+        const x = s.x + (i + .5) * s.w / 120, y = s.y + (j + .5) * s.h / 120; if (!inShape(s, x, y)) continue;
+        inside++;
+        if (!layout.slots.some(o => o.z > s.z && x >= o.x && x < o.x + o.w && y >= o.y && y < o.y + o.h && inShape(o, x, y))) shown++;
+      }
+      check(inside > 0 && shown / inside >= .4, `${t.id} slot ${s.index} shows ${(100 * shown / inside).toFixed(0)} % of itself`);
+    }
+  } else fail(`${t.id} unexpected kind ${t.kind}`);
 }
 
 // ---------- Layout: golden numbers ----------
@@ -42,7 +62,7 @@ golden('grid-4 radius', layoutTemplate(byId('grid-4'), 1000, 1000, { gutter: .02
 
 // ---------- Layout: exact at 3 sizes, every template and spacing ----------
 const spacings = [{}, { gutter: .02, margin: .04, radius: .03 }, { gutter: .013, margin: .051, radius: .2 }];
-for (const t of templates) {
+for (const t of templates.filter(t => t.kind === 'grid')) {
   for (const [width, height] of [Object.values(sheetSize(t.aspect, 1080)), Object.values(sheetSize(t.aspect, 2999)), [1001, 1333]]) {
     for (const spacing of spacings) {
       const name = `${t.id} ${width}×${height} ${JSON.stringify(spacing)}`;
@@ -77,6 +97,53 @@ for (const t of templates) {
   const free = layoutTemplate({ kind: 'free', slots: [{ x: .1, y: .1, w: .5, h: .4, rotate: -4, z: 1 }, { x: .4, y: .45, w: .5, h: .45 }] }, 1001, 1251);
   golden('free layout', rects(free), [[100, 125, 501, 501], [400, 563, 501, 563]]);
   check(free.slots[0].rotate === -4 && free.slots[0].z === 1, 'free slot keeps rotate and z');
+}
+
+// ---------- Shaped templates (Task 5) ----------
+{
+  const { paddedAspect, stickerPad } = await import(`${repo}/js/collage/layout.js`);
+  const { clipConvex, polygonBounds, polygonCentroid } = await import(`${repo}/js/collage/shapes.js`);
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  check(near(Math.abs(polygonArea(clipConvex([0, 0, 10, 0, 10, 10, 0, 10], [5, 5, 15, 5, 15, 15, 5, 15]))), 25, 1e-9), 'clipConvex square ∩ square');
+  check(polygonCentroid([0, 0, 4, 0, 4, 2, 0, 2]).join() === '2,1', 'polygonCentroid');
+  const sheets = [null, { outline: { width: .02 }, shadow: false }, { outline: { width: .015 }, shadow: true }];
+  for (const t of templates.filter(t => t.kind === 'shaped')) {
+    for (const sheet of sheets) {
+      const aspect = t.lockAspect ? paddedAspect(t.aspect[0] / t.aspect[1], stickerPad(sheet)) : { w: t.aspect[0], h: t.aspect[1] };
+      const sizes = [Object.values(sheetSize([aspect.w, aspect.h], 1080)), Object.values(sheetSize([aspect.w, aspect.h], 2999))];
+      if (!t.lockAspect) sizes.push([1001, 1333]);
+      for (const [width, height] of sizes) {
+        for (const spacing of [{ gutter: 0, margin: 0 }, { gutter: .02, margin: .04 }, { gutter: .04, margin: .1 }]) {
+          const name = `${t.id} ${width}×${height} ${JSON.stringify({ ...spacing, sheet })}`, layout = layoutTemplate(t, width, height, { ...spacing, sheet });
+          check(layout.slots.length === slotCount(t), `${name} slot count`);
+          // The shape fills the canvas less the sticker pad (no wasted transparent pixels), when it keeps its proportions.
+          if (t.lockAspect && !spacing.margin) {
+            const b = polygonBounds(layout.sheetPolygon), pad = layout.pad;
+            check(near(b.x, pad, 1.01) && near(b.y, pad, 1.01) && near(b.x + b.w, width - pad, 1.01) && near(b.y + b.h, height - pad, 1.01), `${name} shape ${JSON.stringify(b)} doesn't fill the canvas less pad ${pad}`);
+          }
+          let total = 0;
+          for (const s of layout.slots) {
+            check([s.x, s.y, s.w, s.h].every(Number.isInteger) && s.x >= 0 && s.y >= 0 && s.x + s.w <= width && s.y + s.h <= height && s.w >= 1 && s.h >= 1, `${name} slot ${s.index} box ${[s.x, s.y, s.w, s.h]}`);
+            const v = polygonBounds(s.visible);
+            check(v.x >= s.x && v.y >= s.y && v.x + v.w <= s.x + s.w && v.y + v.h <= s.y + s.h, `${name} slot ${s.index} box doesn't hold its visible part`);
+            // No slivers: every slot keeps ≥ 15 % of its own area inside the shape (at the default and wider spacing).
+            if (spacing.gutter <= .02) check(s.area >= .15 * s.slotArea, `${name} slot ${s.index} keeps ${(100 * s.area / s.slotArea).toFixed(1)} % inside the shape`);
+            total += s.area;
+          }
+          layout.slots.forEach((a, i) => layout.slots.slice(i + 1).forEach(b => {
+            const shared = Math.abs(polygonArea(clipConvex(a.visible, b.outline)));
+            check(shared < 1, `${name} slots ${a.index}/${b.index} overlap by ${shared.toFixed(1)} px²`);
+          }));
+          // Coverage: with no gutter, grid and radial fills cover the whole shape (less its hole).
+          if (!spacing.gutter && t.fill.kind !== 'free') {
+            const shape = Math.abs(polygonArea(layout.sheetPolygon)) - (layout.holePolygon ? Math.abs(polygonArea(layout.holePolygon)) : 0);
+            check(near(total / shape, 1, .002), `${name} slots cover ${(100 * total / shape).toFixed(2)} % of the shape`);
+          }
+        }
+      }
+    }
+  }
+  golden('padded aspect', [paddedAspect(1, .05), paddedAspect(2, .1), paddedAspect(.5, .1)].map(Object.values), [[1, 1], [1.8, 1], [1, 1.8]]);
 }
 
 // ---------- Shapes ----------

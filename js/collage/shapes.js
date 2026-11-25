@@ -38,12 +38,34 @@ const HEART_BOX = (() => { // both halves: the left one mirrors x about .5
 const box = (points, rect) => points.map(([x, y]) => [rect.x + x * rect.w, rect.y + y * rect.h]);
 const polyCommands = points => [['M', ...points[0]], ...points.slice(1).map(point => ['L', ...point]), ['Z']];
 
-/** Unit-space points → fitted into rect, keeping proportions (contain, centred). */
-function contain(points, rect) {
+/** Unit-space points → fitted into rect, keeping proportions (contain, centred). `origin` also maps the unit
+ *  origin (the shape's own centre) into the rect. */
+function containMap(points, rect) {
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
   const minX = Math.min(...xs), minY = Math.min(...ys), w = Math.max(...xs) - minX, h = Math.max(...ys) - minY;
   const scale = Math.min(rect.w / w, rect.h / h), ox = rect.x + (rect.w - w * scale) / 2, oy = rect.y + (rect.h - h * scale) / 2;
-  return points.map(([x, y]) => [ox + (x - minX) * scale, oy + (y - minY) * scale]);
+  return { points: points.map(([x, y]) => [ox + (x - minX) * scale, oy + (y - minY) * scale]), origin: [ox - minX * scale, oy - minY * scale], aspect: w / h };
+}
+const contain = (points, rect) => containMap(points, rect).points;
+/** Unit points of the shapes that keep their proportions (regular polygons, hexagons, stars), else null. */
+function proportional(ref) {
+  if (ref.kind === 'polygon' && !ref.points) return radialPoints(ref.n ?? 6);
+  if (ref.kind === 'hexagon') return radialPoints(6, null, ref.top === 'flat' ? 0 : -Math.PI / 2);
+  if (ref.kind === 'star') return radialPoints(ref.n ?? 5, ref.inner ?? .45);
+  return null;
+}
+/** Width / height of a shape's own outline when it keeps its proportions (circle, heart, hexagon, star, regular
+ *  polygon); null for shapes that stretch to any rect (rect, rounded, ellipse, arch, stamp, points, path). */
+export function naturalAspect(ref) {
+  if (ref.kind === 'circle') return 1;
+  if (ref.kind === 'heart') return HEART_BOX.w / HEART_BOX.h;
+  const points = proportional(ref);
+  return points ? containMap(points, { x: 0, y: 0, w: 1, h: 1 }).aspect : null;
+}
+/** The shape's own centre in rect (a star's or pentagon's centre is not its bounding box's centre). */
+export function shapeCenter(ref, rect) {
+  const points = proportional(ref);
+  return points ? containMap(points, rect).origin : [rect.x + rect.w / 2, rect.y + rect.h / 2];
 }
 /** Regular n-gon (first vertex up) or star (n points, inner radius ratio), as unit-circle points. */
 function radialPoints(n, inner = null, offset = -Math.PI / 2) {
@@ -204,4 +226,58 @@ export function pointInPolygon(points, x, y) {
     if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+/** Bounding box { x, y, w, h } of a flat polygon. */
+export function polygonBounds(points) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    minX = Math.min(minX, points[i]); maxX = Math.max(maxX, points[i]); minY = Math.min(minY, points[i + 1]); maxY = Math.max(maxY, points[i + 1]);
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+/** Area-weighted centre of a flat polygon (its vertex average when it has no area). */
+export function polygonCentroid(points) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, n = points.length; i < n; i += 2) {
+    const j = (i + 2) % n, cross = points[i] * points[j + 1] - points[j] * points[i + 1];
+    a += cross; cx += (points[i] + points[j]) * cross; cy += (points[i + 1] + points[j + 1]) * cross;
+  }
+  if (Math.abs(a) < 1e-9) {
+    let sx = 0, sy = 0; for (let i = 0; i < points.length; i += 2) { sx += points[i]; sy += points[i + 1]; }
+    return [sx / (points.length / 2 || 1), sy / (points.length / 2 || 1)];
+  }
+  return [cx / (3 * a), cy / (3 * a)];
+}
+/** The part of a flat polygon on the left of the line a → b (screen coords: the inside of a clockwise outline),
+ *  Sutherland–Hodgman. The subject may be concave; the result then can have zero-width edges along the line,
+ *  which don't change its area, bounds or fill. */
+export function clipHalfPlane(points, [ax, ay], [bx, by]) {
+  const out = [], n = points.length, dx = bx - ax, dy = by - ay;
+  if (!n) return out;
+  const side = i => dx * (points[i + 1] - ay) - dy * (points[i] - ax);
+  for (let i = 0; i < n; i += 2) {
+    const j = (i + 2) % n, si = side(i), sj = side(j);
+    if (si >= 0) out.push(points[i], points[i + 1]);
+    if ((si >= 0) !== (sj >= 0)) {
+      const t = si / (si - sj);
+      out.push(points[i] + (points[j] - points[i]) * t, points[i + 1] + (points[j + 1] - points[i + 1]) * t);
+    }
+  }
+  return out;
+}
+/** The part of a flat polygon inside a convex flat polygon (either winding). */
+export function clipConvex(points, convex) {
+  const clip = polygonArea(convex) >= 0 ? convex : reversePolygon(convex);
+  let out = points;
+  for (let i = 0, n = clip.length; i < n && out.length; i += 2) {
+    const j = (i + 2) % n;
+    out = clipHalfPlane(out, [clip[i], clip[i + 1]], [clip[j], clip[j + 1]]);
+  }
+  return out;
+}
+function reversePolygon(points) {
+  const out = [];
+  for (let i = points.length - 2; i >= 0; i -= 2) out.push(points[i], points[i + 1]);
+  return out;
 }
