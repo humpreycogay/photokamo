@@ -1,14 +1,18 @@
 // The one collage renderer (CollagePlan.md decision #3): preview and export call it with different sheet sizes.
 // Main-thread compositing (V6): a few drawImage calls; the photos' edits were rendered by their own Workers.
 import { shapePath } from './shapes.js';
+import { fillGeometry } from './fill.js';
+import { drawOriented } from '../renderer.js';
 
-/** Draws a photo to cover `rect`, panned (0–1, .5 = centred) and zoomed (≥ 1) inside its own crop. */
-export function drawCover(ctx, image, rect, fill) {
-  const iw = image.width, ih = image.height, zoom = Math.max(1, fill?.zoom || 1);
-  const scale = Math.max(rect.w / iw, rect.h / ih) * zoom;
-  const sw = rect.w / scale, sh = rect.h / scale;
-  const sx = (iw - sw) * (fill?.pan?.x ?? .5), sy = (ih - sh) * (fill?.pan?.y ?? .5);
-  ctx.drawImage(image, sx, sy, sw, sh, rect.x, rect.y, rect.w, rect.h);
+/** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
+ *  1 px on each side, so resampling never lets paper show along a slot's edge. */
+export function drawCover(ctx, image, rect, fill = {}) {
+  const g = fillGeometry(image.width, image.height, rect.w + 2, rect.h + 2, fill);
+  ctx.save();
+  ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+  ctx.rotate(g.angle * Math.PI / 180); ctx.scale(g.scale, g.scale); ctx.translate(-g.cx, -g.cy);
+  drawOriented(ctx, image, { rotate: fill.rotate || 0, flip: Boolean(fill.flip) }, g.W, g.H);
+  ctx.restore();
 }
 /** The clip outline of a laid-out slot (rounded corners when it has a radius, else its own shape or a rect). */
 export function slotPath(slot) {

@@ -142,5 +142,40 @@ for (const [w, h] of [[1000, 1000], [1080, 1350], [397, 211]]) {
 }
 check(SHAPE_KINDS.every(kind => kindsSeen.has(kind)), `shapes without checks: ${SHAPE_KINDS.filter(kind => !kindsSeen.has(kind))}`);
 
+// ---------- Fill: photo framing in a slot (Task 2) ----------
+const { fillGeometry, photoPoint, panBy, normalizeFill } = await import(`${repo}/js/collage/fill.js`);
+{
+  let seed = 7; const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const corners = (w, h) => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+  let worst = 0;
+  for (let n = 0; n < 2000; n++) {
+    const iw = 50 + random() * 4000, ih = 50 + random() * 4000, w = 20 + random() * 2000, h = 20 + random() * 2000;
+    const fill = normalizeFill({ pan: { x: random(), y: random() }, zoom: 1 + random() * 4, rotate: Math.floor(random() * 4) * 90, angle: (random() * 2 - 1) * 45, flip: random() < .5 });
+    if (n % 3 === 0) fill.pan = { x: Math.round(random()), y: Math.round(random()) }; // the extremes
+    const g = fillGeometry(iw, ih, w, h, fill);
+    // Covered: every slot corner maps inside the oriented photo (no paper at any pan, zoom or angle).
+    for (const [x, y] of corners(w, h)) {
+      const p = photoPoint(g, x, y), out = Math.max(-p.x, p.x - g.W, -p.y, p.y - g.H);
+      if (out > 1e-6 * Math.max(g.W, g.H)) { fail(`fill leaves a gap: ${JSON.stringify({ iw, ih, w, h, fill })}`); break; }
+    }
+    // Preview and export: the same fill at another output scale shows the same part of the photo.
+    const s = .2 + random() * 6, g2 = fillGeometry(iw, ih, w * s, h * s, fill);
+    for (const [x, y] of corners(w, h)) {
+      const a = photoPoint(g, x, y), b = photoPoint(g2, x * s, y * s);
+      worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y) * g.scale); // in slot px of the first size
+    }
+    checks++;
+  }
+  check(worst < .01, `preview/export framing differs by ${worst.toFixed(4)} slot px`);
+  // A drag moves the photo with the pointer, and pan stops at the photo's edge.
+  const g = fillGeometry(1000, 500, 300, 300, { pan: { x: .5, y: .5 }, zoom: 2 });
+  const moved = panBy(g, { x: .5, y: .5 }, 30, 0), before = photoPoint(g, 0, 0);
+  const after = photoPoint(fillGeometry(1000, 500, 300, 300, { pan: moved, zoom: 2 }), 30, 0);
+  check(Math.hypot(after.x - before.x, after.y - before.y) < 1e-9, 'a drag keeps the photo point under the pointer');
+  check(JSON.stringify(panBy(g, { x: .5, y: .5 }, -1e6, 1e6)) === JSON.stringify({ x: 1, y: 0 }), 'pan clamps to the photo');
+  const n = normalizeFill({ zoom: 9, angle: -80, rotate: -90, pan: { x: 2, y: -1 } });
+  check(n.zoom === 5 && n.angle === -45 && n.rotate === 270 && n.pan.x === 1 && n.pan.y === 0, `normalizeFill ${JSON.stringify(n)}`);
+}
+
 console.log(`${errors ? 'FAIL' : 'OK'}: ${checks} checks, ${errors} errors (${templates.length} templates, ${SHAPE_KINDS.length} shapes)`);
 process.exit(errors ? 1 : 0);

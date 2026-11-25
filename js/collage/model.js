@@ -1,8 +1,9 @@
 // Collage document (CollagePlan.md, "Document model"). Plain data: undo snapshots are JSON copies.
 // Slots reference strip photos by id; a missing photo leaves its slot empty.
 
-/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, flip: boolean }} SlotFill
- *  pan 0–1 (0.5 = centred) within the photo's own crop; zoom ≥ 1 (1 = cover); rotate in degrees */
+/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, angle: number, flip: boolean }} SlotFill
+ *  The photo's framing in its slot (js/collage/fill.js): pan 0–1 (0.5 = centred) within the photo's own crop;
+ *  zoom 1–5 (1 = cover); rotate in 90° steps; angle −45…45° on top; flip mirrors it. `id` stays with the slot. */
 /** @typedef {{ v: 1, templateId: string, aspect: { w: number, h: number }, aspectAuto: boolean,
  *   sheet: { shape: object, background: 'paper'|'transparent', outline: object|null, shadow: boolean },
  *   gutter: number, margin: number, radius: number, paper: { color: string, texture: string },
@@ -15,7 +16,18 @@ export const ASPECTS = [['1:1', 1, 1], ['4:5', 4, 5], ['3:2', 3, 2], ['2:3', 2, 
 export const SPACING = { gutter: { min: 0, max: .1, step: .005 }, margin: { min: 0, max: .15, step: .005 }, radius: { min: 0, max: .1, step: .005 } };
 
 let slotSeq = 0;
-export const emptySlot = (photoId = null) => ({ id: `s${++slotSeq}`, photoId, pan: { x: .5, y: .5 }, zoom: 1, rotate: 0, flip: false });
+export const FRAMING = Object.freeze({ pan: Object.freeze({ x: .5, y: .5 }), zoom: 1, rotate: 0, angle: 0, flip: false });
+export const emptySlot = (photoId = null) => ({ id: `s${++slotSeq}`, photoId, ...cloneFraming(FRAMING) });
+const cloneFraming = ({ pan, zoom, rotate, angle, flip }) => ({ pan: { ...pan }, zoom, rotate, angle, flip });
+/** Puts the default framing back on a slot (its photo stays). */
+export const resetFraming = slot => Object.assign(slot, cloneFraming(FRAMING));
+/** Swaps the photos of two slots, each keeping its framing (the slots' ids, and so their captions, stay). */
+export function swapSlots(doc, a, b) {
+  const first = doc.slots[a], second = doc.slots[b];
+  const take = slot => ({ photoId: slot.photoId, ...cloneFraming(slot) });
+  const firstFill = take(first);
+  Object.assign(first, take(second)); Object.assign(second, firstFill);
+}
 
 /** A new collage of `photoIds` (in order) on `template`. */
 export function createDoc(photoIds, template, paperColor) {

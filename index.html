@@ -9,7 +9,7 @@
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
-  <link rel="stylesheet" href="css/styles.css?v=2026-11-25b">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25c">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -38,6 +38,7 @@
     <div class="topbar-start">
       <button class="icon-button icon-button-plain mobile-only editing-only" id="closeButton" type="button" aria-label="Close photo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <span class="topbar-title mobile-only editing-only" id="topbarTitle"></span>
+      <button class="button button-ghost collage-return editing-only" id="collageReturn" type="button" aria-label="Back to collage" hidden><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg> <span class="collage-return-label">Back to collage</span></button>
       <button class="button button-ghost collage-back collage-only" id="collageBack" type="button" title="Back to photo (Esc)"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Back to photo</button>
       <a class="brand" href="#" aria-label="PhotoKamo home">
         <img class="brand-mark" src="images/logo.svg" alt="">
@@ -175,7 +176,11 @@
       </div>
 
       <div class="collage-stage collage-only" id="collageStage">
-        <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
+        <div class="collage-sheet" id="collageSheet">
+          <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
+          <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
+        </div>
+        <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot. Drag a photo onto another to swap them.</p>
       </div>
 
       <div class="engine-wait" id="engineWait" hidden>
@@ -451,6 +456,31 @@
         <section class="scroll-panel collage-panel collage-only" id="collagePanel" aria-labelledby="collageTitle">
           <div class="panel-heading"><h2 id="collageTitle">Collage</h2><span class="collage-count" id="collageCount"></span></div>
           <p class="collage-status" id="collageStatus" role="status" aria-live="polite"></p>
+          <section class="collage-slot-panel" aria-labelledby="collageSlotTitle">
+            <h3 class="collage-label" id="collageSlotTitle">Photo</h3>
+            <p class="collage-hint" id="collageSlotHint">Tap a photo in the collage to move, zoom or swap it.</p>
+            <div class="collage-slot-tools" id="collageSlotTools" hidden>
+              <div class="collage-photo-tools" id="collagePhotoTools">
+                <div class="slider-row"><label class="slider-label" for="collageZoom"><span>Zoom</span><output id="collageZoomOutput" for="collageZoom">100%</output></label><input id="collageZoom" data-fill="zoom" type="range" min="100" max="500" step="1"></div>
+                <div class="slider-row"><label class="slider-label" for="collageAngle"><span>Angle</span><output id="collageAngleOutput" for="collageAngle">0°</output></label><input id="collageAngle" data-fill="angle" type="range" min="-45" max="45" step="0.5"></div>
+                <div class="crop-actions">
+                  <button class="button button-secondary" id="collageRotate" type="button"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg> Rotate</button>
+                  <button class="button button-secondary" id="collageFlip" type="button" aria-pressed="false"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M8 7l-5 5 5 5V7z"/><path d="M16 7l5 5-5 5V7z"/></svg> Flip</button>
+                  <button class="button button-secondary" id="collageReset" type="button">Reset</button>
+                </div>
+                <p class="collage-hint">Uses this photo’s crop. Edit the photo to change it.</p>
+              </div>
+              <div class="crop-platform collage-move"><label for="collageMove">Move to slot</label><select id="collageMove"></select></div>
+              <p class="collage-label collage-photos-label" id="collagePhotosLabel">Photo in this slot</p>
+              <div class="collage-photos" id="collagePhotos" role="radiogroup" aria-labelledby="collagePhotosLabel"></div>
+              <div class="collage-slot-actions">
+                <button class="button button-ghost" id="collageAddPhoto" type="button">Add photo…</button>
+                <button class="button button-ghost" id="collageEmpty" type="button">Empty slot</button>
+                <button class="button button-ghost" id="collageEdit" type="button">Edit this photo</button>
+              </div>
+            </div>
+            <input id="collageFileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple aria-label="Choose photos for the collage" tabindex="-1">
+          </section>
           <h3 class="collage-label" id="collageLayoutTitle">Layout</h3>
           <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>

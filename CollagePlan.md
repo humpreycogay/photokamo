@@ -106,8 +106,8 @@ These facts shaped the revision. Each one corrects something in revision 1 or th
 ### Document model (JSDoc, `js/collage/model.js`)
 
 ```js
-/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, flip: boolean }} SlotFill
- *  pan 0–1 (0.5 = centred) within the photo's own crop (V11); zoom ≥ 1 (1 = cover); rotate in degrees */
+/** @typedef {{ id: string, photoId: number|null, pan: {x:number,y:number}, zoom: number, rotate: number, angle: number, flip: boolean }} SlotFill
+ *  pan 0–1 (0.5 = centred) within the photo's own crop (V11); zoom 1–5 (1 = cover); rotate in 90° steps; angle −45…45° */
 /** @typedef {{
  *   v: 1, templateId: string,
  *   aspect: { w: number, h: number },
@@ -226,11 +226,21 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** template switching never re-decodes a photo (count decodes); slider drags at display refresh; leaving collage mode restores the editor exactly (photo, undo, selection, tab).
 
 #### Task 2: Slot editing (pan, zoom, rotate, swap, replace)
-- [ ] Select a slot (tap; slot `listbox` for keyboard); drag pans, pinch/wheel zooms (1–5×), rotate 90°, fine angle (−45…45°), flip; double-click resets
-- [ ] Swap by drag; **Move to slot…** menu and buttons as non-drag alternatives
-- [ ] Replace from the strip or a new file; remove from slot (empty slot with "Add photo")
-- [ ] Photo always covers its slot; pan is limited to the photo's own crop, with the hint "Uses this photo's crop" (V11)
-- [ ] **Edit this photo** opens the editor; returning refreshes that slot only
+- [x] Select a slot (tap; slot `listbox` for keyboard); drag pans, pinch/wheel zooms (1–5×), rotate 90°, fine angle (−45…45°), flip; double-click resets
+- [x] Swap by drag; **Move to slot…** menu and buttons as non-drag alternatives
+- [x] Replace from the strip or a new file; remove from slot (empty slot with "Add photo")
+- [x] Photo always covers its slot; pan is limited to the photo's own crop, with the hint "Uses this photo's crop" (V11)
+- [x] **Edit this photo** opens the editor; returning refreshes that slot only
+
+*Done:*
+- **Code:** `js/collage/fill.js` holds the one framing geometry used by drawing, dragging and the checks.
+- **Coverage:** `collage-check.mjs` maps the slot corners of 2000 random fills (pan, zoom, rotate, angle, flip); all land inside the photo. A mutation that ignores the angle fails 1029 of them. Preview vs export scale differ by < 0.01 slot px.
+- **Browser:** 0 paper pixels in a slot at 45° with pan in the corner.
+- **Gestures:** drag pans, and dropping on another slot swaps, as one undo step each. Wheel zoom commits after 400 ms; pinch was tested with synthetic touch.
+- **Non-drag paths:** Move to slot, the photo picker (swaps when the photo is already in another slot), Empty slot, and Add photo… (new files join the strip without changing the editor).
+- **Keys:** arrows choose a slot, Alt+arrows pan, + − zoom, R rotates, F flips, 0 resets, Delete empties, and Esc clears the selection before leaving.
+- **Edit this photo:** opens the editor with **Back to collage**; returning re-rendered only that slot (0 decodes).
+- **Status:** every action reports in the status line; no console errors.
 
 **Check:** pan/zoom a face into place; swap by drag and by menu; replace; edit a photo's look and come back; undo per gesture; touch, mouse, keyboard.
 **Done when:** slot crop at preview and export matches within 1 output px; no gaps at any pan/zoom/angle; every action has a keyboard path and a status message.

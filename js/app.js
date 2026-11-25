@@ -70,7 +70,9 @@ let toastTimer;
 // queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
 const collageEngines = new Set(), COLLAGE_MAX = 9;
 const collage = createCollageMode({
-  photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
+  photos: () => app.photos, photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
+  addFiles: files => addFiles(files, { view: false }),
+  editPhoto: id => editFromCollage(id),
   renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
   onHistory: () => updateButtons()
 });
@@ -2070,11 +2072,13 @@ function makeThumb(image) {
   return canvas;
 }
 
-/** Opens files as new photos (appended); the first new one comes into view. */
-async function addFiles(fileList) {
+/** Opens files as new photos (appended); the first new one comes into view unless `view` is false.
+ *  Returns the photos it added. */
+async function addFiles(fileList, { view = true } = {}) {
   const files = [...(fileList || [])];
   elements.fileInput.value = ''; elements.cameraInput.value = '';
-  if (!files.length) return;
+  if (!files.length) return [];
+  const opened = [];
   const problems = { type: 0, size: 0, decode: 0, cap: 0 };
   let added = 0;
   const loading = $('#photoLoading'), loadingText = $('#photoLoadingText');
@@ -2089,8 +2093,8 @@ async function addFiles(fileList) {
     try { image = await decodeImage(file); } catch { problems.decode++; continue; }
     const photo = { id: app.nextId++, file, name: file.name, filename: file.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
       thumb: makeThumb(image), preview: null, settings: defaultSettings(), undo: [], redo: [], render: { status: 'idle' }, el: null };
-    app.photos.push(photo); addStripItem(photo);
-    if (!added++) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
+    app.photos.push(photo); addStripItem(photo); opened.push(photo);
+    if (!added++ && view) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
     syncStrip();
   }
   } finally { loading.hidden = true; }
@@ -2098,6 +2102,7 @@ async function addFiles(fileList) {
   if (!skipped) toast(added === 1 ? 'Photo opened locally.' : `${added} photos opened locally.`);
   else if (files.length === 1) toast(problems.type ? 'Choose a JPEG, PNG, WebP, or GIF image.' : problems.size ? 'That photo is over the 40 MB limit.' : problems.cap ? `PhotoKamo keeps up to ${MAX_PHOTOS} photos open. Close some to add more.` : 'PhotoKamo could not decode that image.');
   else toast([added ? `${added} opened` : 'No photos opened', problems.cap ? `${problems.cap} over the ${MAX_PHOTOS}-photo limit` : '', problems.size ? `${problems.size} over 40 MB` : '', problems.type + problems.decode ? `${problems.type + problems.decode} not readable` : ''].filter(Boolean).join(' · ') + '.');
+  return opened;
 }
 
 /** Brings a photo into view (decoding it from its File unless `decoded` is given). */
@@ -2342,11 +2347,13 @@ function collageCandidates() {
   const selected = selectedPhotos();
   return (selected.length >= 2 ? selected : app.photos).slice(0, COLLAGE_MAX).map(photo => photo.id);
 }
-function enterCollage() {
+/** Opens collage mode with the candidates, or (`resume`) the last collage as it was. */
+function enterCollage({ resume = false } = {}) {
   if (collage.active || !state.image) return;
-  const ids = collageCandidates(), selected = selectedPhotos().length;
-  if (ids.length < 2) { toast('Open at least 2 photos to make a collage.'); return; }
-  if (selected > COLLAGE_MAX) toast(`A collage holds up to ${COLLAGE_MAX} photos: using the first ${COLLAGE_MAX} selected.`);
+  const ids = resume && collage.hasDocument ? null : collageCandidates(), selected = selectedPhotos().length;
+  if (ids && ids.length < 2) { toast('Open at least 2 photos to make a collage.'); return; }
+  if (ids && selected > COLLAGE_MAX) toast(`A collage holds up to ${COLLAGE_MAX} photos: using the first ${COLLAGE_MAX} selected.`);
+  setCollageReturn(false);
   const current = activePhoto(); if (current) current.settings = snapshot(); // slots read each photo's settings
   if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
   setHolding(false); closeFullscreen();
@@ -2355,9 +2362,9 @@ function enterCollage() {
   collage.open(ids);
   updateButtons();
 }
-function exitCollage() {
+function exitCollage({ keepCache = false } = {}) {
   if (!collage.active) return;
-  collage.close();
+  collage.close({ keepCache });
   document.body.classList.remove('collage-mode');
   for (const module of collageEngines) if (module !== engine.module) module.dispose?.();
   collageEngines.clear();
@@ -2365,8 +2372,21 @@ function exitCollage() {
   const target = collageReturnFocus?.isConnected && collageReturnFocus.offsetParent ? collageReturnFocus : elements.canvas;
   target.focus?.({ preventScroll: true }); collageReturnFocus = null;
 }
-$('#collageButton').addEventListener('click', enterCollage);
-$('#collageBack').addEventListener('click', exitCollage);
+/** "Edit this photo" in a collage: the photo comes into view, with Back to collage in the top bar. */
+function editFromCollage(id) {
+  exitCollage({ keepCache: true });
+  pickPhoto(id); syncStrip();
+  setCollageReturn(true);
+  toast('Edit the photo, then use Back to collage.');
+}
+function setCollageReturn(on) {
+  const button = $('#collageReturn');
+  button.hidden = !on;
+  if (on) requestAnimationFrame(() => button.focus());
+}
+$('#collageButton').addEventListener('click', () => enterCollage());
+$('#collageBack').addEventListener('click', () => exitCollage());
+$('#collageReturn').addEventListener('click', () => enterCollage({ resume: true }));
 
 // ---------- Apply to selected + live editing (SPEC §4 D) ----------
 const APPLY_PARTS_KEY = 'photokamo:apply-parts';
@@ -3296,7 +3316,7 @@ document.addEventListener('keydown', event => {
   if (collage.active) { // the collage's own history; Esc goes back to the photo
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
-    else if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]') && !popoverOpen()) { event.preventDefault(); exitCollage(); }
+    else if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]') && !popoverOpen()) { event.preventDefault(); if (!collage.escape()) exitCollage(); }
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }

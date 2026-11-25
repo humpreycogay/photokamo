@@ -1,18 +1,22 @@
-// Collage mode (CollagePlan.md Task 1): the stage, the layout panel, slot renders and the collage's own history.
-// app.js owns the photos and the per-photo renders; it passes them in as `deps`:
-//   photoById(id), settingsOf(photo), paperColors,
+// Collage mode (CollagePlan.md Tasks 1–2): the stage, the panel, slot renders, slot editing and the collage's own
+// history. app.js owns the photos and the per-photo renders; it passes them in as `deps`:
+//   photos(), photoById(id), settingsOf(photo), paperColors,
 //   renderSlot(photo, { pass: 'fast'|'sharp', edge, job }) → { image } | null (null: job went stale),
+//   addFiles(files) → the photos added to the strip, editPhoto(id) to leave for the editor,
 //   onHistory() after the undo/redo state changes.
 import { templates, templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
 import { drawCollage } from './render.js';
-import { ASPECTS, SPACING, createDoc, fitSlots, cloneDoc } from './model.js';
+import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
+import { ASPECTS, SPACING, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
 
 const MAX_SLOT_EDGE = 1600; // preview renders: long edge cap per photo
 const HISTORY_LIMIT = 50;
 const $ = (root, selector) => root.querySelector(selector);
 const percent = value => `${Math.round(value * 1000) / 10}%`;
+const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 /** The template that fits `count` photos best: the same count, else the smallest that holds them all. */
 export function templateFor(count) {
@@ -25,7 +29,14 @@ export function createCollageMode(deps) {
   const panel = document.getElementById('collagePanel'), status = document.getElementById('collageStatus');
   const list = document.getElementById('collageTemplates'), aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
+  const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
+  const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
+    zoom: byId('collageZoom'), angle: byId('collageAngle'), rotate: byId('collageRotate'), flip: byId('collageFlip'), reset: byId('collageReset'),
+    move: byId('collageMove'), photos: byId('collagePhotos'), add: byId('collageAddPhoto'), empty: byId('collageEmpty'), edit: byId('collageEdit'), file: byId('collageFileInput') };
   let active = false, doc = null, docPhotos = '', undoStack = [], redoStack = [], frame = 0, slider = null;
+  // The slot being edited (index into the layout) or null; the last drawn layout and device px per CSS px.
+  let selected = null, view = { layout: null, k: 1 }, gesture = null, wheel = null, photosKey = '';
+  const pointers = new Map();
   // Slot renders: photoId → { key (settings JSON), image, edge, sharp }. Only photos in visible slots keep one.
   const cache = new Map(), failed = new Set();
   let generation = 0, pumping = false, running = null, progress = { done: 0, total: 0 };
@@ -81,6 +92,106 @@ export function createCollageMode(deps) {
       input.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); });
       input.addEventListener('blur', () => { slider = null; });
     }
+    buildSlotPanel();
+  }
+
+  // ---------- Slot editing: the selected slot's photo (panel) ----------
+  const slotFill = () => (selected == null ? null : doc.slots[selected]);
+  const slotPhoto = () => deps.photoById(slotFill()?.photoId);
+  /** Changes the selected slot's framing as one undo step; `message` goes to the status line. */
+  function editFill(mutate, message) {
+    if (selected == null || !slotPhoto()) return;
+    const index = selected;
+    change(d => { const slot = d.slots[index]; mutate(slot); Object.assign(slot, normalizeFill(slot)); });
+    if (message) say(typeof message === 'function' ? message(doc.slots[index]) : message);
+  }
+  /** Puts photo `id` in the selected slot; if it is already in another slot, the two swap. */
+  function placePhoto(id) {
+    if (selected == null) return;
+    const index = selected, other = doc.slots.findIndex((slot, i) => slot.photoId === id && i !== index), photo = deps.photoById(id);
+    change(d => { if (other >= 0) swapSlots(d, index, other); else { d.slots[index].photoId = id; resetFraming(d.slots[index]); } });
+    say(other >= 0 && other < slotCount(template()) ? `${photo.name} swapped with slot ${other + 1}` : `${photo.name} in slot ${index + 1}`);
+  }
+  function buildSlotPanel() {
+    // Zoom and angle: live while dragging, one undo step per gesture.
+    for (const input of [slotUi.zoom, slotUi.angle]) {
+      const key = input.dataset.fill, begin = () => { slider ||= cloneDoc(doc); };
+      input.addEventListener('pointerdown', begin); input.addEventListener('focus', begin);
+      input.addEventListener('input', () => {
+        const slot = slotFill(); if (!slot) return;
+        begin(); slot[key] = key === 'zoom' ? Number(input.value) / 100 : Number(input.value);
+        Object.assign(slot, normalizeFill(slot)); syncFillValues(); scheduleDraw();
+      });
+      input.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); });
+      input.addEventListener('blur', () => { slider = null; });
+    }
+    slotUi.rotate.addEventListener('click', () => editFill(slot => { slot.rotate += 90; }, slot => `Rotated to ${slot.rotate}°`));
+    slotUi.flip.addEventListener('click', () => editFill(slot => { slot.flip = !slot.flip; }, slot => (slot.flip ? 'Flipped' : 'Not flipped')));
+    slotUi.reset.addEventListener('click', () => editFill(resetFraming, 'Framing reset'));
+    slotUi.move.addEventListener('change', () => moveTo(Number(slotUi.move.value)));
+    radioGroup(slotUi.photos, '[data-photo]', button => placePhoto(Number(button.dataset.photo)));
+    slotUi.empty.addEventListener('click', emptySelected);
+    slotUi.edit.addEventListener('click', () => { const photo = slotPhoto(); if (photo) deps.editPhoto(photo.id); });
+    slotUi.add.addEventListener('click', () => slotUi.file.click());
+    slotUi.file.addEventListener('change', async () => {
+      const files = [...slotUi.file.files]; slotUi.file.value = '';
+      if (selected == null || !files.length) return;
+      const index = selected, added = await deps.addFiles(files);
+      if (!active || !added.length) return;
+      // The first new photo goes in this slot, the rest into empty slots after it.
+      const count = slotCount(template()), empties = doc.slots.map((slot, i) => i).filter(i => i > index && i < count && !deps.photoById(doc.slots[i].photoId));
+      const placed = [index, ...empties].slice(0, added.length);
+      change(d => placed.forEach((i, n) => { d.slots[i].photoId = added[n].id; resetFraming(d.slots[i]); }));
+      const extra = added.length - placed.length;
+      say(`${plural(placed.length, 'photo')} added${extra ? `; ${extra} more in the strip` : ''}`);
+    });
+  }
+  function moveTo(target) {
+    if (selected == null || target === selected || !(target >= 0)) return;
+    const from = selected;
+    change(d => swapSlots(d, from, target));
+    selected = target; refresh(); say(`Moved to slot ${target + 1}`);
+  }
+  function emptySelected() {
+    if (selected == null || !slotPhoto()) return;
+    const index = selected;
+    change(d => { d.slots[index].photoId = null; resetFraming(d.slots[index]); });
+    say(`Slot ${index + 1} emptied`);
+  }
+  function syncFillValues() {
+    const slot = slotFill(); if (!slot) return;
+    slotUi.zoom.value = Math.round(slot.zoom * 100); byId('collageZoomOutput').value = `${Math.round(slot.zoom * 100)}%`;
+    slotUi.angle.value = slot.angle; byId('collageAngleOutput').value = `${slot.angle}°`;
+    slotUi.flip.setAttribute('aria-pressed', slot.flip);
+  }
+  function syncSlotPanel() {
+    const count = slotCount(template());
+    if (selected != null && selected >= count) selected = null;
+    const slot = slotFill(), photo = slotPhoto();
+    slotUi.tools.hidden = selected == null; slotUi.hint.hidden = selected != null;
+    slotUi.title.textContent = selected == null ? 'Photo' : `Slot ${selected + 1} · ${photo ? photo.name : 'empty'}`;
+    if (selected == null) return;
+    slotUi.photoTools.hidden = !photo; slotUi.edit.hidden = !photo; slotUi.empty.hidden = !photo;
+    syncFillValues();
+    slotUi.move.innerHTML = doc.slots.slice(0, count).map((s, i) => `<option value="${i}"${i === selected ? ' selected' : ''}>Slot ${i + 1} · ${escapeHtml(deps.photoById(s.photoId)?.name || 'empty')}</option>`).join('');
+    const photos = deps.photos(), key = photos.map(p => p.id).join();
+    if (key !== photosKey) {
+      photosKey = key;
+      slotUi.photos.replaceChildren(...photos.map(p => {
+        const button = document.createElement('button');
+        Object.assign(button, { type: 'button', className: 'collage-photo', title: p.name });
+        button.setAttribute('role', 'radio'); button.dataset.photo = p.id; button.setAttribute('aria-label', p.name);
+        const thumb = document.createElement('canvas'); thumb.width = thumb.height = 112; thumb.setAttribute('aria-hidden', 'true');
+        coverThumb(thumb, p.preview || p.thumb); button.append(thumb);
+        return button;
+      }));
+    }
+    syncRadios(slotUi.photos, 'data-photo', String(slot.photoId));
+  }
+  function coverThumb(canvas, source) {
+    if (!source) return;
+    const ctx = canvas.getContext('2d'), scale = Math.max(canvas.width / source.width, canvas.height / source.height);
+    ctx.drawImage(source, (canvas.width - source.width * scale) / 2, (canvas.height - source.height * scale) / 2, source.width * scale, source.height * scale);
   }
   function radioGroup(group, selector, pick) {
     group.addEventListener('click', event => { const button = event.target.closest(selector); if (button && button.getAttribute('aria-checked') !== 'true') pick(button); });
@@ -110,6 +221,7 @@ export function createCollageMode(deps) {
     syncRadios(aspects, 'data-aspect', aspect ? aspect[0] : '');
     syncRadios(paper, 'data-paper', doc.paper.color);
     syncSliders();
+    syncSlotPanel();
     drawThumbs();
     const filled = doc.slots.slice(0, slotCount(t)).filter(slot => deps.photoById(slot.photoId)).length;
     document.getElementById('collageCount').textContent = `${filled} of ${plural(slotCount(t), 'photo')}`;
@@ -143,8 +255,134 @@ export function createCollageMode(deps) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
     canvas.style.width = `${cssW}px`; canvas.style.height = `${cssH}px`;
     const layout = layoutTemplate(template(), width, height, doc);
-    drawCollage(canvas.getContext('2d'), doc, layout, index => cache.get(doc.slots[index]?.photoId)?.image || null, { emptyFill: 'rgba(128,128,128,.28)' });
+    drawCollage(canvas.getContext('2d'), doc, layout, imageOf);
+    view = { layout, k: width / cssW };
+    syncSlots();
   }
+  const imageOf = index => cache.get(doc.slots[index]?.photoId)?.image || null;
+
+  // ---------- Slots on the stage: a listbox of focusable boxes over the canvas ----------
+  function syncSlots() {
+    const { layout, k } = view, count = layout.slots.length;
+    while (slotsEl.children.length > count) slotsEl.lastElementChild.remove();
+    while (slotsEl.children.length < count) {
+      const option = document.createElement('div');
+      option.className = 'collage-slot'; option.setAttribute('role', 'option'); option.dataset.slot = slotsEl.children.length;
+      option.innerHTML = '<span class="collage-slot-empty" aria-hidden="true">+ Add photo</span>';
+      slotsEl.append(option);
+    }
+    layout.slots.forEach((slot, i) => {
+      const option = slotsEl.children[i], photo = deps.photoById(doc.slots[i]?.photoId);
+      Object.assign(option.style, { left: `${slot.x / k}px`, top: `${slot.y / k}px`, width: `${slot.w / k}px`, height: `${slot.h / k}px`, borderRadius: `${slot.radius / k}px` });
+      option.setAttribute('aria-selected', i === selected); option.tabIndex = i === (selected ?? 0) ? 0 : -1;
+      option.classList.toggle('is-empty', !photo);
+      option.classList.toggle('is-drop-target', gesture?.mode === 'swap' && gesture.target === i);
+      option.classList.toggle('is-dragged', gesture?.mode === 'swap' && gesture.index === i);
+      option.setAttribute('aria-label', `Slot ${i + 1} of ${count}: ${photo ? photo.name : 'empty'}`);
+    });
+  }
+  function select(index, { focus = false } = {}) {
+    if (index !== selected) { selected = index; syncSlotPanel(); scheduleDraw(); }
+    if (focus && index != null) slotsEl.children[index]?.focus();
+  }
+  /** Slot index under a client point (top-most first), or null. */
+  function slotAt(clientX, clientY) {
+    const box = canvas.getBoundingClientRect(), x = (clientX - box.left) * view.k, y = (clientY - box.top) * view.k;
+    const hit = [...view.layout.slots].sort((a, b) => b.z - a.z || b.index - a.index).find(s => x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h);
+    return hit ? hit.index : null;
+  }
+  /** Fill geometry of slot `index` on the stage (device px), or null when it has no photo yet. */
+  function geometry(index) {
+    const slot = view.layout?.slots[index], image = imageOf(index);
+    return slot && image && deps.photoById(doc.slots[index].photoId) ? fillGeometry(image.width, image.height, slot.w, slot.h, doc.slots[index]) : null;
+  }
+  // Pointer: drag pans the photo inside its slot; dragging it onto another slot swaps them (drop); two fingers zoom.
+  slotsEl.addEventListener('pointerdown', event => {
+    const option = event.target.closest('[data-slot]');
+    if (!option || event.button > 0) return;
+    const index = Number(option.dataset.slot);
+    select(index);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    try { slotsEl.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    if (pointers.size === 1) gesture = { index, start: cloneDoc(doc), x: event.clientX, y: event.clientY, g: geometry(index), pan: { ...doc.slots[index].pan }, mode: 'pan', target: null, moved: false };
+    else if (pointers.size === 2 && gesture && gesture.mode !== 'swap') {
+      const [a, b] = [...pointers.values()];
+      Object.assign(gesture, { mode: 'pinch', distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom: doc.slots[gesture.index].zoom });
+    }
+  });
+  slotsEl.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!gesture || gesture.mode === 'ended') return;
+    const slot = doc.slots[gesture.index];
+    if (gesture.mode === 'pinch') {
+      const [a, b] = [...pointers.values()]; if (!b) return;
+      slot.zoom = clamp(gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / gesture.distance, ZOOM_MIN, ZOOM_MAX);
+      syncFillValues(); scheduleDraw(); return;
+    }
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+    if (!gesture.moved && Math.hypot(dx, dy) < 3) return;
+    gesture.moved = true;
+    const over = slotAt(event.clientX, event.clientY);
+    if (over != null && over !== gesture.index && deps.photoById(slot.photoId)) {
+      if (gesture.mode !== 'swap') { slot.pan = { ...gesture.pan }; gesture.mode = 'swap'; }
+      if (gesture.target !== over) { gesture.target = over; say(`Drop to swap with slot ${over + 1}`); }
+      scheduleDraw(); return;
+    }
+    if (gesture.mode === 'swap') { Object.assign(gesture, { mode: 'pan', target: null, x: event.clientX, y: event.clientY }); scheduleDraw(); return; }
+    if (gesture.g) { slot.pan = panBy(gesture.g, gesture.pan, dx * view.k, dy * view.k); scheduleDraw(); }
+  });
+  const endPointer = event => {
+    if (!pointers.delete(event.pointerId) || !gesture) return;
+    if (gesture.mode === 'pinch' && pointers.size) { gesture.mode = 'ended'; return; } // wait for the last finger
+    if (pointers.size) return;
+    const { start, mode, target, index } = gesture;
+    gesture = null;
+    if (mode === 'swap' && target != null && event.type === 'pointerup') {
+      swapSlots(doc, index, target); selected = target; say(`Swapped slots ${index + 1} and ${target + 1}`);
+    }
+    commit(start); refresh();
+  };
+  slotsEl.addEventListener('pointerup', endPointer);
+  slotsEl.addEventListener('pointercancel', endPointer);
+  slotsEl.addEventListener('dblclick', event => { if (event.target.closest('[data-slot]')) editFill(resetFraming, 'Framing reset'); });
+  slotsEl.addEventListener('wheel', event => {
+    const option = event.target.closest('[data-slot]'); if (!option) return;
+    const index = Number(option.dataset.slot), slot = doc.slots[index];
+    if (!deps.photoById(slot.photoId)) return;
+    event.preventDefault(); select(index);
+    wheel ||= { start: cloneDoc(doc) };
+    slot.zoom = clamp(slot.zoom * Math.exp(-event.deltaY * .0015), ZOOM_MIN, ZOOM_MAX);
+    syncFillValues(); scheduleDraw();
+    clearTimeout(wheel.timer);
+    wheel.timer = setTimeout(() => { commit(wheel.start); wheel = null; say(`Zoom ${Math.round(slot.zoom * 100)}%`); }, 400);
+  }, { passive: false });
+  slotsEl.addEventListener('focusin', event => { const option = event.target.closest('[data-slot]'); if (option && !gesture) select(Number(option.dataset.slot)); });
+  // Keys: arrows choose a slot; Alt+arrows pan; + − zoom; R rotates (Shift: back); F flips; 0 resets; Delete empties.
+  slotsEl.addEventListener('keydown', event => {
+    const option = event.target.closest('[data-slot]'); if (!option) return;
+    const index = Number(option.dataset.slot), count = view.layout.slots.length, key = event.key;
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    if (arrow && event.altKey) {
+      event.preventDefault(); const g = geometry(index); if (!g) return;
+      const s = view.layout.slots[index], step = Math.min(s.w, s.h) * (event.shiftKey ? .2 : .05);
+      editFill(slot => { slot.pan = panBy(g, slot.pan, arrow[0] * step, arrow[1] * step); }, 'Photo moved');
+      return;
+    }
+    const next = arrow ? index + (arrow[0] || arrow[1]) : key === 'Home' ? 0 : key === 'End' ? count - 1 : null;
+    if (next != null) { event.preventDefault(); select(clamp(next, 0, count - 1), { focus: true }); return; }
+    if (event.ctrlKey || event.metaKey) return;
+    const zoomBy = factor => editFill(slot => { slot.zoom *= factor; }, slot => `Zoom ${Math.round(slot.zoom * 100)}%`);
+    const actions = {
+      '+': () => zoomBy(1.1), '=': () => zoomBy(1.1), '-': () => zoomBy(1 / 1.1), '0': () => editFill(resetFraming, 'Framing reset'),
+      r: () => editFill(slot => { slot.rotate += 90; }, slot => `Rotated to ${slot.rotate}°`),
+      R: () => editFill(slot => { slot.rotate -= 90; }, slot => `Rotated to ${slot.rotate}°`),
+      f: () => editFill(slot => { slot.flip = !slot.flip; }, slot => (slot.flip ? 'Flipped' : 'Not flipped')),
+      Delete: emptySelected, Backspace: emptySelected
+    };
+    const action = actions[key] || (key === 'F' ? actions.f : null);
+    if (action) { event.preventDefault(); select(index); action(); }
+  });
   /** Long edge (device px) a slot photo may need on this stage: independent of the layout and aspect, so switching
    *  them never renders a photo again. */
   function needEdge() {
@@ -219,26 +457,37 @@ export function createCollageMode(deps) {
     get busy() { return pumping; },
     get canUndo() { return active && undoStack.length > 0; },
     get canRedo() { return active && redoStack.length > 0; },
-    /** Opens collage mode with `photoIds` (in order). The same photos resume the last collage and its history. */
+    get hasDocument() { return Boolean(doc); },
+    /** Opens collage mode with `photoIds` (in order); null resumes the last collage. The same photos also resume it,
+     *  with its history. */
     open(photoIds) {
-      const key = [...photoIds].sort((a, b) => a - b).join();
-      if (!doc || docPhotos !== key) {
+      const key = photoIds && [...photoIds].sort((a, b) => a - b).join();
+      if (!doc || (photoIds && docPhotos !== key)) {
         const t = templateFor(photoIds.length);
         doc = fitSlots(createDoc(photoIds, t, deps.paperColors[0].hex), slotCount(t)); docPhotos = key;
-        undoStack = []; redoStack = [];
+        undoStack = []; redoStack = []; selected = null;
       }
       active = true; failed.clear(); generation++;
       historyChanged(); refresh();
-      list.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
+      // After the first draw, which creates the slot boxes.
+      requestAnimationFrame(() => (selected != null ? slotsEl.children[selected] : list.querySelector('[aria-selected="true"]'))?.focus({ preventScroll: true }));
     },
-    /** Leaves collage mode: drops pending renders and frees the slot images (the document and history stay). */
-    close() {
+    /** Leaves collage mode: drops pending renders (the document and history stay). The slot images are freed unless
+     *  `keepCache` (leaving to edit one photo: the others need no new render on return). */
+    close({ keepCache = false } = {}) {
       if (!active) return;
       active = false; generation++; if (running) running.stale = true;
-      cancelAnimationFrame(frame); frame = 0; slider = null;
-      for (const entry of cache.values()) freeImage(entry.image);
-      cache.clear(); progress = { done: 0, total: 0 }; message = ''; syncStatus();
+      cancelAnimationFrame(frame); frame = 0; slider = null; gesture = null; pointers.clear();
+      if (wheel) { clearTimeout(wheel.timer); commit(wheel.start); wheel = null; }
+      if (!keepCache) { for (const entry of cache.values()) freeImage(entry.image); cache.clear(); }
+      progress = { done: 0, total: 0 }; message = ''; syncStatus();
       historyChanged();
+    },
+    /** Esc: clears the slot selection first; false when there was nothing to clear (then collage mode closes). */
+    escape() {
+      if (selected == null) return false;
+      const option = slotsEl.children[selected]; select(null); option?.focus(); say('No photo selected');
+      return true;
     },
     undo() { step(undoStack, redoStack, 'Undone'); },
     redo() { step(redoStack, undoStack, 'Redone'); },
