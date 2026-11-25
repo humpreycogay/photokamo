@@ -2742,8 +2742,9 @@ function prepareExport() {
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
-    const extension = type.split('/')[1].replace('jpeg', 'jpg');
-    job.file = new File([blob], `${state.filename}-photokamo.${extension}`, { type });
+    // The browser may not encode the requested type (WebP in older Safari gives PNG): name the file after what it made.
+    const actual = blob.type || type;
+    job.file = new File([blob], `${state.filename}-photokamo.${extensionFor(actual)}`, { type: actual });
     return job.file;
   })();
   job.promise.catch(() => {});
@@ -2774,7 +2775,8 @@ async function downloadPhoto() {
     const file = await prepareExport();
     const url = URL.createObjectURL(file); const link = document.createElement('a');
     link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    elements.exportDialog.close(); toast('Your photo is ready.');
+    elements.exportDialog.close();
+    toast(file.type !== state.exportFormat ? `Saved as ${formatName(file.type)}: this browser can’t save ${formatName(state.exportFormat)}.` : 'Your photo is ready.');
   } catch (error) { console.error(error); toast('Export failed. Try JPEG or a smaller photo.'); }
   elements.exportStatus.textContent = '';
 }
@@ -2806,6 +2808,7 @@ const selectedPhotos = () => app.photos.filter(photo => app.selected.has(photo.i
 const isBatchExport = () => { const photos = selectedPhotos(); return photos.length > 1 || (photos.length === 1 && photos[0].id !== app.activeId); };
 const zipName = count => `photokamo-${count}-photo${count === 1 ? '' : 's'}.zip`;
 const extensionFor = type => type.split('/')[1].replace('jpeg', 'jpg');
+const formatName = type => ({ 'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WebP' })[type] || type;
 function uniqueName(base, extension, used) {
   let name = `${base}-photokamo.${extension}`;
   for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base}-photokamo-${n}.${extension}`;
@@ -2831,7 +2834,7 @@ async function renderBatch(photos, each = null) {
   const key = batchKey(photos);
   if (!each && batch.prepared?.key === key) return batch.prepared.files;
   batch.running = true; batch.cancel = false; syncBatch();
-  const type = batch.format, quality = Number(elements.batchQuality.value) / 100, extension = extensionFor(type);
+  const type = batch.format, quality = Number(elements.batchQuality.value) / 100;
   const used = new Set(), files = [], engineModules = new Set();
   const progress = (index, value = 0) => {
     elements.batchProgressCount.textContent = `${Math.min(index + 1, photos.length)} of ${photos.length}`;
@@ -2845,7 +2848,8 @@ async function renderBatch(photos, each = null) {
       const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
       canvas.width = canvas.height = 0; // free the full-size pixels now
       if (!blob) throw new Error(`Encoding ${photo.name} failed`);
-      const file = new File([blob], uniqueName(photo.filename, extension, used), { type });
+      const actual = blob.type || type; // what the browser encoded (WebP may fall back to PNG)
+      const file = new File([blob], uniqueName(photo.filename, extensionFor(actual), used), { type: actual });
       files.push(file);
       if (each) await each(file);
       progress(index + 1);
