@@ -1319,7 +1319,7 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 /* Shapes (Task 5) */
 .collage-sublabel { margin:0 0 8px; color:var(--text-muted); font-size:var(--fs-sm); font-weight:600; }
 .collage-sublabel span { font-weight:400; }
-#collageTemplates, #collageStyles, #collageShapes { margin-bottom:16px; }
+#collageTemplates, #collageStyles { margin-bottom:16px; }
 .collage-film { margin:6px 0 22px; padding:16px 0; border-block:1px solid var(--line); }
 .collage-film .segmented { margin-bottom:14px; }
 .collage-film-fields { display:grid; grid-template-columns:minmax(90px,.7fr) minmax(0,1.3fr); align-items:center; gap:10px; }

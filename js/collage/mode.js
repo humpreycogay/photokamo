@@ -40,7 +40,7 @@ export function templateFor(count) {
 export function createCollageMode(deps) {
   const stage = document.getElementById('collageStage'), canvas = document.getElementById('collageCanvas');
   const panel = document.getElementById('collagePanel'), status = document.getElementById('collageStatus');
-  const lists = [document.getElementById('collageTemplates'), document.getElementById('collageShapes'), document.getElementById('collageStyles'), document.getElementById('collageContacts')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
+  const lists = [document.getElementById('collageTemplates'), document.getElementById('collageStyles')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
@@ -85,9 +85,7 @@ export function createCollageMode(deps) {
   function buildPanel() {
     const optionHtml = t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`;
     lists[0].innerHTML = templates.filter(t => t.category === 'grid').map(optionHtml).join('');
-    lists[1].innerHTML = templates.filter(t => t.category === 'shape').map(optionHtml).join('');
-    lists[2].innerHTML = templates.filter(t => t.category === 'style').map(optionHtml).join('');
-    lists[3].innerHTML = templates.filter(t => t.category === 'contact').map(optionHtml).join('');
+    lists[1].innerHTML = templates.filter(t => t.category === 'style').map(optionHtml).join('');
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
     paper.innerHTML = papers.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
       + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
