@@ -3,6 +3,8 @@
 import { shapePath } from './shapes.js';
 import { fillGeometry } from './fill.js';
 import { drawOriented, drawTexts } from '../renderer.js';
+import { perforations, filmWear } from '../film.js';
+import { filmSettings, frameNumber } from './contact.js';
 
 /** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
  *  1 px on each side, so resampling never lets paper show along a slot's edge. */
@@ -95,6 +97,70 @@ export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
 /** Slots in drawing order (z, then layout order). */
 export const drawOrder = layout => [...layout.slots].sort((a, b) => a.z - b.z || a.index - b.index);
 
+const stripSpace = (ctx, strip, draw) => {
+  const cx = strip.x + strip.w / 2, cy = strip.y + strip.h / 2;
+  ctx.save(); ctx.translate(cx + strip.dx * strip.w, cy + strip.dy * strip.h); ctx.rotate(strip.angle * Math.PI / 180); ctx.translate(-cx, -cy); draw(); ctx.restore();
+};
+
+const contactSlotSpace = (ctx, layout, slot, draw) => {
+  if (!layout.contact) { draw(); return; }
+  const strip = layout.strips[slot.strip]; stripSpace(ctx, strip, draw);
+};
+
+/** Draws a slot with its contact-strip transform when applicable. */
+export function drawCollageSlot(ctx, doc, layout, slot, image, emptyFill = null) {
+  contactSlotSpace(ctx, layout, slot, () => drawSlot(ctx, doc, slot, image, emptyFill));
+}
+
+/** Film base beneath contact-sheet gates. Photos are drawn after this, edge marks after the photos. */
+export function drawContactBase(ctx, doc, layout) {
+  const film = filmSettings(doc.film), color = film.base === 'bw' ? '#171716' : '#a34b21';
+  for (const strip of layout.strips) stripSpace(ctx, strip, () => {
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.42)'; ctx.shadowBlur = strip.edge * .45; ctx.shadowOffsetY = strip.edge * .18;
+    ctx.fillStyle = color; ctx.fillRect(strip.x, strip.y, strip.w, strip.h); ctx.restore();
+  });
+}
+
+function greaseMark(ctx, slot, kind, color, width) {
+  const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (kind === 'circle') ctx.ellipse(cx, cy, slot.w * .4, slot.h * .42, -.12, 0, Math.PI * 2);
+  else { ctx.moveTo(slot.x + slot.w * .15, slot.y + slot.h * .15); ctx.lineTo(slot.x + slot.w * .85, slot.y + slot.h * .85); ctx.moveTo(slot.x + slot.w * .82, slot.y + slot.h * .12); ctx.lineTo(slot.x + slot.w * .18, slot.y + slot.h * .88); }
+  ctx.stroke();
+}
+
+/** Wear, holes and generic edge printing on top of contact-sheet photos. */
+export function drawContactMarks(ctx, doc, layout) {
+  const film = filmSettings(doc.film), color = film.base === 'bw' ? '#171716' : '#a34b21';
+  const ink = film.base === 'bw' ? 'rgba(236,231,203,.82)' : 'rgba(255,213,73,.88)';
+  for (const strip of layout.strips) stripSpace(ctx, strip, () => {
+    const mm = strip.h / layout.filmAcross;
+    ctx.save(); ctx.beginPath(); ctx.rect(strip.x, strip.y, strip.w, strip.h);
+    for (const slot of layout.slots.filter(item => item.strip === strip.index)) ctx.rect(slot.x, slot.y, slot.w, slot.h);
+    ctx.clip('evenodd'); ctx.translate(strip.x, strip.y); filmWear(ctx, strip.w, strip.h, mm, .22, 17000 + strip.index * 101); ctx.restore();
+    if (layout.perforated) {
+      ctx.save(); ctx.translate(strip.x, strip.y); ctx.fillStyle = doc.paper.color; ctx.beginPath();
+      perforations(ctx, strip.w, strip.h, mm, layout.slots[0].x - strip.x + layout.slots[0].w / 2 - 1.4 * mm); ctx.fill(); ctx.restore();
+    }
+    const rowSlots = layout.slots.filter(item => item.strip === strip.index), font = Math.max(3, strip.edge * .3);
+    ctx.fillStyle = ink; ctx.font = `700 ${font}px Helvetica, Arial, sans-serif`; ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left'; ctx.fillText(String(film.stockText || '').slice(0, 32), strip.x + strip.edge * .25, strip.y + strip.edge * .38);
+    ctx.textAlign = 'right'; if (film.date) ctx.fillText(String(film.date).slice(0, 16), strip.x + strip.w - strip.edge * .25, strip.y + strip.edge * .38);
+    ctx.textAlign = 'center';
+    for (const slot of rowSlots) {
+      const label = frameNumber(film.startNumber, slot.index);
+      ctx.fillText(label, slot.x + slot.w / 2, strip.y + strip.h - strip.edge * .38);
+      ctx.font = `700 ${Math.max(2, font * .7)}px Helvetica, Arial, sans-serif`;
+      ctx.fillText('– · – · –', slot.x + slot.w * .2, strip.y + strip.h - strip.edge * .38);
+      ctx.font = `700 ${font}px Helvetica, Arial, sans-serif`;
+    }
+    ctx.save(); ctx.globalAlpha = .16; ctx.fillStyle = color; ctx.fillRect(strip.x, strip.y, strip.w, strip.h); ctx.restore();
+  });
+  const marked = layout.slots[film.markFrame - 1];
+  if (marked && film.mark !== 'none') contactSlotSpace(ctx, layout, marked, () => greaseMark(ctx, marked, film.mark, 'rgba(224,45,42,.86)', Math.max(2, Math.min(marked.w, marked.h) * .035)));
+}
+
 /** Draws collage text with the existing photo text renderer. Sheet layers use the full canvas; slot layers use the
  * stable slot id, so swapping photos does not move captions between slots. Shaped sheets clip text by default. */
 export function drawCollageTexts(ctx, doc, layout, fontFor = null) {
@@ -118,7 +184,9 @@ export function drawCollageTexts(ctx, doc, layout, fontFor = null) {
  *  imageFor(index) → the slot's photo edit (canvas or ImageBitmap) or null (empty or still rendering). */
 export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)', captionHint = null, fontFor = null } = {}) {
   drawPaper(ctx, doc, layout);
-  for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, imageFor(slot.index), emptyFill);
+  if (layout.contact) drawContactBase(ctx, doc, layout);
+  for (const slot of drawOrder(layout)) drawCollageSlot(ctx, doc, layout, slot, imageFor(slot.index), layout.contact ? null : emptyFill);
+  if (layout.contact) drawContactMarks(ctx, doc, layout);
   // Preview only: a placeholder bar where each caption will go (the text arrives with text layers, Task 7).
   if (captionHint) for (const { caption, index } of layout.slots) {
     if (!caption) continue;

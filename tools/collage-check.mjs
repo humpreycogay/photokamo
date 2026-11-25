@@ -4,6 +4,7 @@ const repo = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const { templates, slotCount } = await import(`${repo}/js/collage/templates.js`);
 const { layoutTemplate, sheetSize } = await import(`${repo}/js/collage/layout.js`);
 const { shapePolygon, polygonArea, pointInPolygon, SHAPE_KINDS } = await import(`${repo}/js/collage/shapes.js`);
+const { DEFAULT_FILM, filmSettings, frameNumber, stripTransform } = await import(`${repo}/js/collage/contact.js`);
 
 let errors = 0, checks = 0;
 const fail = message => { errors++; console.log('ERR', message); };
@@ -45,6 +46,10 @@ for (const t of templates) {
       }
       check(inside > 0 && shown / inside >= .4, `${t.id} slot ${s.index} shows ${(100 * shown / inside).toFixed(0)} % of itself`);
     }
+  } else if (t.kind === 'contact') {
+    check(t.category === 'contact', `${t.id} bad contact category`);
+    check(slotCount(t) >= 9 && slotCount(t) <= 36, `${t.id} holds ${slotCount(t)} photos (contact sheets hold 9–36)`);
+    check(t.strips >= 1 && t.frames >= 1 && t.frame?.every(v => v > 0), `${t.id} bad contact geometry`);
   } else fail(`${t.id} unexpected kind ${t.kind}`);
 }
 
@@ -87,16 +92,31 @@ for (const t of templates.filter(t => t.kind === 'grid')) {
     }
   }
 }
-// Contact and free layouts (templates arrive in later tasks; the engine is checked now).
+// Contact and free layouts.
 {
-  const layout = layoutTemplate({ kind: 'contact', strips: 6, frames: 6, frame: [3, 2] }, 2550, 3300, { gutter: .03, margin: .05 });
+  const layout = layoutTemplate(byId('contact-35'), 2550, 3300, { gutter: .03, margin: .05 });
   check(layout.slots.length === 36, 'contact slot count');
   check(layout.slots.every(s => s.x >= layout.margin && s.y >= layout.margin && s.x + s.w <= 2550 - layout.margin && s.y + s.h <= 3300 - layout.margin), 'contact frames outside the margin');
   check(layout.slots.every(s => Math.abs(s.w / s.h - 1.5) < .01), 'contact frames keep 3:2');
   layout.slots.forEach((a, i) => layout.slots.slice(i + 1).forEach(b => check(!overlap(a, b), `contact frames ${a.index}/${b.index} overlap`)));
+  check(layout.perforated && layout.strips.length === 6 && layout.strips.every(strip => strip.h > layout.slots[0].h), '35 mm strips include perforated film edges');
+  for (const id of ['contact-66', 'contact-67']) {
+    const medium = layoutTemplate(byId(id), 2550, 3300, { gutter: .03, margin: .05 });
+    check(!medium.perforated && medium.filmAcross === 70, `${id} uses 120 film`);
+    check(medium.slots.length === slotCount(byId(id)), `${id} slot count`);
+  }
   const free = layoutTemplate({ kind: 'free', slots: [{ x: .1, y: .1, w: .5, h: .4, rotate: -4, z: 1 }, { x: .4, y: .45, w: .5, h: .45 }] }, 1001, 1251);
   golden('free layout', rects(free), [[100, 125, 501, 501], [400, 563, 501, 563]]);
   check(free.slots[0].rotate === -4 && free.slots[0].z === 1, 'free slot keeps rotate and z');
+}
+
+// ---------- Contact-film data ----------
+{
+  golden('contact frame numbers', Array.from({ length: 4 }, (_, i) => frameNumber(1, i)), ['1', '2', '3', '4']);
+  golden('contact half numbers', Array.from({ length: 3 }, (_, i) => frameNumber(1.5, i)), ['1A', '2A', '3A']);
+  check(JSON.stringify(stripTransform(4)) === JSON.stringify(stripTransform(4)), 'contact strip transform deterministic');
+  check(stripTransform(4).angle >= -.7 && stripTransform(4).angle <= .7, 'contact strip rotation range');
+  check(JSON.stringify(filmSettings(null)) === JSON.stringify(DEFAULT_FILM), 'contact film defaults');
 }
 
 // ---------- Dividers and caption space (Task 6) ----------

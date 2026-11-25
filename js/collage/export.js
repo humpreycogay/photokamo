@@ -9,7 +9,7 @@
 // collage's `flatten` colour (never left to the encoder, which would turn it black).
 import { templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
-import { drawPaper, drawSlot, drawOrder, drawCollageTexts, flattenSheet } from './render.js';
+import { drawPaper, drawCollageSlot, drawOrder, drawCollageTexts, flattenSheet, drawContactBase, drawContactMarks } from './render.js';
 import { shareSize, printSize, fullSize, capSize, slotEdge, PRINT_PAPERS, PRINT_DPI } from './sizes.js';
 
 const LIMIT_KEY = 'photokamo:canvas-limit';
@@ -130,6 +130,7 @@ export function createCollageExport(deps) {
     await deps.ensureTextFonts(doc.text || []);
     const flatten = flattenFor(doc, current.format);
     drawPaper(ctx, doc, layout, { shadow: !flatten }); // sticker shadows are for PNG/WebP
+    if (layout.contact) drawContactBase(ctx, doc, layout);
     const slots = drawOrder(layout).filter(slot => deps.photoById(doc.slots[slot.index].photoId));
     for (const [n, slot] of slots.entries()) {
       if (current.cancelled) throw cancelled();
@@ -138,9 +139,10 @@ export function createCollageExport(deps) {
       report();
       const { image } = await deps.renderEdit(photo, { edge: slotEdge(natural.width, natural.height, slot.w, slot.h, fill), onProgress: report });
       if (current.cancelled) { freeImage(image); throw cancelled(); }
-      drawSlot(ctx, doc, slot, image);
+      drawCollageSlot(ctx, doc, layout, slot, image);
       freeImage(image); // one full photo render at a time
     }
+    if (layout.contact) drawContactMarks(ctx, doc, layout);
     drawCollageTexts(ctx, doc, layout, deps.textFont);
     if (flatten) flattenSheet(ctx, layout, flatten);
     if (job === current) showProgress(true, 'Encoding', slots.length, slots.length);

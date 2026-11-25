@@ -3,6 +3,7 @@
 // sheet's short edge, rounded to whole px once, so every row and column adds up to the sheet size exactly
 // (margin + tracks + gutters + margin); the last track absorbs the rounding.
 import { shapePolygon, shapeCenter, clipConvex, clipHalfPlane, polygonArea, polygonBounds } from './shapes.js';
+import { stripTransform } from './contact.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect  integer px */
 /** @typedef {Rect & { index: number, rotate: number, z: number, radius: number, shape: object|null, shadow: boolean }} SlotRect */
@@ -90,25 +91,27 @@ export function layoutFree(template, width, height, { border = null } = {}) {
   return { width, height, margin: 0, gutter: 0, slots };
 }
 
-/** Contact sheet: `strips` rows of `frames` frames with aspect `frame` [w, h], centred inside the margin.
- *  The gutter separates strips; frames within a strip are a tenth of a frame's short side apart. */
+/** Contact sheet: strips include the real film edge around photo gates. They are centred inside the margin and carry
+ *  seeded transforms for the renderer; slots remain unrotated hit boxes so dense sheets stay easy to operate. */
 export function layoutContact(template, width, height, { gutter = 0, margin = 0 } = {}) {
   const short = Math.min(width, height), m = px(margin, short), g = px(gutter, short);
   const [fw, fh] = template.frame, n = template.frames, s = template.strips;
   const innerW = width - 2 * m, innerH = height - 2 * m;
-  // Largest frame (aspect fw:fh, gap = short side / 10) that fits n across and s down.
-  const unitW = n * fw + (n - 1) * Math.min(fw, fh) / 10, unitH = s * fh;
+  const filmAcross = template.id === 'contact-35' ? 35 : 70, edge = (filmAcross - fh) / 2;
+  // Largest gate that fits n across and s strips down. Adjacent medium-format gates have a small separator.
+  const gapUnit = template.id === 'contact-35' ? 2 : 2.5;
+  const unitW = n * fw + (n - 1) * gapUnit, unitH = s * (fh + edge * 2);
   const scale = Math.min(innerW / unitW, (innerH - g * (s - 1)) / unitH);
-  const w = Math.max(1, Math.floor(fw * scale)), h = Math.max(1, Math.floor(fh * scale)), gap = Math.round(Math.min(w, h) / 10);
-  const totalW = n * w + (n - 1) * gap, totalH = s * h + (s - 1) * g;
+  const w = Math.max(1, Math.floor(fw * scale)), h = Math.max(1, Math.floor(fh * scale)), e = Math.max(1, Math.round(edge * scale)), gap = Math.max(0, Math.round(gapUnit * scale));
+  const totalW = n * w + (n - 1) * gap, stripH = h + e * 2, totalH = s * stripH + (s - 1) * g;
   const x0 = m + Math.floor((innerW - totalW) / 2), y0 = m + Math.floor((innerH - totalH) / 2);
   const strips = [], slots = [];
   for (let row = 0; row < s; row++) {
-    const y = y0 + row * (h + g);
-    strips.push({ x: x0, y, w: totalW, h });
-    for (let col = 0; col < n; col++) slots.push(slot(slots.length, { x: x0 + col * (w + gap), y, w, h }));
+    const y = y0 + row * (stripH + g), transform = stripTransform(row);
+    strips.push({ index: row, x: x0, y, w: totalW, h: stripH, edge: e, gap, ...transform });
+    for (let col = 0; col < n; col++) slots.push(slot(slots.length, { x: x0 + col * (w + gap), y: y + e, w, h }, { strip: row }));
   }
-  return { width, height, margin: m, gutter: g, frameGap: gap, strips, slots };
+  return { width, height, margin: m, gutter: g, frameGap: gap, filmEdge: e, filmAcross, perforated: template.id === 'contact-35', strips, slots, contact: true };
 }
 
 // ---------- Shaped sheets (Task 5) ----------

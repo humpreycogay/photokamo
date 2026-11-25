@@ -69,7 +69,7 @@ const state = {
 let toastTimer;
 // Collage mode (js/collage/mode.js): slots show each photo's own edit without frame or text. A fast pass from the
 // queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
-const collageEngines = new Set(), COLLAGE_MAX = 9;
+const collageEngines = new Set(), CONTACT_MAX = 36;
 const collage = createCollageMode({
   photos: () => app.photos, photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
   addFiles: files => addFiles(files, { view: false }),
@@ -2268,9 +2268,9 @@ function syncStrip() {
   elements.mobileApplyButton.textContent = `Apply to ${others}`;
   elements.mobileApplyButton.setAttribute('aria-label', `Apply to ${plural(others, 'other selected photo')}`);
   elements.topbarTitle.textContent = collage.active ? 'Collage' : selected > 1 ? `${selected} selected` : activePhoto()?.name || '';
-  // Make collage: 2–9 selected photos (strip), or from the photo menu with any 2+ photos open.
+  // Make collage: ordinary layouts hold 2–9; larger selections open on a contact sheet (up to 36).
   const collageButton = $('#collageButton');
-  collageButton.hidden = selected < 2 || selected > COLLAGE_MAX;
+  collageButton.hidden = selected < 2 || selected > CONTACT_MAX;
   collageButton.setAttribute('aria-label', `Make collage of ${selected} selected photos`);
   $('#collageMenuItem').hidden = count < 2;
   $('#liveEdit').checked = app.liveEdit;
@@ -2352,17 +2352,17 @@ function buildStrip() {
 // The editor stays as it is underneath (photo, history, selection, tab); collage mode only covers it.
 let collageReturnFocus = null;
 const popoverOpen = () => { try { return Boolean(document.querySelector(':popover-open')); } catch { return false; } };
-/** Photos for a new collage: the selected ones (2+), else every open photo; strip order, at most 9. */
+/** Photos for a new collage: the selected ones (2+), else every open photo; strip order, at most 36. */
 function collageCandidates() {
   const selected = selectedPhotos();
-  return (selected.length >= 2 ? selected : app.photos).slice(0, COLLAGE_MAX).map(photo => photo.id);
+  return (selected.length >= 2 ? selected : app.photos).slice(0, CONTACT_MAX).map(photo => photo.id);
 }
 /** Opens collage mode with the candidates, or (`resume`) the last collage as it was. */
 function enterCollage({ resume = false } = {}) {
   if (collage.active || !state.image) return;
   const ids = resume && collage.hasDocument ? null : collageCandidates(), selected = selectedPhotos().length;
   if (ids && ids.length < 2) { toast('Open at least 2 photos to make a collage.'); return; }
-  if (ids && selected > COLLAGE_MAX) toast(`A collage holds up to ${COLLAGE_MAX} photos: using the first ${COLLAGE_MAX} selected.`);
+  if (ids && selected > CONTACT_MAX) toast(`A contact sheet holds up to ${CONTACT_MAX} photos: using the first ${CONTACT_MAX} selected.`);
   setCollageReturn(false);
   const current = activePhoto(); if (current) current.settings = snapshot(); // slots read each photo's settings
   if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }

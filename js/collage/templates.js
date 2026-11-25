@@ -31,6 +31,7 @@ const ARC_LEFT = { kind: 'path', d: 'M .1 0 L 1 0 L 1 1 L .2 1 C .02 .78 -.03 .3
 const ARC_RIGHT = { kind: 'path', d: 'M 0 0 L .9 0 C 1.03 .32 .98 .78 .8 1 L 0 1 Z' };
 const style = (id, name, paper, slots) => ({ id, name, category: 'style', kind: 'free', aspect: STYLE_ASPECT, paper, border: { width: .005, color: '#ffffff' }, slots });
 const fill = (cols, rows) => Array.from({ length: cols * rows }, (_, i) => [i % cols, Math.floor(i / cols)]);
+const contact = (id, name, strips, frames, frame) => ({ id, name, category: 'contact', kind: 'contact', aspect: [17, 22], strips, frames, frame });
 
 /** @type {Template[]} */
 export const templates = [
@@ -46,6 +47,9 @@ export const templates = [
   grid('grid-6', '3 × 2', [3, 2], [1, 1, 1], [1, 1], fill(3, 2)),
   grid('grid-6-tall', '2 × 3', [2, 3], [1, 1], [1, 1, 1], fill(2, 3)),
   grid('grid-9', '3 × 3', [1, 1], [1, 1, 1], [1, 1, 1], fill(3, 3)),
+  contact('contact-35', '35 mm · 36', 6, 6, [36, 24]),
+  contact('contact-66', '120 6×6 · 12', 4, 3, [56, 56]),
+  contact('contact-67', '120 6×7 · 9', 3, 3, [70, 56]),
   // Shapes: transparent outside the shape by default.
   shaped('circle-pie-6', 'Circle · 6', { kind: 'circle' }, radial(6)),
   shaped('hex-honeycomb-7', 'Honeycomb · 7', { kind: 'hexagon' }, { kind: 'free', slots: honeycomb }),

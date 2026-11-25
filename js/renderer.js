@@ -1,3 +1,5 @@
+import { seededNoise, filmRandom as rnd, perforations, filmWear } from './film.js';
+
 const clamp = value => Math.max(0, Math.min(255, value));
 const hasAdjustments = adjustments => Object.values(adjustments).some(value => value !== 0);
 
@@ -60,12 +62,6 @@ function frameLayout(width, height, frame) {
   }
   if (frame === 'film-collage') { const m = Math.round(short * .2); return { width: width + m * 2, height: height + m * 2, x: m, y: m, background: '#f5f3ee' }; }
   return { width, height, x: 0, y: 0, background: '#000' };
-}
-
-function seededNoise(index) {
-  let n = Math.imul(index + 1729, 374761393);
-  n = (n ^ (n >>> 13)) * 1274126177;
-  return ((n ^ (n >>> 16)) & 1023) / 511.5 - 1;
 }
 
 function processPixels(ctx, width, height, a) {
@@ -153,43 +149,7 @@ function roughEdges(ctx, x, y, width, height, short, color) {
 // `side`: film shown left and right of the photo (the gap plus a sliver of the next frame).
 // Every mark is seeded and sized in mm, so the preview and the full-size export match.
 const FILM_FRAMES = { sprocket: { side: 5.5, wear: .3 }, 'film-worn': { side: 6, wear: 1 }, 'film-leak': { side: 14, wear: .45 } };
-const rnd = i => (seededNoise(i) + 1) / 2;
 const HOLE_LIGHT = '#f4f2ec';
-
-/** Perforation holes as subpaths of the current path, along a strip of length L and width A (film mm = mm). */
-function perforations(ctx, L, A, mm, phase) {
-  const pitch = 4.75 * mm, w = 2.8 * mm, h = 1.98 * mm, inset = 2.01 * mm, r = .5 * mm;
-  for (let x = phase % pitch - pitch; x < L; x += pitch) {
-    ctx.roundRect(x, inset, w, h, r);
-    ctx.roundRect(x, A - inset - h, w, h, r);
-  }
-}
-
-/** Dust and scratches inside the current clip: light marks show on the black film, dark ones on clear film. */
-function filmWear(ctx, L, A, mm, amount, seed) {
-  ctx.lineCap = 'round';
-  const lines = Math.round(12 + 110 * amount), specks = Math.round(40 + 320 * amount);
-  for (let i = 0; i < lines; i++) {
-    const k = seed + i * 13, long = rnd(k + 2) < .35;
-    const x = rnd(k) * L, y = rnd(k + 1) * A;
-    const len = (long ? 6 + rnd(k + 3) * 26 : .8 + rnd(k + 3) * 5) * mm * (.55 + amount * .45);
-    const angle = long ? (rnd(k + 4) < .6 ? 0 : Math.PI / 2) + (rnd(k + 5) - .5) * .3 : rnd(k + 4) * Math.PI * 2;
-    const dx = Math.cos(angle) * len, dy = Math.sin(angle) * len, bend = (rnd(k + 6) - .5) * len * .25;
-    const light = rnd(k + 7) < .8;
-    ctx.strokeStyle = light ? `rgba(236,233,224,${(.12 + rnd(k + 8) * .5) * (.5 + amount * .5)})` : `rgba(24,24,22,${.15 + rnd(k + 8) * .45})`;
-    ctx.lineWidth = (.04 + rnd(k + 9) ** 2 * (.12 + .2 * amount)) * mm;
-    ctx.beginPath(); ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + dx / 2 - dy / len * bend, y + dy / 2 + dx / len * bend, x + dx, y + dy);
-    ctx.stroke();
-  }
-  for (let i = 0; i < specks; i++) {
-    const k = seed + 50000 + i * 7;
-    ctx.fillStyle = rnd(k + 3) < .75 ? `rgba(236,233,224,${.2 + rnd(k + 4) * .6})` : `rgba(24,24,22,${.3 + rnd(k + 4) * .5})`;
-    ctx.beginPath();
-    ctx.ellipse(rnd(k) * L, rnd(k + 1) * A, (.04 + rnd(k + 2) ** 4 * .4) * mm, (.03 + rnd(k + 5) ** 4 * .3) * mm, rnd(k + 6) * Math.PI, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
 
 /** Single 35 mm frame on its strip (sprocket / film-worn / film-leak), drawn around the already placed photo. */
 function drawFilmStrip(ctx, layout, photo, kind) {

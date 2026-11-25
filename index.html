@@ -489,6 +489,8 @@
           <div class="collage-templates" id="collageStyles" role="listbox" aria-labelledby="collageLayoutTitle collageStylesTitle" aria-orientation="horizontal"></div>
           <p class="collage-sublabel" id="collageShapesTitle">Shapes <span>· transparent outside the shape</span></p>
           <div class="collage-templates" id="collageShapes" role="listbox" aria-labelledby="collageLayoutTitle collageShapesTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageContactsTitle">Contact sheets <span>· up to 36 photos</span></p>
+          <div class="collage-templates" id="collageContacts" role="listbox" aria-labelledby="collageLayoutTitle collageContactsTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
           <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle" aria-describedby="collageAspectHint"></div>
           <p class="collage-hint collage-aspect-hint" id="collageAspectHint" hidden>This shape keeps its own proportions.</p>
@@ -506,6 +508,18 @@
           <div class="slider-row" id="collageGutterRow"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
           <div class="slider-row" id="collageMarginRow"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
           <div class="slider-row" id="collageRadiusRow"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
+          <section class="collage-film" id="collageFilm" aria-labelledby="collageFilmTitle" hidden>
+            <h3 class="collage-label" id="collageFilmTitle">Film</h3>
+            <div class="segmented" id="collageFilmBase" role="radiogroup" aria-label="Film base"><button type="button" role="radio" data-film-base="color">Colour negative</button><button type="button" role="radio" data-film-base="bw">Black &amp; white</button></div>
+            <div class="collage-film-fields">
+              <label class="text-label" for="collageFilmStock">Stock text</label><input id="collageFilmStock" type="text" maxlength="32" value="KAMO 400" spellcheck="false">
+              <label class="text-label" for="collageFilmDate">Date</label><input id="collageFilmDate" type="date">
+              <label class="text-label" for="collageFilmStart">Start number</label><input id="collageFilmStart" type="number" min="0" max="99.5" step="0.5" value="1">
+              <label class="text-label" for="collageFilmMark">Grease pencil</label><select id="collageFilmMark"><option value="none">Off</option><option value="circle">Circle</option><option value="cross">Cross</option></select>
+              <label class="text-label" for="collageFilmMarkFrame">Marked frame</label><input id="collageFilmMarkFrame" type="number" min="1" max="36" step="1" value="1">
+            </div>
+            <p class="collage-hint">Generic markings only. Half numbers use “A”, such as 1A.</p>
+          </section>
           <div class="collage-sticker" id="collagePrints" hidden>
             <h3 class="collage-label" id="collagePrintsTitle">Prints</h3>
             <div class="slider-row"><label class="slider-label" for="collageBorder"><span>Border</span><output id="collageBorderOutput" for="collageBorder">0.5%</output></label><input id="collageBorder" type="range" min="0" max="2" step="0.1"></div>

@@ -10,6 +10,7 @@ import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
 import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, swapSlots } from './model.js';
+import { DEFAULT_FILM, filmSettings } from './contact.js';
 
 const MAX_SLOT_EDGE = 1600; // preview renders: long edge cap per photo
 const HISTORY_LIMIT = 50;
@@ -20,8 +21,9 @@ const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.ch
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-/** The template that fits `count` photos best: the grid with the same count, else the smallest grid that holds them all. */
+/** The template that fits `count` photos best: grids through 9, then the 36-frame 35 mm contact sheet. */
 export function templateFor(count) {
+  if (count > 9) return templateById('contact-35');
   const sorted = templates.filter(t => t.kind === 'grid').sort((a, b) => slotCount(a) - slotCount(b));
   return sorted.find(t => slotCount(t) === count) || sorted.find(t => slotCount(t) >= count) || sorted[sorted.length - 1];
 }
@@ -29,7 +31,7 @@ export function templateFor(count) {
 export function createCollageMode(deps) {
   const stage = document.getElementById('collageStage'), canvas = document.getElementById('collageCanvas');
   const panel = document.getElementById('collagePanel'), status = document.getElementById('collageStatus');
-  const lists = [document.getElementById('collageTemplates'), document.getElementById('collageShapes'), document.getElementById('collageStyles')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
+  const lists = [document.getElementById('collageTemplates'), document.getElementById('collageShapes'), document.getElementById('collageStyles'), document.getElementById('collageContacts')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
@@ -38,6 +40,7 @@ export function createCollageMode(deps) {
   const dividersEl = byId('collageDividers');
   const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
+  const filmUi = { box: byId('collageFilm'), base: byId('collageFilmBase'), stock: byId('collageFilmStock'), date: byId('collageFilmDate'), start: byId('collageFilmStart'), mark: byId('collageFilmMark'), frame: byId('collageFilmMarkFrame') };
   const textUi = { selected: null, start: null, timer: 0, layers: byId('collageTextLayers'), editor: byId('collageTextEditor'), empty: byId('collageTextEmpty'),
     content: byId('collageTextContent'), target: byId('collageTextTarget'), fonts: byId('collageTextFont'), size: byId('collageTextSize'), color: byId('collageTextColor'),
     align: byId('collageTextAlign'), outsideRow: byId('collageOutsideShapeRow'), outside: byId('collageOutsideShape'), contrast: byId('collageTextContrast') };
@@ -74,6 +77,7 @@ export function createCollageMode(deps) {
     lists[0].innerHTML = templates.filter(t => t.category === 'grid').map(optionHtml).join('');
     lists[1].innerHTML = templates.filter(t => t.category === 'shape').map(optionHtml).join('');
     lists[2].innerHTML = templates.filter(t => t.category === 'style').map(optionHtml).join('');
+    lists[3].innerHTML = templates.filter(t => t.category === 'contact').map(optionHtml).join('');
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
     paper.innerHTML = papers.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
       + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
@@ -118,6 +122,20 @@ export function createCollageMode(deps) {
     buildPrints();
     buildSlotPanel();
     buildTextPanel();
+    buildFilmPanel();
+  }
+
+  function buildFilmPanel() {
+    radioGroup(filmUi.base, '[data-film-base]', button => change(d => { d.film = { ...filmSettings(d.film), base: button.dataset.filmBase }; }));
+    const field = (input, key, read = value => value) => input.addEventListener('change', () => change(d => { d.film = { ...filmSettings(d.film), [key]: read(input.value) }; }));
+    field(filmUi.stock, 'stockText', value => value.trim() || DEFAULT_FILM.stockText); field(filmUi.date, 'date');
+    field(filmUi.start, 'startNumber', value => clamp(Number(value) || 0, 0, 99.5)); field(filmUi.mark, 'mark');
+    field(filmUi.frame, 'markFrame', value => clamp(Math.round(Number(value) || 1), 1, slotCount(template())));
+  }
+  function syncFilmPanel() {
+    const film = filmSettings(doc.film), count = slotCount(template());
+    syncRadios(filmUi.base, 'data-film-base', film.base); filmUi.stock.value = film.stockText; filmUi.date.value = film.date;
+    filmUi.start.value = film.startNumber; filmUi.mark.value = film.mark; filmUi.frame.max = count; filmUi.frame.value = clamp(film.markFrame, 1, count); filmUi.frame.disabled = film.mark === 'none';
   }
 
   // ---------- Text and captions ----------
@@ -177,6 +195,7 @@ export function createCollageMode(deps) {
     if (was?.id !== next.id) d.splits = null; // dividers start where the new layout puts them
     if (was && was.kind !== next.kind) d.border = null; // grid borders and print borders don't carry over
     d.templateId = next.id;
+    if (next.kind === 'contact') d.film = filmSettings(d.film);
     if (shaped && d.sheet.background === 'paper' && !d.sheet.autoTransparent) { d.sheet.background = 'transparent'; d.sheet.autoTransparent = true; }
     if (!shaped && d.sheet.autoTransparent) { d.sheet.background = 'paper'; delete d.sheet.autoTransparent; }
     if (next.paper && (d.paper.auto || d.paper.color === deps.paperColors[0].hex)) { d.paper.color = next.paper; d.paper.auto = true; }
@@ -383,12 +402,13 @@ export function createCollageMode(deps) {
     syncRadios(aspects, 'data-aspect', aspect && !t.lockAspect ? aspect[0] : '');
     aspects.querySelectorAll('[data-aspect]').forEach(button => { button.disabled = Boolean(t.lockAspect); });
     aspectHint.hidden = !t.lockAspect;
-    const shaped = t.kind === 'shaped', free = t.kind === 'free';
-    sticker.box.hidden = !shaped; radiusRow.hidden = shaped || free; prints.box.hidden = shaped; gutterRow.hidden = free;
+    const shaped = t.kind === 'shaped', free = t.kind === 'free', contact = t.kind === 'contact';
+    sticker.box.hidden = !shaped; filmUi.box.hidden = !contact; radiusRow.hidden = shaped || free || contact; prints.box.hidden = shaped || contact; gutterRow.hidden = free;
     prints.title.textContent = free ? 'Prints' : 'Borders'; prints.captionRow.hidden = prints.captionHint.hidden = free;
     marginRow.hidden = free || (shaped && doc.sheet.background === 'transparent'); // a shape's margin is a paper rim
     if (shaped) syncSticker();
     if (!shaped) syncPrints();
+    if (contact) syncFilmPanel();
     syncRadios(paper, 'data-paper', doc.sheet.background === 'transparent' ? 'none' : doc.paper.color);
     syncBackdrop();
     syncSliders();
@@ -686,6 +706,7 @@ export function createCollageMode(deps) {
     const photos = visiblePhotos(), edge = needEdge();
     const keyed = photos.map(photo => ({ photo, key: JSON.stringify(deps.settingsOf(photo)), entry: cache.get(photo.id) }));
     for (const { photo, key, entry } of keyed) if ((!entry || entry.key !== key) && !failed.has(`${photo.id}:${key}:fast`)) return { photo, key, pass: 'fast', edge: 0 };
+    if (template().kind === 'contact') return null; // dense sheets stay instant from queue thumbs; export uses full inputs
     for (const { photo, key, entry } of keyed) {
       if (entry?.key === key && (!entry.sharp || entry.edge < edge / 1.25) && !failed.has(`${photo.id}:${key}:sharp`)) return { photo, key, pass: 'sharp', edge };
     }
@@ -693,7 +714,7 @@ export function createCollageMode(deps) {
   }
   function countWork() {
     const edge = needEdge();
-    return visiblePhotos().filter(photo => { const entry = cache.get(photo.id); return !entry || entry.key !== JSON.stringify(deps.settingsOf(photo)) || !entry.sharp || entry.edge < edge / 1.25; }).length;
+    return visiblePhotos().filter(photo => { const entry = cache.get(photo.id); return !entry || entry.key !== JSON.stringify(deps.settingsOf(photo)) || (template().kind !== 'contact' && (!entry.sharp || entry.edge < edge / 1.25)); }).length;
   }
   async function pump() {
     if (pumping || !active) return;

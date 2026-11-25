@@ -340,11 +340,13 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** text positions within 1 px scaled; no font fallback in export.
 
 #### Task 8: Film contact sheets
-- [ ] Generalise `drawFilmStrip`/`perforations`/`filmWear` (V9) so single frames and contact sheets share code; single-photo film frames stay byte-identical
-- [ ] Templates: 35 mm (6 frames × up to 6 strips = 36), 120 6×6 (3 × 4), 120 6×7 (3 × 3); strips laid on paper with seeded small offsets/rotation
-- [ ] Edge markings in code: frame numbers from `startNumber` (with "A" half numbers), DX-style dashes, user-editable **generic** stock text (no real brand names or logos), date; colour-negative (orange) or B&W base
-- [ ] Optional grease-pencil circle/cross on a chosen frame (off by default)
-- [ ] More than 9 photos only in contact sheets; small frames preview from queue thumbs
+- [x] Generalise `drawFilmStrip`/`perforations`/`filmWear` (V9) so single frames and contact sheets share code; single-photo film frames stay byte-identical
+- [x] Templates: 35 mm (6 frames × up to 6 strips = 36), 120 6×6 (3 × 4), 120 6×7 (3 × 3); strips laid on paper with seeded small offsets/rotation
+- [x] Edge markings in code: frame numbers from `startNumber` (with "A" half numbers), DX-style dashes, user-editable **generic** stock text (no real brand names or logos), date; colour-negative (orange) or B&W base
+- [x] Optional grease-pencil circle/cross on a chosen frame (off by default)
+- [x] More than 9 photos only in contact sheets; small frames preview from queue thumbs
+
+*Done 2026-11-25: added 3 contact templates through 36 frames; 9,481 automated collage checks pass with 0 errors, all edited modules pass syntax checks, and extracted legacy film helper bodies are source-identical. Phone/browser timing, Print-export visual QA, and rendered-output byte comparison remain release QA.*
 
 **Check:** 12 photos → contact sheet numbered 1…12 (or from start); both bases; Print export; existing Film strip frames byte-compare unchanged.
 **Done when:** a 36-frame sheet previews in < 1 s once thumbs exist and exports without crash on phone at the capped size.
