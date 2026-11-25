@@ -97,7 +97,13 @@ export const drawOrder = layout => [...layout.slots].sort((a, b) => a.z - b.z ||
 
 /** Draws the collage `doc` laid out as `layout` (js/collage/layout.js) on ctx (sized layout.width × height).
  *  imageFor(index) → the slot's photo edit (canvas or ImageBitmap) or null (empty or still rendering). */
-export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)' } = {}) {
+export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)', captionHint = null } = {}) {
   drawPaper(ctx, doc, layout);
   for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, imageFor(slot.index), emptyFill);
+  // Preview only: a placeholder bar where each caption will go (the text arrives with text layers, Task 7).
+  if (captionHint) for (const { caption } of layout.slots) {
+    if (!caption) continue;
+    const h = Math.max(2, caption.h * .16), w = Math.min(caption.w * .4, caption.h * 4);
+    ctx.fillStyle = captionHint; ctx.beginPath(); ctx.roundRect(caption.x + (caption.w - w) / 2, caption.y + (caption.h - h) / 2, w, h, h / 2); ctx.fill();
+  }
 }

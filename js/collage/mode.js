@@ -5,7 +5,7 @@
 //   addFiles(files) → the photos added to the strip, editPhoto(id) to leave for the editor,
 //   onHistory() after the undo/redo state changes.
 import { templates, templateById, slotCount } from './templates.js';
-import { layoutTemplate, paddedAspect, stickerPad } from './layout.js';
+import { layoutTemplate, paddedAspect, stickerPad, splitAxis, defaultSplits, clampSplits, moveSplit } from './layout.js';
 import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
@@ -33,7 +33,9 @@ export function createCollageMode(deps) {
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
-  const prints = { box: byId('collagePrints'), border: byId('collageBorder'), output: byId('collageBorderOutput'), colors: byId('collageBorderColor') };
+  const prints = { box: byId('collagePrints'), title: byId('collagePrintsTitle'), border: byId('collageBorder'), output: byId('collageBorderOutput'), colors: byId('collageBorderColor'),
+    captionRow: byId('collageCaptionRow'), captionHint: byId('collageCaptionHint'), caption: byId('collageCaptionSpace') };
+  const dividersEl = byId('collageDividers');
   const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
   let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
@@ -117,7 +119,9 @@ export function createCollageMode(deps) {
    *  the user chose it); styles bring their own paper colour (the default comes back when leaving them, unless the
    *  user chose one); proportional shapes size the sheet to themselves, other layouts get the user's aspect back. */
   function applyTemplate(d, next) {
-    const shaped = next.kind === 'shaped';
+    const shaped = next.kind === 'shaped', was = templateById(d.templateId);
+    if (was?.id !== next.id) d.splits = null; // dividers start where the new layout puts them
+    if (was && was.kind !== next.kind) d.border = null; // grid borders and print borders don't carry over
     d.templateId = next.id;
     if (shaped && d.sheet.background === 'paper' && !d.sheet.autoTransparent) { d.sheet.background = 'transparent'; d.sheet.autoTransparent = true; }
     if (!shaped && d.sheet.autoTransparent) { d.sheet.background = 'paper'; delete d.sheet.autoTransparent; }
@@ -133,8 +137,9 @@ export function createCollageMode(deps) {
   }
   // Collage-only papers (from the owner's reference layouts), after the frame papers.
   const papers = [...deps.paperColors, ...COLLAGE_PAPERS];
-  const borderOf = d => d.border || template().border || { width: .005, color: '#ffffff' };
-  /** Print borders for styles: width (live, one undo step per gesture) and colour. */
+  const borderOf = d => d.border || templateById(d.templateId)?.border || { width: 0, color: '#ffffff' }; // grids: off
+  /** Borders: around prints (styles) or photos (grids): width (live, one undo step per gesture) and colour; and, for
+   *  grids, caption space under each photo. */
   function buildPrints() {
     prints.colors.innerHTML = outlineColors.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-border="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
     const input = prints.border, begin = () => { slider ||= cloneDoc(doc); };
@@ -146,11 +151,17 @@ export function createCollageMode(deps) {
       change(d => { d.border = { ...borderOf(d), color: button.dataset.border }; if (!d.border.width) d.border.width = .005; });
       say(`Border: ${button.title}`);
     });
+    prints.caption.addEventListener('change', () => {
+      const on = prints.caption.checked;
+      change(d => { d.captionSpace = on; });
+      say(on ? 'Space for captions added under each photo' : 'Caption space removed');
+    });
   }
   function syncPrints() {
     const border = borderOf(doc), value = Math.round(border.width * 1000) / 10;
     prints.border.value = value; prints.output.value = border.width ? `${value}%` : 'Off';
     syncRadios(prints.colors, 'data-border', border.color);
+    prints.caption.checked = Boolean(doc.captionSpace);
   }
   const outlineOf = d => d.sheet.outline || { width: 0, color: outlineColors[0][0] };
   const outlineColors = [['#ffffff', 'White'], ...deps.paperColors.filter(color => color.id !== 'bright').map(color => [color.hex, color.name])]; // pure white replaces the near-white paper
@@ -319,10 +330,11 @@ export function createCollageMode(deps) {
     aspects.querySelectorAll('[data-aspect]').forEach(button => { button.disabled = Boolean(t.lockAspect); });
     aspectHint.hidden = !t.lockAspect;
     const shaped = t.kind === 'shaped', free = t.kind === 'free';
-    sticker.box.hidden = !shaped; radiusRow.hidden = shaped || free; prints.box.hidden = !free; gutterRow.hidden = free;
+    sticker.box.hidden = !shaped; radiusRow.hidden = shaped || free; prints.box.hidden = shaped; gutterRow.hidden = free;
+    prints.title.textContent = free ? 'Prints' : 'Borders'; prints.captionRow.hidden = prints.captionHint.hidden = free;
     marginRow.hidden = free || (shaped && doc.sheet.background === 'transparent'); // a shape's margin is a paper rim
     if (shaped) syncSticker();
-    if (free) syncPrints();
+    if (!shaped) syncPrints();
     syncRadios(paper, 'data-paper', doc.sheet.background === 'transparent' ? 'none' : doc.paper.color);
     syncBackdrop();
     syncSliders();
@@ -341,7 +353,7 @@ export function createCollageMode(deps) {
     for (const list of lists) for (const option of list.querySelectorAll('[data-template]')) {
       const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', a = shaped ? t.aspect[0] / t.aspect[1] : doc.aspect.w / doc.aspect.h;
       const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
-      const thumb = option.querySelector('canvas'), layout = layoutTemplate(t, w, h, { gutter: .06, margin: shaped ? 0 : .06, border: { width: 1.5 * dpr / Math.min(w, h), color: checkerLight } });
+      const thumb = option.querySelector('canvas'), layout = layoutTemplate(t, w, h, { gutter: .06, margin: shaped ? 0 : .06, border: t.kind === 'free' ? { width: 1.5 * dpr / Math.min(w, h), color: checkerLight } : null });
       thumb.width = w; thumb.height = h; thumb.style.width = `${w / dpr}px`; thumb.style.height = `${h / dpr}px`;
       const ctx = thumb.getContext('2d');
       if (transparent || shaped) {
@@ -390,8 +402,9 @@ export function createCollageMode(deps) {
     canvas.style.width = `${cssW}px`; canvas.style.height = `${cssH}px`;
     const layout = layoutTemplate(template(), width, height, doc);
     const ctx = canvas.getContext('2d');
-    drawCollage(ctx, doc, layout, imageOf);
+    drawCollage(ctx, doc, layout, imageOf, { captionHint: 'rgba(128,128,128,.45)' });
     view = { layout, k: width / cssW };
+    syncDividers();
     if (layout.slots.some(slot => slot.visible)) drawShapedHighlight(ctx, layout);
     syncSlots();
   }
@@ -405,6 +418,63 @@ export function createCollageMode(deps) {
       ctx.save(); ctx.clip(path, 'evenodd'); ctx.strokeStyle = accent; ctx.lineWidth = 6 * k; ctx.lineJoin = 'round'; ctx.stroke(path); ctx.restore();
     }
   }
+  // ---------- Dividers: diptych / triptych track sizes (Task 6) ----------
+  const currentSplits = () => { const t = template(), n = splitAxis(t) === 'x' ? t.cols.length : t.rows.length; return clampSplits(doc.splits, n) || defaultSplits(t); };
+  /** Share (%) of each photo either side of divider i, for the status line and screen readers. */
+  function shares(splits, i) { const at = k => (k < 0 ? 0 : k >= splits.length ? 1 : splits[k]); return [at(i) - at(i - 1), at(i + 1) - at(i)].map(v => Math.round(v * 100)); }
+  function syncDividers() {
+    const { layout, k } = view, axis = layout.axis, splits = axis ? currentSplits() : [];
+    while (dividersEl.children.length > splits.length) dividersEl.lastElementChild.remove();
+    while (dividersEl.children.length < splits.length) {
+      const handle = document.createElement('div');
+      handle.className = 'collage-divider'; handle.setAttribute('role', 'separator'); handle.tabIndex = 0;
+      handle.dataset.divider = dividersEl.children.length; dividersEl.append(handle);
+    }
+    splits.forEach((split, i) => {
+      const handle = dividersEl.children[i], tracks = axis === 'x' ? layout.cols : layout.rows, across = axis === 'x' ? layout.rows : layout.cols;
+      const at = (tracks[i].start + tracks[i].size + layout.gutter / 2) / k, from = across[0].start / k, to = (across.at(-1).start + across.at(-1).size) / k;
+      Object.assign(handle.style, axis === 'x' ? { left: `${at}px`, top: `${from}px`, height: `${to - from}px`, width: '', marginTop: '' } : { top: `${at}px`, left: `${from}px`, width: `${to - from}px`, height: '', marginLeft: '' });
+      const [a, b] = shares(splits, i), lo = Math.round(((i ? splits[i - 1] : 0) + .15) * 100), hi = Math.round(((i < splits.length - 1 ? splits[i + 1] : 1) - .15) * 100);
+      handle.setAttribute('aria-orientation', axis === 'x' ? 'vertical' : 'horizontal');
+      handle.setAttribute('aria-label', `Divider between photos ${i + 1} and ${i + 2}`);
+      handle.setAttribute('aria-valuemin', lo); handle.setAttribute('aria-valuemax', hi); handle.setAttribute('aria-valuenow', Math.round(split * 100));
+      handle.setAttribute('aria-valuetext', `Photo ${i + 1} ${a}%, photo ${i + 2} ${b}%`);
+    });
+  }
+  /** Divider position (0–1 of the room) under a client point. */
+  function splitAt(i, clientX, clientY) {
+    const { layout, k } = view, box = canvas.getBoundingClientRect(), x = layout.axis === 'x';
+    const p = ((x ? clientX - box.left : clientY - box.top)) * k, length = x ? layout.width : layout.height, n = (x ? layout.cols : layout.rows).length;
+    const room = length - 2 * layout.margin - (n - 1) * layout.gutter;
+    return (p - layout.gutter / 2 - layout.margin - i * layout.gutter) / room;
+  }
+  let drag = null;
+  dividersEl.addEventListener('pointerdown', event => {
+    const handle = event.target.closest('[data-divider]'); if (!handle || event.button > 0) return;
+    event.preventDefault(); handle.focus({ preventScroll: true });
+    try { handle.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    drag = { i: Number(handle.dataset.divider), start: cloneDoc(doc), handle, id: event.pointerId }; handle.classList.add('is-dragging');
+  });
+  dividersEl.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    doc.splits = moveSplit(currentSplits(), drag.i, splitAt(drag.i, event.clientX, event.clientY)); scheduleDraw();
+  });
+  const endDrag = event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { i, start, handle } = drag; drag = null; handle.classList.remove('is-dragging');
+    commit(start); refresh(); const [a, b] = shares(currentSplits(), i); say(`Photo ${i + 1} ${a}%, photo ${i + 2} ${b}%`);
+  };
+  dividersEl.addEventListener('pointerup', endDrag); dividersEl.addEventListener('pointercancel', endDrag);
+  // Keys: arrows move the focused divider 1 % (Shift: 5 %), Home/End to its limits; one undo step per key press.
+  dividersEl.addEventListener('keydown', event => {
+    const handle = event.target.closest('[data-divider]'); if (!handle) return;
+    const i = Number(handle.dataset.divider), step = event.shiftKey ? .05 : .01, splits = currentSplits();
+    const delta = { ArrowLeft: -step, ArrowUp: -step, ArrowRight: step, ArrowDown: step, Home: -1, End: 1 }[event.key]; if (delta === undefined) return;
+    event.preventDefault();
+    change(d => { d.splits = moveSplit(splits, i, splits[i] + delta); });
+    const [a, b] = shares(currentSplits(), i); say(`Photo ${i + 1} ${a}%, photo ${i + 2} ${b}%`);
+  });
+
   const imageOf = index => cache.get(doc.slots[index]?.photoId)?.image || null;
 
   // ---------- Slots on the stage: a listbox of focusable boxes over the canvas ----------
@@ -639,6 +709,7 @@ export function createCollageMode(deps) {
       if (!active) return;
       active = false; generation++; if (running) running.stale = true;
       cancelAnimationFrame(frame); frame = 0; slider = null; gesture = null; pointers.clear();
+      if (drag) { drag.handle.classList.remove('is-dragging'); commit(drag.start); drag = null; }
       if (wheel) { clearTimeout(wheel.timer); commit(wheel.start); wheel = null; }
       if (!keepCache) { for (const entry of cache.values()) freeImage(entry.image); cache.clear(); }
       progress = { done: 0, total: 0 }; message = ''; syncStatus();

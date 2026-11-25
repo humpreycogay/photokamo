@@ -317,8 +317,15 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 ### Release 3: classic layouts
 
 #### Task 6: Diptych and triptych
-- [ ] 2 and 3 photos, horizontal and vertical, draggable dividers (`splits`; keyboard: focus divider, arrows move 1 %); min slot 15 %
-- [ ] Border option (width, colour); per-slot caption space under each photo (gallery style)
+- [x] 2 and 3 photos, horizontal and vertical, draggable dividers (`splits`; keyboard: focus divider, arrows move 1 %); min slot 15 %
+- [x] Border option (width, colour); per-slot caption space under each photo (gallery style)
+
+*Done:*
+- **Layout (`layout.js`):** one-row and one-column grids (2 side by side, 2 stacked, 3 columns, 3 rows; `splitAxis`) take their track sizes from `doc.splits`, the divider positions as fractions of the room left after margins and gutters. `clampSplits`/`moveSplit` keep every photo ≥ 15 %. Gutters stay exact because the tracks still come from `splitTracks`. Changing layout resets the dividers. `captionSpace` keeps a band of paper under each photo (7 % of the short edge, at most 35 % of the cell) as `slot.caption` for Task 7. Grids can have a `border` (stroked like style prints).
+- **Stage:** each divider is a `role="separator"` handle (44 px target, aria-valuenow/min/max, aria-valuetext "Photo 1 42%, photo 2 58%") over its gutter. A drag is one undo step. Arrows move 1 % (Shift 5 %) and Home/End go to the limits, one undo step per key. The status line reads the shares.
+- **Panel:** the Prints section is "Borders" for grids (width, default off; colour) with "Space for captions under each photo". Switching between grids and styles resets the border. The preview draws a faint bar where each caption will go; the export leaves paper.
+- **Checks:** `collage-check.mjs` 9 453 checks: split axes and defaults, clamp/move goldens, 40 random splits × 4 templates × 2 sizes (tracks add up exactly, gutters exact, tracks follow the splits within 1 px, none under 15 %), and caption bands for every grid (photo + band = the cell, band directly under the photo, never overlapping). In Chrome: drag 33 → 19/48 %, one Ctrl+Z → 33 %; dragging past either edge stops at 15/85 %; keys +1 % and +5 % → 39/27 %; Home → 15 %; 3 rows gets horizontal dividers; JPEG Share export 1620 × 1080 with caption bands; no console errors.
+- **Not run:** phones, Safari, Firefox.
 
 **Check:** drag a divider (one undo), keyboard divider, both orientations, export.
 **Done when:** gutters stay exact while dividers move; captions never overlap photos.

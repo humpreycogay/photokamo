@@ -9,7 +9,7 @@
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
-  <link rel="stylesheet" href="css/styles.css?v=2026-11-25j">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25k">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -179,6 +179,7 @@
         <div class="collage-sheet" id="collageSheet">
           <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
           <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
+          <div class="collage-dividers" id="collageDividers"></div>
         </div>
         <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot, Enter on an empty slot adds a photo. Drag a photo onto another to swap them.</p>
       </div>
@@ -509,6 +510,8 @@
             <h3 class="collage-label" id="collagePrintsTitle">Prints</h3>
             <div class="slider-row"><label class="slider-label" for="collageBorder"><span>Border</span><output id="collageBorderOutput" for="collageBorder">0.5%</output></label><input id="collageBorder" type="range" min="0" max="2" step="0.1"></div>
             <div class="paper-swatches" id="collageBorderColor" role="radiogroup" aria-label="Border colour"></div>
+            <label class="check-row" id="collageCaptionRow"><input type="checkbox" id="collageCaptionSpace" aria-describedby="collageCaptionHint"> Space for captions under each photo</label>
+            <p class="collage-hint" id="collageCaptionHint">Leaves paper under every photo for its caption.</p>
           </div>
           <div class="collage-sticker" id="collageSticker" hidden>
             <h3 class="collage-label" id="collageStickerTitle">Sticker</h3>

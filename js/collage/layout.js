@@ -25,16 +25,53 @@ const px = (fraction, short) => Math.max(0, Math.round((fraction || 0) * short))
 const slot = (index, rect, extra = {}) => ({ index, ...rect, rotate: 0, z: 0, radius: 0, shape: null, shadow: false, ...extra });
 const cornerRadius = (radius, rect) => Math.min(radius, Math.floor(Math.min(rect.w, rect.h) / 2));
 
-/** Grid: `cols`/`rows` are relative track sizes; `cells` are [col, row, colSpan = 1, rowSpan = 1]. */
-export function layoutGrid(template, width, height, { gutter = 0, margin = 0, radius = 0 } = {}) {
+// ---------- Diptych / triptych dividers (Task 6) ----------
+export const MIN_SPLIT = .15; // no photo narrower than 15 % of the room
+/** The axis a grid's dividers move along: 'x' for one row of columns, 'y' for one column of rows, else null. */
+export const splitAxis = template => (template?.kind !== 'grid' ? null
+  : template.rows.length === 1 && template.cols.length > 1 ? 'x' : template.cols.length === 1 && template.rows.length > 1 ? 'y' : null);
+/** Divider positions (cumulative, 0–1 of the room left after margins and gutters) as given by the template. */
+export function defaultSplits(template) {
+  const weights = splitAxis(template) === 'x' ? template.cols : template.rows, total = weights.reduce((a, b) => a + b, 0);
+  let sum = 0; return weights.slice(0, -1).map(w => (sum += w) / total);
+}
+/** `splits` made valid for `count` tracks: ascending, each track ≥ MIN_SPLIT; null when they don't fit. */
+export function clampSplits(splits, count) {
+  if (!Array.isArray(splits) || splits.length !== count - 1 || !splits.every(Number.isFinite)) return null;
+  const out = [...splits];
+  for (let i = 0; i < out.length; i++) out[i] = Math.min(Math.max(out[i], (i ? out[i - 1] : 0) + MIN_SPLIT), 1 - MIN_SPLIT * (out.length - i));
+  return out;
+}
+/** Moves divider `i` to `value` (0–1), keeping every track ≥ MIN_SPLIT; the others stay. */
+export function moveSplit(splits, i, value) {
+  const lo = (i ? splits[i - 1] : 0) + MIN_SPLIT, hi = (i < splits.length - 1 ? splits[i + 1] : 1) - MIN_SPLIT;
+  const out = [...splits]; out[i] = Math.round(Math.min(hi, Math.max(lo, value)) * 1e4) / 1e4; return out;
+}
+const toWeights = splits => [...splits, 1].map((v, i) => v - (i ? splits[i - 1] : 0));
+// Caption space under each photo (gallery style): this fraction of the short edge, at most this share of a cell.
+export const CAPTION_SPACE = .07, CAPTION_MAX = .35;
+
+/** Grid: `cols`/`rows` are relative track sizes; `cells` are [col, row, colSpan = 1, rowSpan = 1]. One-row and
+ *  one-column grids take their track sizes from `splits` when set (dividers). `captionSpace` keeps a band of paper
+ *  under each photo (slot.caption); `border` { width (fraction of the short edge), color } outlines each photo. */
+export function layoutGrid(template, width, height, { gutter = 0, margin = 0, radius = 0, splits = null, captionSpace = false, border = null } = {}) {
   const short = Math.min(width, height), m = px(margin, short), g = px(gutter, short), r = px(radius, short);
-  const cols = splitTracks(m, width - 2 * m, template.cols, g), rows = splitTracks(m, height - 2 * m, template.rows, g);
+  const axis = splitAxis(template), tracks = axis === 'x' ? template.cols.length : template.rows.length;
+  const valid = axis ? clampSplits(splits, tracks) : null;
+  const colWeights = valid && axis === 'x' ? toWeights(valid) : template.cols, rowWeights = valid && axis === 'y' ? toWeights(valid) : template.rows;
+  const cols = splitTracks(m, width - 2 * m, colWeights, g), rows = splitTracks(m, height - 2 * m, rowWeights, g);
+  const line = border?.width > 0 ? { width: Math.max(1, border.width * short), color: border.color } : null;
   const slots = template.cells.map(([col, row, colSpan = 1, rowSpan = 1], index) => {
     const first = cols[col], last = cols[col + colSpan - 1], top = rows[row], bottom = rows[row + rowSpan - 1];
     const rect = { x: first.start, y: top.start, w: last.start + last.size - first.start, h: bottom.start + bottom.size - top.start };
-    return slot(index, rect, { radius: cornerRadius(r, rect) });
+    let caption = null;
+    if (captionSpace) {
+      const band = Math.min(px(CAPTION_SPACE, short), Math.floor(rect.h * CAPTION_MAX));
+      caption = { x: rect.x, y: rect.y + rect.h - band, w: rect.w, h: band }; rect.h -= band;
+    }
+    return slot(index, rect, { radius: cornerRadius(r, rect), caption, border: line });
   });
-  return { width, height, margin: m, gutter: g, cols, rows, slots };
+  return { width, height, margin: m, gutter: g, cols, rows, axis, slots };
 }
 
 /** Free: slots in normalised sheet coordinates { x, y, w, h, rotate, z, shape, shadow, border }; margin, gutter and

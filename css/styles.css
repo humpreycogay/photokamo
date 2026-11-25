@@ -1305,6 +1305,17 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-sublabel span { font-weight:400; }
 #collageTemplates, #collageStyles { margin-bottom:16px; }
 #collageBorderColor { margin:0 0 6px; }
+#collageCaptionRow[hidden], #collageCaptionHint[hidden] { display:none; }
+/* Dividers (Task 6): a 44 px handle over each gutter of a diptych/triptych */
+.collage-dividers { position:absolute; inset:0; pointer-events:none; z-index:20; }
+.collage-divider { position:absolute; display:grid; place-items:center; pointer-events:auto; touch-action:none; outline:none; }
+.collage-divider[aria-orientation=vertical] { width:var(--tap); margin-left:calc(var(--tap) / -2); cursor:col-resize; }
+.collage-divider[aria-orientation=horizontal] { height:var(--tap); margin-top:calc(var(--tap) / -2); cursor:row-resize; }
+.collage-divider::after { content:""; border-radius:999px; background:var(--text); box-shadow:0 0 0 1px var(--bg), 0 1px 4px rgba(12,12,11,.5); }
+.collage-divider[aria-orientation=vertical]::after { width:6px; height:min(56px, 40%); }
+.collage-divider[aria-orientation=horizontal]::after { width:min(56px, 40%); height:6px; }
+.collage-divider:hover::after, .collage-divider.is-dragging::after { background:var(--accent); }
+.collage-divider:focus-visible::after { background:var(--accent); box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .collage-aspect-hint { margin:-14px 0 18px; }
 .collage-aspects button:disabled { color:var(--text-muted); cursor:default; }
 .collage-sticker { margin-top:6px; padding-top:16px; border-top:1px solid var(--line); }

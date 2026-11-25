@@ -99,6 +99,39 @@ for (const t of templates.filter(t => t.kind === 'grid')) {
   check(free.slots[0].rotate === -4 && free.slots[0].z === 1, 'free slot keeps rotate and z');
 }
 
+// ---------- Dividers and caption space (Task 6) ----------
+{
+  const { splitAxis, defaultSplits, clampSplits, moveSplit, MIN_SPLIT } = await import(`${repo}/js/collage/layout.js`);
+  const axes = Object.fromEntries(templates.filter(t => splitAxis(t)).map(t => [t.id, splitAxis(t)]));
+  golden('split axes', axes, { 'grid-2-side': 'x', 'grid-2-stack': 'y', 'grid-3-cols': 'x', 'grid-3-rows': 'y' });
+  golden('default splits', [defaultSplits(byId('grid-2-side')), defaultSplits(byId('grid-3-cols')).map(v => +v.toFixed(4))], [[.5], [.3333, .6667]]);
+  golden('clampSplits', [clampSplits([.05], 2), clampSplits([.5, .55], 3), clampSplits([.9, .95], 3), clampSplits([.5], 3)], [[MIN_SPLIT], [.5, .65], [.7, .85], null]);
+  golden('moveSplit', [moveSplit([.3, .6], 0, .5), moveSplit([.3, .6], 1, .2), moveSplit([.5], 0, 2)], [[.45, .6], [.3, .45], [.85]]);
+  // Gutters and margins stay exact while dividers move; tracks follow the splits within 1 px.
+  for (const id of Object.keys(axes)) for (const [width, height] of [[1500, 1000], [1001, 1499]]) {
+    const t = byId(id), n = (axes[id] === 'x' ? t.cols : t.rows).length;
+    for (let trial = 0; trial < 40; trial++) {
+      const raw = Array.from({ length: n - 1 }, (_, i) => (i + 1) / n + (Math.sin(trial * 7 + i) * .3));
+      const splits = clampSplits(raw.sort((a, b) => a - b), n), spacing = { gutter: .02, margin: .04, splits };
+      const layout = layoutTemplate(t, width, height, spacing), tracks = axes[id] === 'x' ? layout.cols : layout.rows, size = axes[id] === 'x' ? width : height;
+      const name = `${id} ${width}×${height} splits ${splits.map(v => v.toFixed(3))}`;
+      check(2 * layout.margin + tracks.reduce((a, tr) => a + tr.size, 0) + layout.gutter * (n - 1) === size, `${name}: tracks don't add up`);
+      check(tracks.every((tr, i) => !i || tr.start === tracks[i - 1].start + tracks[i - 1].size + layout.gutter), `${name}: gutter not exact`);
+      const room = size - 2 * layout.margin - layout.gutter * (n - 1);
+      check(splits.every((sp, i) => Math.abs(tracks[i].start + tracks[i].size - layout.margin - i * layout.gutter - sp * room) <= 1), `${name}: tracks don't follow the splits`);
+      check(tracks.every(tr => tr.size >= Math.floor(MIN_SPLIT * room) - 1), `${name}: a track under 15 %`);
+    }
+  }
+  // Caption space: photo + band = the cell, band under the photo, never overlapping it, every grid.
+  for (const t of templates.filter(t => t.kind === 'grid')) {
+    const plain = layoutTemplate(t, 1200, 900, { gutter: .02, margin: .04 }), cap = layoutTemplate(t, 1200, 900, { gutter: .02, margin: .04, captionSpace: true });
+    cap.slots.forEach((s, i) => {
+      const p = plain.slots[i], c = s.caption;
+      check(c && s.x === p.x && s.y === p.y && s.w === p.w && c.x === p.x && c.w === p.w && c.y === s.y + s.h && s.h + c.h === p.h && c.h > 0 && s.h > c.h, `${t.id} slot ${i} caption band ${JSON.stringify(c)} vs photo ${[s.x, s.y, s.w, s.h]}`);
+    });
+  }
+}
+
 // ---------- Shaped templates (Task 5) ----------
 {
   const { paddedAspect, stickerPad } = await import(`${repo}/js/collage/layout.js`);
