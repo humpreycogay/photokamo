@@ -1358,6 +1358,12 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .strip-collage[hidden] { display:none; }
 .collage-sheet { position:relative; }
 .collage-slots { position:absolute; inset:0; touch-action:none; user-select:none; -webkit-user-select:none; }
+.collage-text-handles { position:absolute; inset:0; pointer-events:none; touch-action:none; user-select:none; -webkit-user-select:none; }
+.collage-text-handle { position:absolute; box-sizing:border-box; min-width:20px; min-height:20px; padding:0; border:1px dashed transparent; border-radius:3px; background:transparent; pointer-events:auto; cursor:grab; }
+.collage-text-handle:hover,
+.collage-text-handle[aria-pressed=true] { border-color:var(--accent); }
+.collage-text-handle:active { cursor:grabbing; }
+.collage-text-handle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .collage-slot { position:absolute; display:grid; place-items:center; cursor:grab; outline-offset:2px; }
 .collage-slot:active { cursor:grabbing; }
 .collage-slot[aria-selected=true] { box-shadow:inset 0 0 0 3px var(--accent); }

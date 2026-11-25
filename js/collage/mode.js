@@ -6,7 +6,8 @@
 //   onHistory() after the undo/redo state changes.
 import { templates, templateById, slotCount } from './templates.js';
 import { layoutTemplate, paddedAspect, stickerPad, splitAxis, defaultSplits, clampSplits, moveSplit } from './layout.js';
-import { drawCollage, sheetPath, slotPath, drawOrder } from './render.js';
+import { drawCollage, sheetPath, slotPath, drawOrder, collageTextRect } from './render.js';
+import { measureTextLayer } from '../renderer.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { unrotatePoint } from './scrapbook.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
@@ -21,6 +22,13 @@ const percent = value => `${Math.round(value * 1000) / 10}%`;
 const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+/** Applies a stage drag in CSS pixels to a text layer's normalized target position. */
+export function moveCollageText(text, rect, dx, dy, pixelsPerCssPixel = 1) {
+  text.x = clamp(text.x + dx * pixelsPerCssPixel / rect.width, 0, 1);
+  text.y = clamp(text.y + dy * pixelsPerCssPixel / rect.height, 0, 1);
+  return text;
+}
 
 /** The template that fits `count` photos best: grids through 9, then the 36-frame 35 mm contact sheet. */
 export function templateFor(count) {
@@ -38,7 +46,7 @@ export function createCollageMode(deps) {
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
   const prints = { box: byId('collagePrints'), title: byId('collagePrintsTitle'), border: byId('collageBorder'), output: byId('collageBorderOutput'), colors: byId('collageBorderColor'),
     captionRow: byId('collageCaptionRow'), captionHint: byId('collageCaptionHint'), caption: byId('collageCaptionSpace') };
-  const dividersEl = byId('collageDividers');
+  const dividersEl = byId('collageDividers'), textHandlesEl = byId('collageTextHandles');
   const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
   const filmUi = { box: byId('collageFilm'), base: byId('collageFilmBase'), stock: byId('collageFilmStock'), date: byId('collageFilmDate'), start: byId('collageFilmStart'), mark: byId('collageFilmMark'), frame: byId('collageFilmMarkFrame') };
@@ -52,7 +60,7 @@ export function createCollageMode(deps) {
     move: byId('collageMove'), photos: byId('collagePhotos'), add: byId('collageAddPhoto'), empty: byId('collageEmpty'), edit: byId('collageEdit'), file: byId('collageFileInput') };
   let active = false, doc = null, docPhotos = '', undoStack = [], redoStack = [], frame = 0, slider = null, freeDragMode = 'pan';
   // The slot being edited (index into the layout) or null; the last drawn layout and device px per CSS px.
-  let selected = null, view = { layout: null, k: 1 }, gesture = null, wheel = null, photosKey = '';
+  let selected = null, view = { layout: null, k: 1 }, gesture = null, textGesture = null, wheel = null, photosKey = '';
   const pointers = new Map();
   // Slot renders: photoId → { key (settings JSON), image, edge, sharp }. Only photos in visible slots keep one.
   const cache = new Map(), failed = new Set();
@@ -518,7 +526,51 @@ export function createCollageMode(deps) {
     syncDividers();
     if (layout.slots.some(slot => slot.visible)) drawShapedHighlight(ctx, layout);
     syncSlots();
+    syncTextHandles(ctx);
   }
+
+  /** Transparent DOM handles mirror the canvas text boxes, making each rendered text layer directly draggable. */
+  function syncTextHandles(ctx) {
+    const boxes = new Map();
+    for (const text of doc.text || []) {
+      const rect = collageTextRect(doc, view.layout, text);
+      if (!rect) continue;
+      const measured = measureTextLayer(ctx, rect, { ...text, font: deps.textFont(text.font) });
+      if (measured) boxes.set(text.id, measured.box);
+    }
+    while (textHandlesEl.children.length > boxes.size) textHandlesEl.lastElementChild.remove();
+    while (textHandlesEl.children.length < boxes.size) {
+      const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'collage-text-handle';
+      textHandlesEl.append(handle);
+    }
+    [...boxes].forEach(([id, box], i) => {
+      const handle = textHandlesEl.children[i], text = doc.text.find(layer => layer.id === id);
+      const pad = 6 * view.k, w = Math.max(20 * view.k, box.w + 2 * pad), h = Math.max(20 * view.k, box.h + 2 * pad);
+      handle.dataset.text = id; handle.setAttribute('aria-label', `Move text: ${String(text.content).split('\n')[0] || 'Untitled'}`);
+      handle.setAttribute('aria-pressed', id === textUi.selected);
+      Object.assign(handle.style, { left: `${(box.x + box.w / 2 - w / 2) / view.k}px`, top: `${(box.y + box.h / 2 - h / 2) / view.k}px`, width: `${w / view.k}px`, height: `${h / view.k}px` });
+    });
+  }
+
+  textHandlesEl.addEventListener('pointerdown', event => {
+    const handle = event.target.closest('[data-text]'); if (!handle || event.button > 0) return;
+    const text = doc.text.find(layer => layer.id === handle.dataset.text); if (!text) return;
+    event.preventDefault(); finishLiveText(); textUi.selected = text.id; syncTextPanel(); scheduleDraw();
+    try { handle.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    textGesture = { id: event.pointerId, textId: text.id, x: event.clientX, y: event.clientY, start: cloneDoc(doc), position: { x: text.x, y: text.y } };
+  });
+  textHandlesEl.addEventListener('pointermove', event => {
+    if (!textGesture || event.pointerId !== textGesture.id) return;
+    const text = doc.text.find(layer => layer.id === textGesture.textId), rect = text && collageTextRect(doc, view.layout, text);
+    if (!rect) return;
+    text.x = textGesture.position.x; text.y = textGesture.position.y;
+    moveCollageText(text, rect, event.clientX - textGesture.x, event.clientY - textGesture.y, view.k); scheduleDraw();
+  });
+  const endTextDrag = event => {
+    if (!textGesture || event.pointerId !== textGesture.id) return;
+    const { start } = textGesture; textGesture = null; commit(start); refresh(); say('Text moved');
+  };
+  textHandlesEl.addEventListener('pointerup', endTextDrag); textHandlesEl.addEventListener('pointercancel', endTextDrag);
   /** Shaped slots can't use the CSS box ring (their boxes are clipped to the slot's shape): the selected slot and the
    *  drop target get a 3 px accent ring inside their visible outline on the preview canvas (never exported). */
   function drawShapedHighlight(ctx, layout) {
@@ -852,6 +904,7 @@ export function createCollageMode(deps) {
       if (!active) return;
       active = false; generation++; if (running) running.stale = true;
       cancelAnimationFrame(frame); frame = 0; slider = null; gesture = null; pointers.clear();
+      if (textGesture) { commit(textGesture.start); textGesture = null; }
       if (drag) { drag.handle.classList.remove('is-dragging'); commit(drag.start); drag = null; }
       if (wheel) { clearTimeout(wheel.timer); commit(wheel.start); wheel = null; }
       if (!keepCache) { for (const entry of cache.values()) freeImage(entry.image); cache.clear(); }

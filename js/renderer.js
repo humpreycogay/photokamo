@@ -297,25 +297,32 @@ export function textFont(text, px) {
   if (text.font === 'playfair') return `italic 600 ${px}px ${fontStack('playfair')}`;
   return `${text.italic ? 'italic ' : ''}${text.bold ? 700 : 400} ${px}px ${fontStack(text.font)}`;
 }
+/** Measures one text layer inside `rect`; returns its drawing details and visual box, or null for empty text. */
+export function measureTextLayer(ctx, rect, text) {
+  const lines = String(text.content || '').split('\n');
+  if (!lines.some(line => line.trim())) return null;
+  const px = Math.max(4, text.size * Math.min(rect.width, rect.height)), lineHeight = px * 1.2;
+  ctx.save(); ctx.font = textFont(text, px);
+  const width = Math.max(...lines.map(line => ctx.measureText(line).width)), height = lineHeight * lines.length;
+  ctx.restore();
+  const cx = rect.x + text.x * rect.width, cy = rect.y + text.y * rect.height;
+  return { id: text.id, lines, px, lineHeight, width, height, cx, cy, box: { id: text.id, x: cx - width / 2, y: cy - height / 2, w: width, h: height } };
+}
 /** Draws text layers inside `rect` (the photo area) and returns each one's box { id, x, y, w, h }. */
 export function drawTexts(ctx, rect, texts = []) {
-  const boxes = [], short = Math.min(rect.width, rect.height);
+  const boxes = [];
   for (const text of texts) {
-    const lines = String(text.content || '').split('\n');
-    if (!lines.some(line => line.trim())) continue;
-    const px = Math.max(4, text.size * short), lineHeight = px * 1.2;
-    ctx.save();
-    ctx.font = textFont(text, px);
+    const measured = measureTextLayer(ctx, rect, text); if (!measured) continue;
+    const { lines, px, lineHeight, width, height, cx, cy, box } = measured;
+    ctx.save(); ctx.font = textFont(text, px);
     ctx.textBaseline = 'middle'; ctx.textAlign = text.align || 'center';
-    const width = Math.max(...lines.map(line => ctx.measureText(line).width)), height = lineHeight * lines.length;
-    const cx = rect.x + text.x * rect.width, cy = rect.y + text.y * rect.height;
     const x = text.align === 'left' ? cx - width / 2 : text.align === 'right' ? cx + width / 2 : cx;
     ctx.globalAlpha = text.opacity ?? 1;
     if (text.shadow) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = px * .2; ctx.shadowOffsetY = px * .05; }
     ctx.fillStyle = text.color || '#ffffff';
     lines.forEach((line, i) => ctx.fillText(line, x, cy - height / 2 + lineHeight * (i + .5)));
     ctx.restore();
-    boxes.push({ id: text.id, x: cx - width / 2, y: cy - height / 2, w: width, h: height });
+    boxes.push(box);
   }
   return boxes;
 }

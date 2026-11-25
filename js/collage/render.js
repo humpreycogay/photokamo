@@ -118,6 +118,15 @@ export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
 /** Slots in drawing order (z, then layout order). */
 export const drawOrder = layout => [...layout.slots].sort((a, b) => a.z - b.z || a.index - b.index);
 
+/** The rectangle a collage text layer uses. Kept public so stage handles and rendering share the same geometry. */
+export function collageTextRect(doc, layout, text) {
+  if (text.target === 'sheet') return { x: 0, y: 0, width: layout.width, height: layout.height };
+  const index = doc.slots.findIndex(slot => slot.id === text.target), slot = layout.slots[index];
+  if (!slot) return null;
+  const box = text.caption && slot.caption ? slot.caption : slot;
+  return { x: box.x, y: box.y, width: box.w, height: box.h };
+}
+
 const stripSpace = (ctx, strip, draw) => {
   const cx = strip.x + strip.w / 2, cy = strip.y + strip.h / 2;
   ctx.save(); ctx.translate(cx + strip.dx * strip.w, cy + strip.dy * strip.h); ctx.rotate(strip.angle * Math.PI / 180); ctx.translate(-cx, -cy); draw(); ctx.restore();
@@ -185,15 +194,9 @@ export function drawContactMarks(ctx, doc, layout) {
 /** Draws collage text with the existing photo text renderer. Sheet layers use the full canvas; slot layers use the
  * stable slot id, so swapping photos does not move captions between slots. Shaped sheets clip text by default. */
 export function drawCollageTexts(ctx, doc, layout, fontFor = null) {
-  const sheet = { x: 0, y: 0, width: layout.width, height: layout.height };
   for (const text of doc.text || []) {
-    let rect = sheet;
-    if (text.target !== 'sheet') {
-      const index = doc.slots.findIndex(slot => slot.id === text.target), slot = layout.slots[index];
-      if (!slot) continue;
-      const box = text.caption && slot.caption ? slot.caption : slot;
-      rect = { x: box.x, y: box.y, width: box.w, height: box.h };
-    }
+    const rect = collageTextRect(doc, layout, text);
+    if (!rect) continue;
     ctx.save();
     if (layout.shaped && !text.outsideShape) ctx.clip(sheetPath(layout.paper), 'evenodd');
     drawTexts(ctx, rect, [{ ...text, font: fontFor ? fontFor(text.font) : text.font }]);

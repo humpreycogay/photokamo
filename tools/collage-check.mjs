@@ -13,6 +13,16 @@ const check = (ok, message) => { checks++; if (!ok) fail(message); };
 const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const byId = id => templates.find(t => t.id === id);
 
+// ---------- Draggable text position ----------
+{
+  const { moveCollageText } = await import(`${repo}/js/collage/mode.js`);
+  const text = { x: .5, y: .5 }, rect = { width: 400, height: 200 };
+  moveCollageText(text, rect, 20, -10, 2);
+  check(text.x === .6 && text.y === .4, `text drag normalizes to its target ${JSON.stringify(text)}`);
+  moveCollageText(text, rect, 1000, -1000, 1);
+  check(text.x === 1 && text.y === 0, `text drag stays on its target ${JSON.stringify(text)}`);
+}
+
 // ---------- Templates ----------
 const ids = new Set();
 for (const t of templates) {
