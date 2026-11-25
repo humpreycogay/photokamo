@@ -2273,11 +2273,13 @@ function syncStrip() {
   elements.mobileApplyButton.textContent = `Apply to ${others}`;
   elements.mobileApplyButton.setAttribute('aria-label', `Apply to ${plural(others, 'other selected photo')}`);
   elements.topbarTitle.textContent = collage.active ? 'Collage' : selected > 1 ? `${selected} selected` : activePhoto()?.name || '';
-  // Make collage: ordinary layouts hold 2–9; larger selections open on a contact sheet (up to 36).
+  // Keep collage creation discoverable; with one photo, the button explains that another is needed.
+  // Ordinary layouts hold 2–9; larger selections open on a contact sheet (up to 36).
   const collageButton = $('#collageButton');
-  collageButton.hidden = selected < 2 || selected > CONTACT_MAX;
-  collageButton.setAttribute('aria-label', `Make collage of ${selected} selected photos`);
-  $('#collageMenuItem').hidden = count < 2;
+  const collageCount = selected >= 2 ? Math.min(selected, CONTACT_MAX) : Math.min(count, CONTACT_MAX);
+  collageButton.hidden = !count;
+  collageButton.setAttribute('aria-label', count < 2 ? 'Create collage; add at least one more photo' : `Create collage with ${collageCount} ${selected >= 2 ? 'selected ' : ''}photos`);
+  $('#collageMenuItem').hidden = false;
   $('#liveEdit').checked = app.liveEdit;
   // Export N / Save N when several photos are selected (batch export)
   const batchCount = isBatchExport() && !collage.active ? selected : 0;
@@ -2366,7 +2368,7 @@ function collageCandidates() {
 function enterCollage({ resume = false } = {}) {
   if (collage.active || !state.image) return;
   const ids = resume && collage.hasDocument ? null : collageCandidates(), selected = selectedPhotos().length;
-  if (ids && ids.length < 2) { toast('Open at least 2 photos to make a collage.'); return; }
+  if (ids && ids.length < 2) { toast('Add at least one more photo to create a collage.'); elements.fileInput.click(); return; }
   if (ids && selected > CONTACT_MAX) toast(`A contact sheet holds up to ${CONTACT_MAX} photos: using the first ${CONTACT_MAX} selected.`);
   setCollageReturn(false);
   const current = activePhoto(); if (current) current.settings = snapshot(); // slots read each photo's settings
