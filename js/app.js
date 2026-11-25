@@ -78,7 +78,7 @@ const collage = createCollageMode({
   onHistory: () => updateButtons()
 });
 const collageExport = createCollageExport({
-  doc: () => collage.snapshot(), photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
+  doc: () => collage.snapshot(), update: mutator => collage.update(mutator), paperColors, photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
   photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
   renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => collageEngines.add(module), onProgress }),
   download: file => downloadBlob(file, file.name)

@@ -270,11 +270,17 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 ### Release 2: shaped transparent collages
 
 #### Task 4: Transparency foundation
-- [ ] `sheet.background: 'transparent'` for any template ("Paper: None"); stage shows a checkerboard behind transparent areas (CSS pattern built from tokens), with a backdrop switch **Checker / Light / Dark** (preview only, never exported)
-- [ ] Format rules: PNG and WebP keep alpha; choosing JPEG shows "JPEG has no transparency — background filled with [colour]" and a flatten colour picker; WebP fallback to PNG handled by V8
-- [ ] Template thumbnails show the checkerboard where transparent
-- [ ] Hit testing ignores transparent areas (tap between slots selects nothing)
-- [ ] Text contrast hint uses the current backdrop when the background is transparent ("Contrast depends on where you place it")
+- [x] `sheet.background: 'transparent'` for any template ("Paper: None"); stage shows a checkerboard behind transparent areas (CSS pattern built from tokens), with a backdrop switch **Checker / Light / Dark** (preview only, never exported)
+- [x] Format rules: PNG and WebP keep alpha; choosing JPEG shows "JPEG has no transparency — background filled with [colour]" and a flatten colour picker; WebP fallback to PNG handled by V8
+- [x] Template thumbnails show the checkerboard where transparent
+- [x] Hit testing ignores transparent areas (tap between slots selects nothing)
+- [ ] ~~Text contrast hint uses the current backdrop when the background is transparent~~ → moved to Task 8 (collages have no text layers yet)
+
+*Done:*
+- **Code:** Paper: None swatch (checkerboard), backdrop switch remembered per device (`photokamo:collage-backdrop`), checkerboard thumbnails, tap on gutters/margins clears the selection. The export sheet defaults to PNG for transparent collages (until a format is picked), shows the JPEG note + flatten swatches/custom colour (`doc.flatten`, one undo step), and `drawPaper` fills the flatten colour *under* the photos, so JPEG edges blend with it instead of black.
+- **Found:** lossy WebP turns transparent edges dark: the black stored under alpha 0 bleeds in (edge pixels up to 63/255 off, e.g. 177,70,56 for 200,60,40). Transparent collages now encode WebP at quality 1, which Chrome writes lossless (exact edges); the quality slider hides and the note says so.
+- **Fixture:** `tools/collage-alpha.html` draws a transparent 2 × 2 grid through `drawPaper`/`drawSlot` (one slot rotated + zoomed, one turned + flipped), encodes, decodes and checks every pixel. Chrome, 540/1080/2400 px, corners 0/4/10 %: PNG and WebP alpha exactly 0 outside and 255 inside (e.g. 1 579 584 + 4 142 896 px at 2400), edge colour after un-premultiplying within 2/255 (alpha ≥ 64); JPEG equals the flatten colour (± 16, ≥ 8 px from edges), never black.
+- **Not run here:** Safari and Firefox (Playwright builds missing). Safari can't encode WebP (falls back to PNG, V8); Firefox's WebP at quality 1 still needs the fixture run.
 
 **Check:** grid with Paper: None → export PNG; open it in another app over a coloured background (gutters show through); JPEG export is filled with the flatten colour, not black; Safari, Chrome, Firefox.
 **Done when:** exported alpha is exactly 0 in gutters/margins and exactly 255 inside photo areas (pixel check on the fixture page), antialiased only along edges; no dark fringes on edges (premultiplied-alpha check: edge pixels' colour equals the photo colour within 2/255 after un-premultiplying).
@@ -304,6 +310,7 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 - [ ] Text layers on the sheet; `target` = sheet or slot (slot captions move with the slot, decision #3)
 - [ ] Presets: **Shared caption**, **Date** (today or typed; capture date waits for the metadata reader), **Slot captions**; on shaped collages, text is clipped by the shape unless "Outside shape" is chosen (then the canvas grows to fit)
 - [ ] Fonts, colour, alignment from the existing controls; fonts loaded before export (`ensureTextFonts`)
+- [ ] Text contrast hint uses the current backdrop when the background is transparent ("Contrast depends on where you place it") (moved from Task 4)
 
 **Check:** caption + date on a grid and on a heart; swapped photos leave slot captions in place; export matches preview.
 **Done when:** text positions within 1 px scaled; no font fallback in export.

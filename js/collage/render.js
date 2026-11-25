@@ -21,10 +21,13 @@ export function slotPath(slot) {
   return shapePath({ kind: 'rect' }, slot);
 }
 
-/** The sheet under the slots: cleared, then the paper colour unless the background is transparent. */
-export function drawPaper(ctx, doc, layout) {
+/** The sheet under the slots: cleared, then the paper colour. A transparent sheet stays clear (alpha 0), or is
+ *  filled with `flatten` for formats without alpha (JPEG): drawing the photos over it then composites them exactly
+ *  as over that colour, so edges never darken. */
+export function drawPaper(ctx, doc, layout, { flatten = null } = {}) {
   ctx.clearRect(0, 0, layout.width, layout.height);
-  if (doc.sheet.background === 'paper') { ctx.fillStyle = doc.paper.color; ctx.fillRect(0, 0, layout.width, layout.height); }
+  const fill = doc.sheet.background === 'paper' ? doc.paper.color : flatten;
+  if (fill) { ctx.fillStyle = fill; ctx.fillRect(0, 0, layout.width, layout.height); }
 }
 /** One laid-out slot: its photo clipped to the slot, or `emptyFill` (preview only) when it has none. */
 export function drawSlot(ctx, doc, slot, image, emptyFill = null) {

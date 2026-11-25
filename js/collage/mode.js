@@ -12,6 +12,7 @@ import { ASPECTS, SPACING, createDoc, fitSlots, cloneDoc, resetFraming, swapSlot
 
 const MAX_SLOT_EDGE = 1600; // preview renders: long edge cap per photo
 const HISTORY_LIMIT = 50;
+const BACKDROP_KEY = 'photokamo:collage-backdrop';
 const $ = (root, selector) => root.querySelector(selector);
 const percent = value => `${Math.round(value * 1000) / 10}%`;
 const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
@@ -30,6 +31,8 @@ export function createCollageMode(deps) {
   const list = document.getElementById('collageTemplates'), aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
+  const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
+  let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
   const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
     zoom: byId('collageZoom'), angle: byId('collageAngle'), rotate: byId('collageRotate'), flip: byId('collageFlip'), reset: byId('collageReset'),
     move: byId('collageMove'), photos: byId('collagePhotos'), add: byId('collageAddPhoto'), empty: byId('collageEmpty'), edit: byId('collageEdit'), file: byId('collageFileInput') };
@@ -60,7 +63,8 @@ export function createCollageMode(deps) {
   function buildPanel() {
     list.innerHTML = templates.map(t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`).join('');
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
-    paper.innerHTML = deps.paperColors.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('');
+    paper.innerHTML = deps.paperColors.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
+      + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
     // Layout listbox: selection follows focus (arrows, Home, End); click or Enter picks.
     const pickTemplate = option => {
       if (!option || option.getAttribute('aria-selected') === 'true') return;
@@ -81,7 +85,13 @@ export function createCollageMode(deps) {
       const [, w, h] = ASPECTS.find(([label]) => label === button.dataset.aspect);
       change(d => { d.aspect = { w, h }; d.aspectAuto = false; });
     });
-    radioGroup(paper, '[data-paper]', button => change(d => { d.paper.color = button.dataset.paper; }));
+    radioGroup(paper, '[data-paper]', button => {
+      const none = button.dataset.paper === 'none';
+      change(d => { d.sheet.background = none ? 'transparent' : 'paper'; if (!none) d.paper.color = button.dataset.paper; });
+      say(none ? 'Paper: none. The background is transparent in PNG and WebP.' : `Paper: ${button.title}`);
+    });
+    // Preview backdrop behind a transparent sheet (never exported); remembered on this device.
+    radioGroup(backdrops, '[data-backdrop]', button => { backdrop = button.dataset.backdrop; try { localStorage.setItem(BACKDROP_KEY, backdrop); } catch { /* this visit only */ } syncBackdrop(); });
     // Sliders: live while dragging or holding a key, one undo step per gesture (committed on change).
     for (const [key, input] of Object.entries(sliders)) {
       const spec = SPACING[key];
@@ -206,6 +216,12 @@ export function createCollageMode(deps) {
     buttons.forEach(button => { const on = button.getAttribute(attribute) === value; button.setAttribute('aria-checked', on); button.tabIndex = on ? 0 : -1; });
     if (!buttons.some(button => button.tabIndex === 0)) buttons[0].tabIndex = 0;
   }
+  function syncBackdrop() {
+    const transparent = doc?.sheet.background === 'transparent';
+    backdropRow.hidden = !transparent;
+    syncRadios(backdrops, 'data-backdrop', backdrop);
+    sheetEl.dataset.backdrop = transparent ? backdrop : '';
+  }
   function syncSliders() {
     for (const [key, input] of Object.entries(sliders)) {
       input.value = Math.round(doc[key] * 1000) / 10;
@@ -219,7 +235,8 @@ export function createCollageMode(deps) {
       option.setAttribute('aria-selected', selected); option.tabIndex = selected ? 0 : -1;
     }
     syncRadios(aspects, 'data-aspect', aspect ? aspect[0] : '');
-    syncRadios(paper, 'data-paper', doc.paper.color);
+    syncRadios(paper, 'data-paper', doc.sheet.background === 'transparent' ? 'none' : doc.paper.color);
+    syncBackdrop();
     syncSliders();
     syncSlotPanel();
     drawThumbs();
@@ -230,13 +247,18 @@ export function createCollageMode(deps) {
   /** Layout thumbnails at the current sheet aspect, in the panel's token colours. */
   function drawThumbs() {
     const style = getComputedStyle(document.documentElement), sheetColor = style.getPropertyValue('--line-strong').trim(), slotColor = style.getPropertyValue('--text-muted').trim();
+    const checkerLight = style.getPropertyValue('--raised').trim();
     const dpr = Math.min(2, devicePixelRatio || 1), box = 52, a = doc.aspect.w / doc.aspect.h;
     const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
     for (const option of list.querySelectorAll('[data-template]')) {
       const thumb = option.querySelector('canvas'), layout = layoutTemplate(templateById(option.dataset.template), w, h, { gutter: .06, margin: .06 });
       thumb.width = w; thumb.height = h; thumb.style.width = `${w / dpr}px`; thumb.style.height = `${h / dpr}px`;
       const ctx = thumb.getContext('2d');
-      ctx.fillStyle = sheetColor; ctx.fillRect(0, 0, w, h);
+      if (doc.sheet.background === 'transparent') { // checkerboard: see-through sheet
+        const cell = Math.max(2, Math.round(4 * dpr));
+        ctx.fillStyle = checkerLight; ctx.fillRect(0, 0, w, h); ctx.fillStyle = sheetColor;
+        for (let y = 0; y < h; y += cell) for (let x = (y / cell) % 2 ? cell : 0; x < w; x += cell * 2) ctx.fillRect(x, y, cell, cell);
+      } else { ctx.fillStyle = sheetColor; ctx.fillRect(0, 0, w, h); }
       ctx.fillStyle = slotColor; for (const s of layout.slots) ctx.fillRect(s.x, s.y, s.w, s.h);
     }
   }
@@ -299,7 +321,8 @@ export function createCollageMode(deps) {
   // Pointer: drag pans the photo inside its slot; dragging it onto another slot swaps them (drop); two fingers zoom.
   slotsEl.addEventListener('pointerdown', event => {
     const option = event.target.closest('[data-slot]');
-    if (!option || event.button > 0) return;
+    if (event.button > 0) return;
+    if (!option) { select(null); return; } // gutters, margins and transparent areas hold nothing
     const index = Number(option.dataset.slot);
     select(index);
     if (event.target.closest('.collage-slot-empty')) return; // its click opens the file picker (no capture, or click goes elsewhere)
@@ -497,6 +520,8 @@ export function createCollageMode(deps) {
       const option = slotsEl.children[selected]; select(null); option?.focus(); say('No photo selected');
       return true;
     },
+    /** One undo step of changes to the document from outside (the export sheet's flatten colour). */
+    update(mutator) { if (doc) change(mutator); },
     undo() { step(undoStack, redoStack, 'Undone'); },
     redo() { step(redoStack, undoStack, 'Redone'); },
     /** A photo's edit changed outside collage mode: its slot re-renders on the next pump. */

@@ -2,8 +2,11 @@
 // Photos render one at a time at the size their slot needs (film engines from full-size input, V1), are drawn and
 // freed at once; compositing runs on the main thread (V6). The file is prepared as soon as the sheet opens, so
 // Share can call navigator.share() while the tap still counts as a user gesture.
-// deps: doc() (a copy), photoById(id), photoSize(photo) → cropped { width, height },
-//   renderEdit(photo, { edge, onProgress }) → { image }, download(file), canShareFiles, isPhone(), toast(text).
+// deps: doc() (a copy), update(mutator) (one collage undo step), photoById(id), photoSize(photo) → cropped
+//   { width, height }, renderEdit(photo, { edge, onProgress }) → { image }, download(file), canShareFiles, isPhone(),
+//   toast(text), paperColors.
+// Transparency (Task 4): PNG and WebP keep a transparent sheet's alpha; JPEG has none, so it is filled with the
+// collage's `flatten` colour (never left to the encoder, which would turn it black).
 import { templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
 import { drawPaper, drawSlot, drawOrder } from './render.js';
@@ -43,12 +46,19 @@ export function createCollageExport(deps) {
     dialog: byId('collageExportDialog'), form: byId('collageExportForm'), summary: byId('collageExportSummary'), formats: byId('collageFormats'), sizes: byId('collageSizes'),
     shareDetail: byId('collageShareDetail'), fullDetail: byId('collageFullDetail'), printDetail: byId('collagePrintDetail'), printRow: byId('collagePrintRow'), paper: byId('collagePrintPaper'),
     limit: byId('collageLimit'), qualityGroup: byId('collageQualityGroup'), quality: byId('collageQuality'), qualityOutput: byId('collageQualityOutput'),
+    alpha: byId('collageAlpha'), alphaNote: byId('collageAlphaNote'), flattenRow: byId('collageFlattenRow'), flatten: byId('collageFlatten'),
+    flattenCustom: byId('collageFlattenCustom'), flattenCustomLabel: byId('collageFlattenCustomLabel'),
     progress: byId('collageProgress'), progressText: byId('collageProgressText'), progressCount: byId('collageProgressCount'), bar: byId('collageBar'), cancel: byId('collageCancel'),
     share: byId('collageShare'), download: byId('collageDownload'), status: byId('collageExportStatus')
   };
-  const options = { format: 'image/jpeg', size: null, paper: 'a4' };
+  const options = { format: 'image/jpeg', formatChosen: false, size: null, paper: 'a4' };
+  const flattenColors = [['#ffffff', 'White'], ...deps.paperColors.map(color => [color.hex, color.name])];
+  const colorName = hex => flattenColors.find(([value]) => value === hex)?.[1] || hex;
+  const transparent = doc => doc.sheet.background === 'transparent';
+  const flattenFor = (doc, format) => (transparent(doc) && format === 'image/jpeg' ? doc.flatten : null);
   let job = null, timer = 0, limit = 0;
 
+  ui.flatten.innerHTML = flattenColors.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-flatten="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
   ui.paper.innerHTML = PRINT_PAPERS.map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
   const photoSizeOf = fill => { const photo = deps.photoById(fill?.photoId); return photo ? deps.photoSize(photo) : null; };
   function sizes(doc = deps.doc()) {
@@ -60,13 +70,30 @@ export function createCollageExport(deps) {
     };
   }
   const chosen = (doc = deps.doc()) => sizes(doc)[options.size];
-  const qualityValue = () => (options.format === 'image/png' ? 1 : Number(ui.quality.value) / 100);
-  const exportKey = doc => JSON.stringify([doc, chosen(doc), options.format, qualityValue()]);
+  // Lossy WebP blends the black stored under transparent pixels into the edges (dark fringes, measured up to
+  // 63/255 in tools/collage-alpha.html); quality 1 makes the browser write lossless WebP, which keeps edges exact.
+  const losslessAlpha = doc => transparent(doc) && options.format === 'image/webp';
+  const qualityValue = (doc = deps.doc()) => (options.format === 'image/png' || losslessAlpha(doc) ? 1 : Number(ui.quality.value) / 100);
+  const exportKey = doc => JSON.stringify([doc, chosen(doc), options.format, qualityValue(doc)]);
+  function syncAlpha(doc) {
+    ui.alpha.hidden = !transparent(doc); if (ui.alpha.hidden) return;
+    const jpeg = options.format === 'image/jpeg';
+    ui.alphaNote.textContent = jpeg ? `JPEG has no transparency — background filled with ${colorName(doc.flatten)}.`
+      : `Transparent background kept${options.format === 'image/webp' ? ' (WebP saved lossless, so edges stay clean)' : ''}. Some apps add a background to transparent images when you share them.`;
+    ui.flattenRow.hidden = !jpeg;
+    ui.flatten.querySelectorAll('[data-flatten]').forEach(button => { const on = button.dataset.flatten === doc.flatten; button.setAttribute('aria-checked', on); button.tabIndex = on ? 0 : -1; });
+    const custom = !flattenColors.some(([hex]) => hex === doc.flatten);
+    if (custom) ui.flatten.querySelector('[data-flatten]').tabIndex = 0;
+    ui.flattenCustomLabel.classList.toggle('is-selected', custom);
+    ui.flattenCustomLabel.style.setProperty('--custom-color', doc.flatten); ui.flattenCustom.value = doc.flatten;
+  }
+  const setFlatten = hex => { deps.update(d => { d.flatten = hex; }); sync(); schedule(); };
 
   function sync() {
     const doc = deps.doc(), all = sizes(doc), template = templateById(doc.templateId);
     const count = slotCount(template), filled = doc.slots.slice(0, count).filter(fill => deps.photoById(fill.photoId)).length;
-    ui.summary.textContent = [`${template.name} · ${filled} photo${filled === 1 ? '' : 's'}`, `${doc.aspect.w}:${doc.aspect.h}`, filled < count ? `${count - filled} empty slot${count - filled === 1 ? '' : 's'} stay paper` : ''].filter(Boolean).join(' · ');
+    syncAlpha(doc);
+    ui.summary.textContent = [`${template.name} · ${filled} photo${filled === 1 ? '' : 's'}`, `${doc.aspect.w}:${doc.aspect.h}`, transparent(doc) ? 'transparent' : '', filled < count ? `${count - filled} empty slot${count - filled === 1 ? '' : 's'} stay ${transparent(doc) ? 'transparent' : 'paper'}` : ''].filter(Boolean).join(' · ');
     ui.formats.querySelectorAll('[data-format]').forEach(button => button.setAttribute('aria-pressed', button.dataset.format === options.format));
     ui.sizes.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === options.size));
     ui.shareDetail.textContent = `${all.share.width} × ${all.share.height}`;
@@ -80,7 +107,7 @@ export function createCollageExport(deps) {
       const dpi = options.size === 'print' ? ` (about ${Math.round(PRINT_DPI * Math.sqrt(size.width * size.height / (printSize(doc.aspect, options.paper).width * printSize(doc.aspect, options.paper).height)))} dpi)` : '';
       ui.limit.textContent = `Limited to ${megapixels(size.width, size.height)} on this device${dpi}.`;
     }
-    ui.qualityGroup.hidden = options.format === 'image/png';
+    ui.qualityGroup.hidden = options.format === 'image/png' || losslessAlpha(doc);
     const q = Number(ui.quality.value);
     ui.qualityOutput.value = `${q >= 90 ? 'High' : q >= 75 ? 'Medium' : 'Low'} · ${q}%`;
     ui.share.hidden = !deps.canShareFiles;
@@ -100,7 +127,7 @@ export function createCollageExport(deps) {
     const canvas = document.createElement('canvas'); canvas.width = size.width; canvas.height = size.height;
     const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('This device cannot make a canvas that large');
     const layout = layoutTemplate(template, size.width, size.height, doc);
-    drawPaper(ctx, doc, layout);
+    drawPaper(ctx, doc, layout, { flatten: flattenFor(doc, current.format) });
     const slots = drawOrder(layout).filter(slot => deps.photoById(doc.slots[slot.index].photoId));
     for (const [n, slot] of slots.entries()) {
       if (current.cancelled) throw cancelled();
@@ -120,7 +147,7 @@ export function createCollageExport(deps) {
     const doc = deps.doc(), key = exportKey(doc);
     if (job?.key === key && !job.cancelled && !job.error) return job.promise;
     if (job && !job.file) job.cancelled = true;
-    const current = job = { key, doc, size: chosen(doc), format: options.format, quality: qualityValue(), cancelled: false, file: null, error: null };
+    const current = job = { key, doc, size: chosen(doc), format: options.format, quality: qualityValue(doc), cancelled: false, file: null, error: null };
     current.promise = (async () => {
       const started = performance.now();
       const canvas = await renderSheet(current);
@@ -172,7 +199,14 @@ export function createCollageExport(deps) {
     }
   }
 
-  ui.formats.addEventListener('click', event => { const button = event.target.closest('[data-format]'); if (!button) return; options.format = button.dataset.format; sync(); schedule(); });
+  ui.formats.addEventListener('click', event => { const button = event.target.closest('[data-format]'); if (!button) return; options.format = button.dataset.format; options.formatChosen = true; sync(); schedule(); });
+  ui.flatten.addEventListener('click', event => { const button = event.target.closest('[data-flatten]'); if (button) setFlatten(button.dataset.flatten); });
+  ui.flatten.addEventListener('keydown', event => {
+    const delta = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key]; if (!delta) return;
+    const buttons = [...ui.flatten.querySelectorAll('[data-flatten]')], next = buttons[(Math.max(0, buttons.indexOf(document.activeElement)) + delta + buttons.length) % buttons.length];
+    event.preventDefault(); next.focus(); setFlatten(next.dataset.flatten);
+  });
+  ui.flattenCustom.addEventListener('change', () => setFlatten(ui.flattenCustom.value));
   ui.sizes.addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button) return; options.size = button.dataset.size; sync(); schedule(); });
   ui.paper.addEventListener('change', () => { options.paper = ui.paper.value; sync(); schedule(); });
   ui.quality.addEventListener('input', () => { sync(); schedule(500); });
@@ -187,6 +221,7 @@ export function createCollageExport(deps) {
     open() {
       limit ||= canvasLimit();
       options.size ||= deps.isPhone() ? 'share' : 'full'; // phones: the sharing size by default (memory)
+      if (!options.formatChosen) options.format = transparent(deps.doc()) ? 'image/png' : 'image/jpeg'; // keep alpha by default
       ui.status.textContent = '';
       sync(); ui.dialog.showModal(); schedule(120);
     },

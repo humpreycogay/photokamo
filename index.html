@@ -9,7 +9,7 @@
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
   <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
-  <link rel="stylesheet" href="css/styles.css?v=2026-11-25f">
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25h">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -485,11 +485,20 @@
           <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
           <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle"></div>
+          <h3 class="collage-label" id="collagePaperTitle">Paper</h3>
+          <div class="paper-swatches" id="collagePaper" role="radiogroup" aria-labelledby="collagePaperTitle"></div>
+          <div class="collage-backdrop" id="collageBackdropRow" hidden>
+            <p class="collage-label" id="collageBackdropTitle">Preview backdrop</p>
+            <div class="segmented collage-backdrops" id="collageBackdrops" role="radiogroup" aria-labelledby="collageBackdropTitle" aria-describedby="collageBackdropHint">
+              <button type="button" role="radio" data-backdrop="checker" aria-checked="true">Checker</button>
+              <button type="button" role="radio" data-backdrop="light" aria-checked="false">Light</button>
+              <button type="button" role="radio" data-backdrop="dark" aria-checked="false">Dark</button>
+            </div>
+            <p class="collage-hint" id="collageBackdropHint">Only for viewing here; the file stays transparent.</p>
+          </div>
           <div class="slider-row"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
           <div class="slider-row"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
           <div class="slider-row"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
-          <h3 class="collage-label" id="collagePaperTitle">Paper</h3>
-          <div class="paper-swatches" id="collagePaper" role="radiogroup" aria-labelledby="collagePaperTitle"></div>
         </section>
       </div>
 
@@ -572,6 +581,13 @@
           <button type="button" data-format="image/jpeg" aria-pressed="true">JPEG</button>
           <button type="button" data-format="image/png" aria-pressed="false">PNG</button>
           <button type="button" data-format="image/webp" aria-pressed="false">WebP</button>
+        </div>
+        <div class="collage-alpha" id="collageAlpha" hidden>
+          <p class="collage-alpha-note" id="collageAlphaNote"></p>
+          <div class="collage-flatten" id="collageFlattenRow">
+            <div class="paper-swatches" id="collageFlatten" role="radiogroup" aria-label="JPEG background colour"></div>
+            <label class="text-custom-color" id="collageFlattenCustomLabel" title="Choose a custom background colour"><span class="text-custom-swatch" aria-hidden="true"></span><span>Custom</span><input id="collageFlattenCustom" type="color" aria-label="Choose a custom JPEG background colour"></label>
+          </div>
         </div>
       </fieldset>
       <fieldset>
