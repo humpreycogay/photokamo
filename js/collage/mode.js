@@ -38,6 +38,9 @@ export function createCollageMode(deps) {
   const dividersEl = byId('collageDividers');
   const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
+  const textUi = { selected: null, start: null, timer: 0, layers: byId('collageTextLayers'), editor: byId('collageTextEditor'), empty: byId('collageTextEmpty'),
+    content: byId('collageTextContent'), target: byId('collageTextTarget'), fonts: byId('collageTextFont'), size: byId('collageTextSize'), color: byId('collageTextColor'),
+    align: byId('collageTextAlign'), outsideRow: byId('collageOutsideShapeRow'), outside: byId('collageOutsideShape'), contrast: byId('collageTextContrast') };
   let backdrop = (() => { try { return ['checker', 'light', 'dark'].includes(localStorage.getItem(BACKDROP_KEY)) ? localStorage.getItem(BACKDROP_KEY) : 'checker'; } catch { return 'checker'; } })();
   const slotUi = { hint: byId('collageSlotHint'), tools: byId('collageSlotTools'), title: byId('collageSlotTitle'), photoTools: byId('collagePhotoTools'),
     zoom: byId('collageZoom'), angle: byId('collageAngle'), rotate: byId('collageRotate'), flip: byId('collageFlip'), reset: byId('collageReset'),
@@ -114,6 +117,57 @@ export function createCollageMode(deps) {
     buildSticker();
     buildPrints();
     buildSlotPanel();
+    buildTextPanel();
+  }
+
+  // ---------- Text and captions ----------
+  const selectedText = () => doc?.text.find(text => text.id === textUi.selected) || null;
+  const newText = (content, target = 'sheet', extra = {}) => ({ id: `ct${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, content, target,
+    font: 'inter', size: .08, color: '#ffffff', x: .5, y: .85, align: 'center', bold: true, italic: false, shadow: true, opacity: 1, ...extra });
+  function addTextLayer(text) { change(d => d.text.push(text)); textUi.selected = text.id; syncTextPanel(); textUi.content.focus(); textUi.content.select(); }
+  function updateText(mutator) { const id = textUi.selected; if (!id) return; change(d => { const text = d.text.find(layer => layer.id === id); if (text) mutator(text); }); }
+  function finishLiveText() { clearTimeout(textUi.timer); if (textUi.start) commit(textUi.start); textUi.start = null; }
+  function liveText(mutator) {
+    const text = selectedText(); if (!text) return;
+    textUi.start ||= cloneDoc(doc); mutator(text); syncTextPanel(); scheduleDraw();
+    clearTimeout(textUi.timer); textUi.timer = setTimeout(finishLiveText, 450);
+  }
+  function buildTextPanel() {
+    textUi.fonts.innerHTML = deps.textFonts.map(([id, name, stack]) => `<button type="button" role="radio" class="text-font-option" data-font="${id}" aria-checked="false" style="--preview-font:${stack}">${name}</button>`).join('');
+    byId('collageAddText').addEventListener('click', () => addTextLayer(newText('Your text')));
+    byId('collageSharedCaption').addEventListener('click', () => addTextLayer(newText('Your caption', 'sheet', { y: .92, size: .055 })));
+    byId('collageDateText').addEventListener('click', () => { const date = new Date(); addTextLayer(newText(date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }), 'sheet', { x: .92, y: .94, size: .035, align: 'right', bold: false })); });
+    byId('collageSlotCaptions').addEventListener('click', () => {
+      const layers = doc.slots.slice(0, slotCount(template())).map((slot, index) => newText(`Photo ${index + 1}`, slot.id, { y: .5, size: .18, color: '#111110', bold: false, shadow: false, caption: true }));
+      const previous = cloneDoc(doc); doc.text.push(...layers); if (layers.length) textUi.selected = layers[0].id; commit(previous); refresh(); say(`${plural(layers.length, 'slot caption')} added`);
+    });
+    textUi.layers.addEventListener('click', event => { const button = event.target.closest('[data-text-layer]'); if (button) { finishLiveText(); textUi.selected = button.dataset.textLayer; syncTextPanel(); } });
+    textUi.content.addEventListener('change', finishLiveText); textUi.size.addEventListener('change', finishLiveText); textUi.color.addEventListener('change', finishLiveText);
+    textUi.content.addEventListener('input', () => liveText(text => { text.content = textUi.content.value; }));
+    textUi.target.addEventListener('change', () => updateText(text => { text.target = textUi.target.value; text.caption = text.target !== 'sheet' && Boolean(view.layout?.slots[doc.slots.findIndex(slot => slot.id === text.target)]?.caption); text.x = .5; text.y = text.caption ? .5 : .85; }));
+    textUi.size.addEventListener('input', () => liveText(text => { text.size = Number(textUi.size.value) / 100; }));
+    textUi.color.addEventListener('input', () => liveText(text => { text.color = textUi.color.value; }));
+    radioGroup(textUi.fonts, '[data-font]', button => updateText(text => { text.font = button.dataset.font; }));
+    radioGroup(textUi.align, '[data-align]', button => updateText(text => { text.align = button.dataset.align; }));
+    textUi.editor.addEventListener('click', event => { const button = event.target.closest('[data-collage-text-toggle]'); if (button) updateText(text => { const key = button.dataset.collageTextToggle; text[key] = !text[key]; }); });
+    textUi.outside.addEventListener('change', () => updateText(text => { text.outsideShape = textUi.outside.checked; }));
+    byId('collageDeleteText').addEventListener('click', () => { const id = textUi.selected, index = doc.text.findIndex(text => text.id === id); if (index < 0) return; change(d => d.text.splice(index, 1)); textUi.selected = doc.text[Math.min(index, doc.text.length - 1)]?.id || null; syncTextPanel(); });
+    document.fonts.ready.then(scheduleDraw);
+  }
+  function syncTextPanel() {
+    if (!doc.text.some(text => text.id === textUi.selected)) textUi.selected = doc.text.at(-1)?.id || null;
+    const text = selectedText(), count = slotCount(template());
+    textUi.layers.innerHTML = doc.text.map((layer, index) => `<button type="button" role="radio" class="chip" data-text-layer="${layer.id}" aria-checked="${layer.id === textUi.selected}" tabindex="${layer.id === textUi.selected ? 0 : -1}">${escapeHtml((layer.content.split('\n')[0].trim() || `Text ${index + 1}`).slice(0, 24))}</button>`).join('');
+    textUi.layers.hidden = doc.text.length < 2; textUi.empty.hidden = Boolean(doc.text.length); textUi.editor.hidden = !text;
+    if (!text) return;
+    if (document.activeElement !== textUi.content) textUi.content.value = text.content;
+    textUi.target.innerHTML = `<option value="sheet">Whole sheet</option>${doc.slots.slice(0, count).map((slot, i) => `<option value="${slot.id}">Slot ${i + 1}</option>`).join('')}`; textUi.target.value = text.target;
+    syncRadios(textUi.fonts, 'data-font', text.font); syncRadios(textUi.align, 'data-align', text.align);
+    textUi.size.value = text.size * 100; byId('collageTextSizeOutput').value = `${Number((text.size * 100).toFixed(1))}%`; textUi.color.value = text.color;
+    textUi.color.closest('.text-custom-color').style.setProperty('--custom-color', text.color);
+    textUi.editor.querySelectorAll('[data-collage-text-toggle]').forEach(button => { button.setAttribute('aria-pressed', Boolean(text[button.dataset.collageTextToggle])); button.disabled = text.font === 'playfair' && button.dataset.collageTextToggle !== 'shadow'; });
+    const shaped = template().kind === 'shaped'; textUi.outsideRow.hidden = !shaped; textUi.outside.checked = Boolean(text.outsideShape);
+    textUi.contrast.hidden = doc.sheet.background !== 'transparent';
   }
   /** Switches the document to template `next`: shapes start transparent (paper comes back when leaving them, unless
    *  the user chose it); styles bring their own paper colour (the default comes back when leaving them, unless the
@@ -339,6 +393,7 @@ export function createCollageMode(deps) {
     syncBackdrop();
     syncSliders();
     syncSlotPanel();
+    syncTextPanel();
     drawThumbs();
     const filled = doc.slots.slice(0, slotCount(t)).filter(slot => deps.photoById(slot.photoId)).length;
     document.getElementById('collageCount').textContent = `${filled} of ${plural(slotCount(t), 'photo')}`;
@@ -402,7 +457,7 @@ export function createCollageMode(deps) {
     canvas.style.width = `${cssW}px`; canvas.style.height = `${cssH}px`;
     const layout = layoutTemplate(template(), width, height, doc);
     const ctx = canvas.getContext('2d');
-    drawCollage(ctx, doc, layout, imageOf, { captionHint: 'rgba(128,128,128,.45)' });
+    drawCollage(ctx, doc, layout, imageOf, { captionHint: 'rgba(128,128,128,.45)', fontFor: deps.textFont });
     view = { layout, k: width / cssW };
     syncDividers();
     if (layout.slots.some(slot => slot.visible)) drawShapedHighlight(ctx, layout);

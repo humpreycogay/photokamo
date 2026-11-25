@@ -1047,6 +1047,12 @@ body[data-tab=text] :is(.view-pill,.view-pill *,.fullscreen-button,.engine-wait,
 .text-styles .button:disabled { opacity:.4; cursor:not-allowed; }
 .text-align { margin-top:6px; }
 .text-delete { width:100%; min-height:var(--tap); margin-top:18px; }
+.collage-text { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+.collage-text .panel-heading { margin-bottom:10px; }
+.collage-text-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:12px; }
+.collage-text-presets .button { min-width:0; padding-inline:6px; font-size:var(--fs-sm); }
+.collage-text select { width:100%; min-height:var(--tap); padding:0 10px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); }
+.collage-text textarea { width:100%; min-height:var(--tap); padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); font:inherit; resize:vertical; }
 
 /* Phones: the filmstrip is a column left of the photo, and the photo always keeps the larger share */
 @media (max-width:900px) {

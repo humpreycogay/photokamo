@@ -513,6 +513,28 @@
             <label class="check-row" id="collageCaptionRow"><input type="checkbox" id="collageCaptionSpace" aria-describedby="collageCaptionHint"> Space for captions under each photo</label>
             <p class="collage-hint" id="collageCaptionHint">Leaves paper under every photo for its caption.</p>
           </div>
+          <section class="collage-text" aria-labelledby="collageTextTitle">
+            <div class="panel-heading"><h3 class="collage-label" id="collageTextTitle">Text &amp; captions</h3><button class="button button-ghost" id="collageAddText" type="button">Add text</button></div>
+            <div class="collage-text-presets" role="group" aria-label="Text presets">
+              <button class="button button-secondary" id="collageSharedCaption" type="button">Shared caption</button>
+              <button class="button button-secondary" id="collageDateText" type="button">Date</button>
+              <button class="button button-secondary" id="collageSlotCaptions" type="button">Slot captions</button>
+            </div>
+            <p class="collage-hint" id="collageTextEmpty">Add a title for the sheet or captions tied to individual slots.</p>
+            <div class="text-layers" id="collageTextLayers" role="radiogroup" aria-label="Collage text layers"></div>
+            <div class="text-editor" id="collageTextEditor" hidden>
+              <label class="text-label" for="collageTextContent">Text</label><textarea id="collageTextContent" rows="2" spellcheck="true"></textarea>
+              <label class="text-label" for="collageTextTarget">Place on</label><select id="collageTextTarget"></select>
+              <p class="text-label" id="collageTextFontLabel">Font</p><div class="text-fonts" id="collageTextFont" role="radiogroup" aria-labelledby="collageTextFontLabel"></div>
+              <div class="slider-row"><label class="slider-label" for="collageTextSize"><span>Size</span><output id="collageTextSizeOutput" for="collageTextSize">8%</output></label><input id="collageTextSize" type="range" min="2" max="30" step="0.5"></div>
+              <div class="text-colors"><label class="text-custom-color"><span class="text-custom-swatch" aria-hidden="true"></span><span>Colour</span><input id="collageTextColor" type="color" aria-label="Text colour"></label></div>
+              <div class="segmented text-align" id="collageTextAlign" role="radiogroup" aria-label="Alignment"><button type="button" role="radio" data-align="left">Left</button><button type="button" role="radio" data-align="center">Center</button><button type="button" role="radio" data-align="right">Right</button></div>
+              <div class="text-styles"><button class="button button-ghost" type="button" data-collage-text-toggle="bold"><strong>B</strong></button><button class="button button-ghost" type="button" data-collage-text-toggle="italic"><em>I</em></button><button class="button button-ghost" type="button" data-collage-text-toggle="shadow">Shadow</button></div>
+              <label class="check-row" id="collageOutsideShapeRow" hidden><input type="checkbox" id="collageOutsideShape"> Outside shape</label>
+              <p class="collage-hint" id="collageTextContrast" hidden>Contrast depends on where you place it.</p>
+              <button class="button button-ghost text-delete" id="collageDeleteText" type="button">Delete this text</button>
+            </div>
+          </section>
           <div class="collage-sticker" id="collageSticker" hidden>
             <h3 class="collage-label" id="collageStickerTitle">Sticker</h3>
             <div class="slider-row"><label class="slider-label" for="collageOutline"><span>Outline</span><output id="collageOutlineOutput" for="collageOutline">Off</output></label><input id="collageOutline" type="range" min="0" max="4" step="0.25" aria-describedby="collageOutlineHint"></div>

@@ -75,12 +75,14 @@ const collage = createCollageMode({
   addFiles: files => addFiles(files, { view: false }),
   editPhoto: id => editFromCollage(id),
   renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
+  textFonts, textFont,
   onHistory: () => updateButtons()
 });
 const collageExport = createCollageExport({
   doc: () => collage.snapshot(), update: mutator => collage.update(mutator), paperColors, photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
   photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
   renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => collageEngines.add(module), onProgress }),
+  ensureTextFonts: texts => ensureTextFonts(texts), textFont,
   download: file => downloadBlob(file, file.name)
 });
 const openExport = () => (collage.active ? collageExport.open() : openSave());

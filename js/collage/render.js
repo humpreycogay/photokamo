@@ -2,7 +2,7 @@
 // Main-thread compositing (V6): a few drawImage calls; the photos' edits were rendered by their own Workers.
 import { shapePath } from './shapes.js';
 import { fillGeometry } from './fill.js';
-import { drawOriented } from '../renderer.js';
+import { drawOriented, drawTexts } from '../renderer.js';
 
 /** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
  *  1 px on each side, so resampling never lets paper show along a slot's edge. */
@@ -95,15 +95,36 @@ export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
 /** Slots in drawing order (z, then layout order). */
 export const drawOrder = layout => [...layout.slots].sort((a, b) => a.z - b.z || a.index - b.index);
 
+/** Draws collage text with the existing photo text renderer. Sheet layers use the full canvas; slot layers use the
+ * stable slot id, so swapping photos does not move captions between slots. Shaped sheets clip text by default. */
+export function drawCollageTexts(ctx, doc, layout, fontFor = null) {
+  const sheet = { x: 0, y: 0, width: layout.width, height: layout.height };
+  for (const text of doc.text || []) {
+    let rect = sheet;
+    if (text.target !== 'sheet') {
+      const index = doc.slots.findIndex(slot => slot.id === text.target), slot = layout.slots[index];
+      if (!slot) continue;
+      const box = text.caption && slot.caption ? slot.caption : slot;
+      rect = { x: box.x, y: box.y, width: box.w, height: box.h };
+    }
+    ctx.save();
+    if (layout.shaped && !text.outsideShape) ctx.clip(sheetPath(layout.paper), 'evenodd');
+    drawTexts(ctx, rect, [{ ...text, font: fontFor ? fontFor(text.font) : text.font }]);
+    ctx.restore();
+  }
+}
+
 /** Draws the collage `doc` laid out as `layout` (js/collage/layout.js) on ctx (sized layout.width × height).
  *  imageFor(index) → the slot's photo edit (canvas or ImageBitmap) or null (empty or still rendering). */
-export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)', captionHint = null } = {}) {
+export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,128,128,.28)', captionHint = null, fontFor = null } = {}) {
   drawPaper(ctx, doc, layout);
   for (const slot of drawOrder(layout)) drawSlot(ctx, doc, slot, imageFor(slot.index), emptyFill);
   // Preview only: a placeholder bar where each caption will go (the text arrives with text layers, Task 7).
-  if (captionHint) for (const { caption } of layout.slots) {
+  if (captionHint) for (const { caption, index } of layout.slots) {
     if (!caption) continue;
+    if (doc.text?.some(text => text.target === doc.slots[index]?.id && text.caption)) continue;
     const h = Math.max(2, caption.h * .16), w = Math.min(caption.w * .4, caption.h * 4);
     ctx.fillStyle = captionHint; ctx.beginPath(); ctx.roundRect(caption.x + (caption.w - w) / 2, caption.y + (caption.h - h) / 2, w, h, h / 2); ctx.fill();
   }
+  drawCollageTexts(ctx, doc, layout, fontFor);
 }

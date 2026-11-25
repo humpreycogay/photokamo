@@ -9,7 +9,7 @@
 // collage's `flatten` colour (never left to the encoder, which would turn it black).
 import { templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
-import { drawPaper, drawSlot, drawOrder, flattenSheet } from './render.js';
+import { drawPaper, drawSlot, drawOrder, drawCollageTexts, flattenSheet } from './render.js';
 import { shareSize, printSize, fullSize, capSize, slotEdge, PRINT_PAPERS, PRINT_DPI } from './sizes.js';
 
 const LIMIT_KEY = 'photokamo:canvas-limit';
@@ -127,6 +127,7 @@ export function createCollageExport(deps) {
     const canvas = document.createElement('canvas'); canvas.width = size.width; canvas.height = size.height;
     const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('This device cannot make a canvas that large');
     const layout = layoutTemplate(template, size.width, size.height, doc);
+    await deps.ensureTextFonts(doc.text || []);
     const flatten = flattenFor(doc, current.format);
     drawPaper(ctx, doc, layout, { shadow: !flatten }); // sticker shadows are for PNG/WebP
     const slots = drawOrder(layout).filter(slot => deps.photoById(doc.slots[slot.index].photoId));
@@ -140,6 +141,7 @@ export function createCollageExport(deps) {
       drawSlot(ctx, doc, slot, image);
       freeImage(image); // one full photo render at a time
     }
+    drawCollageTexts(ctx, doc, layout, deps.textFont);
     if (flatten) flattenSheet(ctx, layout, flatten);
     if (job === current) showProgress(true, 'Encoding', slots.length, slots.length);
     return canvas;
