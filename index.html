@@ -8,7 +8,8 @@
   <title>PhotoKamo — Camera & film looks</title>
   <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/styles.css">
+  <!-- Change ?v= whenever styles.css changes: browsers otherwise keep an old copy next to new markup. -->
+  <link rel="stylesheet" href="css/styles.css?v=2026-11-25b">
 </head>
 <body>
   <div class="splash" id="splash" role="status" aria-live="polite">
@@ -37,6 +38,7 @@
     <div class="topbar-start">
       <button class="icon-button icon-button-plain mobile-only editing-only" id="closeButton" type="button" aria-label="Close photo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <span class="topbar-title mobile-only editing-only" id="topbarTitle"></span>
+      <button class="button button-ghost collage-back collage-only" id="collageBack" type="button" title="Back to photo (Esc)"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Back to photo</button>
       <a class="brand" href="#" aria-label="PhotoKamo home">
         <img class="brand-mark" src="images/logo.svg" alt="">
         <span>Photo<span>Kamo</span></span>
@@ -56,6 +58,10 @@
         <button class="file-menu-item" role="menuitem" type="button" data-action="camera">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
           Take a photo
+        </button>
+        <button class="file-menu-item" role="menuitem" type="button" data-action="collage" id="collageMenuItem">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg>
+          Make collage…
         </button>
       </div>
     </div>
@@ -168,6 +174,10 @@
         </div>
       </div>
 
+      <div class="collage-stage collage-only" id="collageStage">
+        <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
+      </div>
+
       <div class="engine-wait" id="engineWait" hidden>
         <span class="engine-wait-spinner" aria-hidden="true"></span>
         <span class="engine-wait-text" role="status"><span class="engine-wait-title"><span id="engineWaitTitle"></span><span id="engineWaitProgress" aria-hidden="true"></span></span><span class="engine-wait-sub" id="engineWaitSub"></span></span>
@@ -182,11 +192,12 @@
         <span class="strip-count" id="stripCount" aria-live="polite"></span>
         <span class="strip-status" id="stripStatus" role="status"></span>
         <span class="strip-hint" id="stripHint"></span>
-        <span class="strip-actions"><button class="text-button" id="selectAllButton" type="button">Select all</button><button class="text-button" id="clearSelectionButton" type="button">Clear</button></span>
+        <span class="strip-actions"><button class="text-button" id="selectAllButton" type="button">Select all</button><button class="text-button" id="clearSelectionButton" type="button">Clear</button><button class="text-button strip-remove" id="removeSelectedButton" type="button" title="Remove from the strip (Delete)">Remove</button></span>
       </div>
       <div class="strip-row">
         <div class="strip-list" id="stripList" role="listbox" aria-label="Open photos. Ctrl or Command click, or long-press, to select several; Shift click for a range" aria-multiselectable="true" aria-orientation="horizontal"></div>
         <button class="strip-select mobile-only" id="stripSelectToggle" type="button" aria-label="Select all photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg></button>
+        <button class="strip-collage" id="collageButton" type="button" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg><span class="strip-collage-label">Make collage</span></button>
         <button class="strip-add" id="stripAdd" type="button" aria-label="Add photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </section>
@@ -435,6 +446,20 @@
             <button class="button button-ghost" id="textApplySelectedButton" type="button">Apply to selected photos</button>
             <button class="button button-ghost" id="textApplyAllButton" type="button">Apply to all photos</button>
           </div>
+        </section>
+
+        <section class="scroll-panel collage-panel collage-only" id="collagePanel" aria-labelledby="collageTitle">
+          <div class="panel-heading"><h2 id="collageTitle">Collage</h2><span class="collage-count" id="collageCount"></span></div>
+          <p class="collage-status" id="collageStatus" role="status" aria-live="polite"></p>
+          <h3 class="collage-label" id="collageLayoutTitle">Layout</h3>
+          <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle" aria-orientation="horizontal"></div>
+          <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
+          <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle"></div>
+          <div class="slider-row"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
+          <div class="slider-row"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
+          <div class="slider-row"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
+          <h3 class="collage-label" id="collagePaperTitle">Paper</h3>
+          <div class="paper-swatches" id="collagePaper" role="radiogroup" aria-labelledby="collagePaperTitle"></div>
         </section>
       </div>
 

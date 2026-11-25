@@ -1274,3 +1274,39 @@ body.is-film {
   body.film-expert .sheet-grabber { visibility:hidden; } /* nothing to collapse; its row keeps room for the dial toggle */
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
+
+/* ---------- Collage mode (CollagePlan.md): the collage stage and panel cover the editor, which stays as it was ---------- */
+body:not(.collage-mode) .collage-only { display:none!important; }
+body.collage-mode :is(#viewport,#viewPill,#fullscreenButton,#cropStage,#engineWait,#photoLookBadge,.filmstrip,.control-tabs,.apply-bar,.file-chip,.topbar-divider,#revertButton,#exportButton,#saveButton,#closeButton) { display:none!important; }
+body.collage-mode .panel-body > .tab-panel { display:none!important; }
+.collage-stage { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:28px 24px; }
+.collage-stage canvas { display:block; box-shadow:var(--shadow-photo); }
+.collage-back { display:inline-flex; align-items:center; gap:6px; min-height:40px; padding:0 14px 0 10px; }
+.collage-panel { flex:1; min-height:0; }
+.collage-count { color:var(--text-muted); font-size:var(--fs-md); }
+.collage-status { min-height:20px; margin:-12px 0 8px; color:var(--accent); font-size:var(--fs-md); }
+.collage-label { margin:0 0 10px; color:var(--text-2); font-size:var(--fs-base); font-weight:600; }
+.collage-templates { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-bottom:22px; }
+.collage-template { display:grid; grid-template-rows:56px auto; place-items:center; gap:4px; min-height:var(--tap); padding:8px 4px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); background:var(--raised); color:var(--text-2); font-size:var(--fs-xs); line-height:1.25; text-align:center; cursor:pointer; }
+.collage-template:hover { border-color:var(--text-muted); color:var(--text); }
+.collage-template[aria-selected=true] { border-color:var(--accent); color:var(--text); box-shadow:0 0 0 1px var(--accent); }
+.collage-template:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.collage-aspects { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:22px; }
+.strip-collage { flex:none; height:84px; margin-top:5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:0 12px; border:1px solid var(--accent); border-radius:8px; background:var(--accent-tint); color:var(--accent); font-size:var(--fs-sm); font-weight:600; cursor:pointer; }
+.strip-collage:hover { background:var(--control); }
+.strip-collage[hidden] { display:none; }
+@media (max-width:900px) {
+  body.collage-mode.has-image .app-shell { grid-template-rows:minmax(0,1fr) auto!important; }
+  body.collage-mode.has-image .app-shell > .stage { grid-column:1 / -1; }
+  body.collage-mode.has-image .controls { flex:none; height:46dvh!important; max-height:none!important; background:var(--bg)!important; }
+  .collage-stage { padding:12px; }
+  .collage-stage canvas { box-shadow:none; }
+  .collage-back { min-height:var(--tap); }
+  #collagePanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; padding:12px 16px max(24px,env(safe-area-inset-bottom)); }
+  #collagePanel .panel-heading { margin-bottom:12px; }
+  #collagePanel .panel-heading h2 { font-size:var(--fs-lg); }
+  .collage-status { margin:-6px 0 6px; }
+  .collage-templates { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:76px; overflow-x:auto; scrollbar-width:none; margin:0 -16px 18px; padding:2px 16px; }
+  .strip-collage { width:52px; height:var(--tap); margin:0; padding:0; }
+  .strip-collage-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+}

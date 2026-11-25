@@ -203,11 +203,24 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** layout rects are pixel-exact at 3 sizes, and cells + gutters + margins = sheet size exactly; refactor causes zero output change.
 
 #### Task 1: Collage mode shell and grid preview
-- [ ] **Make collage** button in the strip when 2–9 photos are selected, and **Make collage…** in `#fileMenu` (V4); **Back to photo**; Escape leaves
-- [ ] Stage replaces the viewport; template picker (`role="listbox"`, thumbnails drawn from the layout engine); gutter, margin, corner radius, paper colour (`paperColors`, tokens only), sheet aspect (1:1, 4:5, 3:2, 2:3, 9:16, 16:9)
-- [ ] Slots show queue thumbs instantly, then sharper renders at slot size (V1, V3)
-- [ ] Collage history: undo/redo buttons and global shortcuts route to it in collage mode (V5)
-- [ ] Phone: stage on top, controls in the bottom sheet; 44 px targets
+- [x] **Make collage** button in the strip when 2–9 photos are selected, and **Make collage…** in `#fileMenu` (V4); **Back to photo**; Escape leaves
+- [x] Stage replaces the viewport; template picker (`role="listbox"`, thumbnails drawn from the layout engine); gutter, margin, corner radius, paper colour (`paperColors`, tokens only), sheet aspect (1:1, 4:5, 3:2, 2:3, 9:16, 16:9)
+- [x] Slots show queue thumbs instantly, then sharper renders at slot size (V1, V3)
+- [x] Collage history: undo/redo buttons and global shortcuts route to it in collage mode (V5)
+- [x] Phone: stage on top, controls in the bottom sheet; 44 px targets
+
+*Done:*
+- **Code:** `js/collage/mode.js` (stage, panel, slot cache, history), `model.js` and `render.js` (the one compositor). `renderPhotoEdit` gained `from: 'full'`, so film slots get full-size input at engine preview quality.
+- **Fidelity:** a Kamo slot shows the photo's own look. Single-photo renders are still byte-identical to the Task 0 hashes.
+- **Speed:** 4 photos (Basic + Kamo) are ready in ≈ 0.4 s on a laptop. 6 layout switches cost 0 decodes, ≈ 2 frames each including the draw.
+- **Undo:** one step per slider drag; 8 of 8 steps undone.
+- **Leaving:** Esc and Back restore the photo, tab, look, selection and undo exactly; Ctrl+Z then acts on the photo.
+- **Phones:** 360/430 px have no targets under 44 px; the keyboard-only flow works; no console errors.
+- **Defaults chosen:**
+  - Sheet aspect follows the template until the user picks one.
+  - The background render queue pauses in collage mode.
+  - Dropping files in collage mode is blocked with a toast.
+  - Export is hidden until Task 3.
 
 **Check:** 4 photos (one Basic, one Kamo) → 2×2 with each photo's own look; gutter/margin/radius/paper (one undo per drag); template change keeps order; Ctrl/⌘-Z undoes collage steps in collage mode and photo steps after Back; desktop and phone 360/430 px; keyboard only; no console errors.
 **Done when:** template switching never re-decodes a photo (count decodes); slider drags at display refresh; leaving collage mode restores the editor exactly (photo, undo, selection, tab).

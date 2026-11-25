@@ -15,7 +15,7 @@ Open <http://localhost:8080>.
 
 ## Features
 
-- Open several photos at once (file picker, drag-and-drop, sample photo, live camera or mobile capture); a filmstrip to switch between them, with Ctrl/Cmd-click, Shift-click, keyboard or long-press selection
+- Open several photos at once (file picker, drag-and-drop, sample photo, live camera or mobile capture); a filmstrip to switch between them, with Ctrl/Cmd-click, Shift-click, keyboard or long-press selection, and Remove (or the Delete key) to take photos off the strip
 - One Looks grid: **Basic** (20 camera, film and creative looks with strength and favorites) and **Kamo**, the film engine (see below), with 81 one-tap film looks: 20 calibrated colour stocks, 30 lab/cinema pairings, push/pull, CineStill and look-alike recipes, and 31 B&W, instant, creative and extreme looks (infrared, negatives, cross-processing, redscale, cyanotype…)
 - Adjust (light, color, character) on top of every engine
 - Crop: 10 aspect ratios with Swap W×H, zoom, drag and resize, straighten (no empty corners), rotate 90°, flip, and the output size in pixels

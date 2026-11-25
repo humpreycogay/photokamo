@@ -13,6 +13,7 @@ import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffec
 import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
+import { createCollageMode } from './collage/mode.js';
 
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -65,6 +66,14 @@ const state = {
   undo: [], redo: [], editedCanvas: null, originalCanvas: null, originalKey: '', renderToken: 0
 };
 let toastTimer;
+// Collage mode (js/collage/mode.js): slots show each photo's own edit without frame or text. A fast pass from the
+// queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
+const collageEngines = new Set(), COLLAGE_MAX = 9;
+const collage = createCollageMode({
+  photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
+  renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
+  onHistory: () => updateButtons()
+});
 let sliderStart = null;
 let cameraStream = null;
 let cameraFacingMode = 'environment';
@@ -138,9 +147,13 @@ function commit(previous = snapshot()) {
   state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons();
   if (app.liveEdit) applyToPhotos(otherSelected(), applyParts); // live: the same change goes to the other selected photos
 }
-function undo() { if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
-function redo() { if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); }
-function updateButtons() { elements.undo.disabled = !state.undo.length; elements.redo.disabled = !state.redo.length; syncStrip(); }
+function undo() { if (collage.active) { collage.undo(); return; } if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
+function redo() { if (collage.active) { collage.redo(); return; } if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); }
+function updateButtons() {
+  elements.undo.disabled = collage.active ? !collage.canUndo : !state.undo.length;
+  elements.redo.disabled = collage.active ? !collage.canRedo : !state.redo.length;
+  syncStrip();
+}
 function toast(message) { clearTimeout(toastTimer); elements.toast.textContent = message; elements.toast.classList.add('show'); toastTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600); }
 function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
 function pickLook(id) {
@@ -2141,19 +2154,37 @@ function showPhoto(target, image) {
   updateButtons(); syncControls(); scheduleRender();
 }
 /** Closes the photo in view; the next one (or the start screen) comes into view. */
-function closePhoto() {
-  const current = activePhoto(); if (!current) return;
-  if (state.undo.length && !confirm('Close this photo? Its edits will be lost.')) return;
-  const index = app.photos.indexOf(current);
-  releaseImage(); renderQueue.remove(current.id);
-  app.photos.splice(index, 1); app.selected.delete(current.id); current.el.remove();
+function closePhoto() { const current = activePhoto(); if (current) removePhotos([current.id]); }
+/** Removes photos from the strip (asks first when any has edits). If the photo in view goes, the next one
+ *  (or the start screen) comes into view; collage slots that used them become empty. */
+function removePhotos(ids) {
+  const targets = app.photos.filter(photo => ids.includes(photo.id)); if (!targets.length) return;
+  const edited = targets.filter(photo => (photo.id === app.activeId ? state.undo.length : photo.undo.length) || isEdited(settingsOf(photo))).length;
+  const one = targets.length === 1;
+  if (edited && !confirm(one ? `Remove ${targets[0].name}? Its edits will be lost.` : `Remove ${targets.length} photos? Edits on ${edited === targets.length ? 'them' : plural(edited, 'of them')} will be lost.`)) return;
+  const active = activePhoto(), activeIndex = app.photos.indexOf(active), removingActive = targets.includes(active);
+  if (removingActive) releaseImage();
+  for (const photo of targets) {
+    renderQueue.remove(photo.id);
+    app.photos.splice(app.photos.indexOf(photo), 1); app.selected.delete(photo.id); photo.el.remove();
+  }
+  toast(one ? `Removed ${targets[0].name}.` : `Removed ${targets.length} photos.`);
+  if (!removingActive) {
+    if (!app.selected.size && active) app.selected.add(active.id);
+    if (!photoById(app.anchorId)) app.anchorId = app.activeId;
+    syncStrip(); focusStripItem(app.activeId); return;
+  }
   app.activeId = null;
-  const next = app.photos[index] || app.photos[index - 1];
-  if (next) { if (!app.selected.size) app.selected.add(next.id); app.anchorId = next.id; viewPhoto(next.id); return; }
+  const next = app.photos[activeIndex] || app.photos[app.photos.length - 1];
+  if (next) {
+    if (!app.selected.size) app.selected.add(next.id);
+    app.anchorId = next.id; viewPhoto(next.id); syncStrip(); focusStripItem(next.id); return;
+  }
   applySettings(defaultSettings()); state.undo = []; state.redo = [];
   document.body.classList.remove('has-image');
   elements.emptyState.hidden = false; elements.viewport.hidden = true; elements.viewPill.hidden = true; elements.cropStage.hidden = true;
   updateButtons(); syncControls();
+  $('#chooseButton').focus();
 }
 
 // ---------- Filmstrip ----------
@@ -2206,6 +2237,9 @@ function syncStrip() {
   const busy = renderQueue.size;
   elements.stripStatus.textContent = busy ? `Updating ${busy} photo${busy === 1 ? '' : 's'}…` : '';
   $('#selectAllButton').disabled = selected === count; $('#clearSelectionButton').disabled = selected <= 1;
+  const remove = $('#removeSelectedButton');
+  remove.disabled = !selected; remove.textContent = selected > 1 ? `Remove ${selected}` : 'Remove';
+  remove.setAttribute('aria-label', selected > 1 ? `Remove ${selected} selected photos from the strip` : 'Remove the selected photo from the strip');
   const toggle = $('#stripSelectToggle'), all = selected === count;
   toggle.hidden = count < 2; toggle.setAttribute('aria-pressed', all);
   toggle.setAttribute('aria-label', all ? 'Select only the photo in view' : `Select all ${count} photos`);
@@ -2218,7 +2252,12 @@ function syncStrip() {
   elements.mobileApplyButton.hidden = !others;
   elements.mobileApplyButton.textContent = `Apply to ${others}`;
   elements.mobileApplyButton.setAttribute('aria-label', `Apply to ${plural(others, 'other selected photo')}`);
-  elements.topbarTitle.textContent = selected > 1 ? `${selected} selected` : activePhoto()?.name || '';
+  elements.topbarTitle.textContent = collage.active ? 'Collage' : selected > 1 ? `${selected} selected` : activePhoto()?.name || '';
+  // Make collage: 2–9 selected photos (strip), or from the photo menu with any 2+ photos open.
+  const collageButton = $('#collageButton');
+  collageButton.hidden = selected < 2 || selected > COLLAGE_MAX;
+  collageButton.setAttribute('aria-label', `Make collage of ${selected} selected photos`);
+  $('#collageMenuItem').hidden = count < 2;
   $('#liveEdit').checked = app.liveEdit;
   // Export N / Save N when several photos are selected (batch export)
   const batchCount = isBatchExport() ? selected : 0;
@@ -2274,6 +2313,9 @@ function buildStrip() {
       if (event.shiftKey) selectRange(id);
       focusStripItem(id); return;
     }
+    if (event.key === 'Delete' || event.key === 'Backspace') { // the selection when the focused thumb is in it, else that thumb
+      event.preventDefault(); removePhotos(app.selected.has(app.focusId) ? [...app.selected] : [app.focusId]); return;
+    }
     if (event.key === ' ') { event.preventDefault(); toggleSelected(app.focusId); syncStrip(); return; }
     if (event.key === 'Enter') { event.preventDefault(); pickPhoto(app.focusId); syncStrip(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); app.selected = new Set(ids); syncStrip(); }
@@ -2287,8 +2329,44 @@ function buildStrip() {
   const orient = () => list.setAttribute('aria-orientation', mobileQuery.matches ? 'vertical' : 'horizontal');
   orient(); mobileQuery.addEventListener('change', orient);
   $('#selectAllButton').addEventListener('click', () => { app.selected = new Set(app.photos.map(photo => photo.id)); syncStrip(); });
+  $('#removeSelectedButton').addEventListener('click', () => removePhotos([...app.selected]));
   $('#clearSelectionButton').addEventListener('click', () => { app.selected = new Set(app.activeId ? [app.activeId] : []); app.anchorId = app.activeId; syncStrip(); });
 }
+
+// ---------- Collage mode (CollagePlan.md Task 1) ----------
+// The editor stays as it is underneath (photo, history, selection, tab); collage mode only covers it.
+let collageReturnFocus = null;
+const popoverOpen = () => { try { return Boolean(document.querySelector(':popover-open')); } catch { return false; } };
+/** Photos for a new collage: the selected ones (2+), else every open photo; strip order, at most 9. */
+function collageCandidates() {
+  const selected = selectedPhotos();
+  return (selected.length >= 2 ? selected : app.photos).slice(0, COLLAGE_MAX).map(photo => photo.id);
+}
+function enterCollage() {
+  if (collage.active || !state.image) return;
+  const ids = collageCandidates(), selected = selectedPhotos().length;
+  if (ids.length < 2) { toast('Open at least 2 photos to make a collage.'); return; }
+  if (selected > COLLAGE_MAX) toast(`A collage holds up to ${COLLAGE_MAX} photos: using the first ${COLLAGE_MAX} selected.`);
+  const current = activePhoto(); if (current) current.settings = snapshot(); // slots read each photo's settings
+  if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
+  setHolding(false); closeFullscreen();
+  collageReturnFocus = document.activeElement;
+  document.body.classList.add('collage-mode');
+  collage.open(ids);
+  updateButtons();
+}
+function exitCollage() {
+  if (!collage.active) return;
+  collage.close();
+  document.body.classList.remove('collage-mode');
+  for (const module of collageEngines) if (module !== engine.module) module.dispose?.();
+  collageEngines.clear();
+  updateButtons(); renderQueue.pump();
+  const target = collageReturnFocus?.isConnected && collageReturnFocus.offsetParent ? collageReturnFocus : elements.canvas;
+  target.focus?.({ preventScroll: true }); collageReturnFocus = null;
+}
+$('#collageButton').addEventListener('click', enterCollage);
+$('#collageBack').addEventListener('click', exitCollage);
 
 // ---------- Apply to selected + live editing (SPEC §4 D) ----------
 const APPLY_PARTS_KEY = 'photokamo:apply-parts';
@@ -2406,15 +2484,17 @@ function adjustmentsFor({ look, edits }) {
   }));
 }
 /** A photo's finished edit (crop, optics, look, Adjust) without frame or text: { image, tint, settings }, or null
- *  when `job` went stale. 'preview' works from the 256 px thumb with the engine's preview quality. 'full' works from
- *  the full-size photo: Basic at `edge` (resolution-independent), film engines from full-size input (their grain and
- *  MTF have a physical scale) and then scaled down to `edge`. `onEngine(module)` sees each engine it loads. */
-async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', job = null, onEngine = null, onProgress } = {}) {
-  const preview = quality === 'preview', inView = !preview && photo.id === app.activeId && state.image;
+ *  when `job` went stale. `quality` is the engine's ('preview' | 'full'); `from` is the input: 'thumb' (the 256 px
+ *  thumb, the default for 'preview') or 'full' (the full-size photo). From full size, Basic works at `edge`
+ *  (resolution-independent) and film engines get full-size input (their grain and MTF have a physical scale),
+ *  scaled down to `edge` afterwards. `onEngine(module)` sees each engine it loads. */
+async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from = quality === 'preview' ? 'thumb' : 'full', job = null, onEngine = null, onProgress } = {}) {
+  const preview = quality === 'preview', thumb = from === 'thumb', inView = !thumb && photo.id === app.activeId && state.image;
   const settings = inView ? snapshot() : photo.settings;
   const { crop, look, edits } = settings;
-  const image = preview ? photo.thumb : inView ? state.image : await decodeImage(photo.file);
-  const workEdge = preview || look.engine === PRESETS ? edge : Infinity;
+  const image = thumb ? photo.thumb : inView ? state.image : await decodeImage(photo.file);
+  if (job?.stale) return null;
+  const workEdge = thumb || look.engine === PRESETS ? edge : Infinity;
   const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop, workEdge);
   const source = await renderOptics(cropped, settings.optics, workEdge);
   if (job?.stale) return null;
@@ -2428,7 +2508,7 @@ async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', job =
   if (job?.stale) return null;
   const hasEdits = Object.keys(edits).length > 0;
   let output = preview ? (hasEdits ? applyAdjustments(raw, adjustmentsFor(settings)) : raw) : await adjustFull(raw, hasEdits ? adjustmentsFor(settings) : null);
-  const scale = preview ? 1 : Math.min(1, edge / Math.max(output.width, output.height));
+  const scale = thumb ? 1 : Math.min(1, edge / Math.max(output.width, output.height));
   if (scale < 1) {
     const scaled = document.createElement('canvas');
     scaled.width = Math.max(1, Math.round(output.width * scale)); scaled.height = Math.max(1, Math.round(output.height * scale));
@@ -2448,7 +2528,7 @@ async function renderPhotoThumb(id, job) {
 }
 const renderQueue = createRenderQueue({
   render: renderPhotoThumb,
-  canRun: () => !advancedBusy && !state.renderAbort && !batch.running,
+  canRun: () => !advancedBusy && !state.renderAbort && !batch.running && !collage.active,
   onChange: (id, status, result) => {
     const photo = photoById(id); if (!photo) return;
     photo.render.status = status === 'done' ? 'idle' : status;
@@ -3081,7 +3161,7 @@ $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click(
 elements.fileMenu.addEventListener('click', event => {
   const item = event.target.closest('[data-action]'); if (!item) return;
   elements.fileMenu.hidePopover();
-  if (item.dataset.action === 'open') elements.fileInput.click(); else openCamera();
+  if (item.dataset.action === 'open') elements.fileInput.click(); else if (item.dataset.action === 'collage') enterCollage(); else openCamera();
 });
 elements.fileMenu.addEventListener('toggle', event => {
   if (event.newState !== 'open') return;
@@ -3092,7 +3172,7 @@ elements.fileMenu.addEventListener('toggle', event => {
 });
 elements.fileMenu.addEventListener('keydown', event => {
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-  const items = [...elements.fileMenu.querySelectorAll('[data-action]')];
+  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden])')];
   const next = items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
   event.preventDefault(); next.focus();
 });
@@ -3105,7 +3185,7 @@ elements.switchCamera.addEventListener('click', () => { cameraFacingMode = camer
 
 ['dragenter', 'dragover'].forEach(type => elements.dropZone.addEventListener(type, event => { event.preventDefault(); elements.dropZone.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(type => elements.dropZone.addEventListener(type, event => { event.preventDefault(); elements.dropZone.classList.remove('dragover'); }));
-elements.dropZone.addEventListener('drop', event => addFiles(event.dataTransfer.files));
+elements.dropZone.addEventListener('drop', event => { if (collage.active) { toast('Go back to the photo to add more photos.'); return; } addFiles(event.dataTransfer.files); });
 
 document.querySelectorAll('.control-tabs [role=tab]').forEach(tab => {
   tab.addEventListener('click', () => setTab(tab));
@@ -3213,6 +3293,12 @@ new MutationObserver(() => { if (elements.aboutDialog.open) syncEngineStorage();
 $('#engineStorageRemove').addEventListener('click', removeSavedEngines);
 
 document.addEventListener('keydown', event => {
+  if (collage.active) { // the collage's own history; Esc goes back to the photo
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
+    else if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]') && !popoverOpen()) { event.preventDefault(); exitCollage(); }
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
   if (event.key === '\\' && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); if (!event.repeat) setHolding(true); }
