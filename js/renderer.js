@@ -361,6 +361,10 @@ export function drawTexts(ctx, rect, texts = []) {
 }
 
 export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400, texts = []) {
+  return frameCanvas(renderEdit(image, adjustments, maxEdge), frame, texts);
+}
+/** The Basic edit alone (scaled to maxEdge, adjustments applied), without frame or text. */
+export function renderEdit(image, adjustments, maxEdge = 1400) {
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
@@ -373,7 +377,7 @@ export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400, 
   photoCtx.imageSmoothingQuality = 'high';
   photoCtx.drawImage(image, 0, 0, width, height);
   if (hasAdjustments(adjustments)) processPixels(photoCtx, width, height, adjustments);
-  return frameCanvas(photo, frame, texts);
+  return photo;
 }
 
 // ---------- Crop ----------

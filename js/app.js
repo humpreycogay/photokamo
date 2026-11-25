@@ -4,7 +4,7 @@ import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptic
 import { focusBlurRadius, WAVELENGTH_MM } from './optics/pipeline.js';
 import { APERTURES } from './optics/formats.js';
 import { FOCAL_LENGTHS } from './optics/formats.js';
-import { renderImage, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
+import { renderImage, renderEdit, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
@@ -2405,24 +2405,46 @@ function adjustmentsFor({ look, edits }) {
     return [key, clampToRange(key, base + (edits[key] || 0))];
   }));
 }
+/** A photo's finished edit (crop, optics, look, Adjust) without frame or text: { image, tint, settings }, or null
+ *  when `job` went stale. 'preview' works from the 256 px thumb with the engine's preview quality. 'full' works from
+ *  the full-size photo: Basic at `edge` (resolution-independent), film engines from full-size input (their grain and
+ *  MTF have a physical scale) and then scaled down to `edge`. `onEngine(module)` sees each engine it loads. */
+async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', job = null, onEngine = null, onProgress } = {}) {
+  const preview = quality === 'preview', inView = !preview && photo.id === app.activeId && state.image;
+  const settings = inView ? snapshot() : photo.settings;
+  const { crop, look, edits } = settings;
+  const image = preview ? photo.thumb : inView ? state.image : await decodeImage(photo.file);
+  const workEdge = preview || look.engine === PRESETS ? edge : Infinity;
+  const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop, workEdge);
+  const source = await renderOptics(cropped, settings.optics, workEdge);
+  if (job?.stale) return null;
+  if (look.engine === PRESETS) return { image: renderEdit(source, adjustmentsFor(settings), workEdge), tint: null, settings };
+  const module = await loadEngine(look.engine);
+  onEngine?.(module);
+  const params = module.normalizeParams(look.engineParams[look.engine]);
+  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
+  const raw = await module.render(input, cloneParams(params), { quality, onProgress });
+  input.close();
+  if (job?.stale) return null;
+  const hasEdits = Object.keys(edits).length > 0;
+  let output = preview ? (hasEdits ? applyAdjustments(raw, adjustmentsFor(settings)) : raw) : await adjustFull(raw, hasEdits ? adjustmentsFor(settings) : null);
+  const scale = preview ? 1 : Math.min(1, edge / Math.max(output.width, output.height));
+  if (scale < 1) {
+    const scaled = document.createElement('canvas');
+    scaled.width = Math.max(1, Math.round(output.width * scale)); scaled.height = Math.max(1, Math.round(output.height * scale));
+    const ctx = scaled.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(output, 0, 0, scaled.width, scaled.height);
+    output.close?.(); output = scaled;
+  }
+  const tint = module.paperTint && module.showsPaper(params) ? module.paperTint(params) : null;
+  return { image: output, tint, settings };
+}
 async function renderPhotoThumb(id, job) {
   const photo = photoById(id); if (!photo) return null;
-  const settings = photo.settings, engineId = settings.look.engine, texts = settings.text || [];
+  const texts = photo.settings.text || [];
   await ensureTextFonts(texts);
-  const cropped = isIdentityCrop(settings.crop) ? photo.thumb : cropSource(photo.thumb, settings.crop, QUEUE_EDGE);
-  const source = await renderOptics(cropped, settings.optics, QUEUE_EDGE);
-  if (job.stale) return null;
-  if (engineId === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), QUEUE_EDGE, texts);
-  const module = await loadEngine(engineId);
-  if (module !== engine.module) queueEngines.add(module);
-  const params = module.normalizeParams(settings.look.engineParams[engineId]);
-  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
-  const raw = await module.render(input, cloneParams(params), { quality: 'preview' });
-  input.close();
-  if (job.stale) return null;
-  const output = Object.keys(settings.edits).length ? applyAdjustments(raw, adjustmentsFor(settings)) : raw;
-  const tint = module.paperTint && module.showsPaper(params) ? module.paperTint(params) : null;
-  return frameCanvas(output, frameFor(settings.frame, tint), texts);
+  const edit = await renderPhotoEdit(photo, { edge: QUEUE_EDGE, quality: 'preview', job, onEngine: module => { if (module !== engine.module) queueEngines.add(module); } });
+  return edit && frameCanvas(edit.image, frameFor(edit.settings.frame, edit.tint), texts);
 }
 const renderQueue = createRenderQueue({
   render: renderPhotoThumb,
@@ -2696,24 +2718,11 @@ function downloadBlob(blob, name) {
 }
 /** A photo's final image (full size, its look, crop, edits and frame) as a canvas. */
 async function renderPhotoFull(photo, engineModules, onProgress) {
-  const inView = photo.id === app.activeId && state.image;
-  const settings = inView ? snapshot() : photo.settings;
-  const image = inView ? state.image : await decodeImage(photo.file);
-  const { crop, look, edits } = settings, texts = settings.text || [];
+  const texts = settingsOf(photo).text || [];
   await ensureTextFonts(texts);
-  const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop);
-  const source = await renderOptics(cropped, settings.optics);
-  if (look.engine === PRESETS) return renderImage(source, adjustmentsFor(settings), frameFor(settings.frame, null), Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height), texts);
-  const module = await loadEngine(look.engine);
-  engineModules.add(module);
-  const params = module.normalizeParams(look.engineParams[look.engine]);
-  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
-  const raw = await module.render(input, cloneParams(params), { quality: 'full', onProgress });
-  input.close();
-  const full = await adjustFull(raw, Object.keys(edits).length ? adjustmentsFor(settings) : null);
-  const tint = module.paperTint && module.showsPaper(params) ? module.paperTint(params) : null;
-  const output = frameCanvas(full, frameFor(settings.frame, tint), texts);
-  full.close?.();
+  const { image, tint, settings } = await renderPhotoEdit(photo, { onEngine: module => engineModules.add(module), onProgress });
+  const output = frameCanvas(image, frameFor(settings.frame, tint), texts);
+  image.close?.();
   return output;
 }
 const batchKey = photos => JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, batch.format === 'image/png' ? 0 : elements.batchQuality.value]);
