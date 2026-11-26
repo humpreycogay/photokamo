@@ -4,15 +4,20 @@ Privacy-first photo editor that runs entirely in the browser. Static site (GitHu
 
 ## Run
 ```
-python -m http.server 8080   # then open http://localhost:8080
+python3 -m http.server 8080   # then open http://localhost:8080 (Windows: py -m http.server 8080)
 ```
-ES modules + WebAssembly need HTTP; opening index.html from disk does not work. Use "No photo handy? Try a sample" (`images/model.jpg`) for testing.
+ES modules and the engine Workers need HTTP; opening index.html from disk does not work. Use "No photo handy? Try a sample" (`images/model.jpg`) for testing.
 
 ## Layout
 - `index.html` – all markup, dialogs
 - `css/styles.css` – design tokens at the top (`--bg`, `--surface`, `--accent`, …); use them, never new hex values
-- `js/app.js` – state, UI wiring, render scheduling, export
-- `js/renderer.js` – Canvas pipeline: `renderImage`, `processPixels`, `frameCanvas`, `frameLayout`
+- `js/app.js` – entry point: event wiring, keyboard shortcuts, boot splash (nothing imports it)
+- `js/state.js` – `elements`, the photo-in-view `state`, open photos `app`, constants, effective Adjust values, `toast`
+- `js/history.js` – snapshots, `commit()` / `change()`, slider gestures; upward calls are injected with `setHistoryHooks`
+- `js/photos.js` (open/switch photos, filmstrip, apply to selected, render queue), `js/preview.js` (sources, Basic preview, zoom, compare, full screen), `js/export.js` (Save sheet, batch), `js/camera.js`, `js/looks.js`, `js/start-screen.js`, `js/engine-host.js` (film engines and rendering), `js/collage-host.js` (collage glue, undo/redo)
+- `js/panels/` – one module per panel: `adjust`, `lens`, `frames`, `crop`, `text`, `film-sheet`, `tabs`
+- `js/renderer.js` – Canvas pipeline: `renderImage`, `adjustPixels` (pure), `frameCanvas`, `frameLayout`
+- `js/collage/mode.js` – collage mode; its parts (`panel`, `slots-ui`, `text-ui`, `sticker-ui`, `slot-cache`, `ui`) share one context object
 - `js/presets.js` – looks, adjustment specs, frames
 - `js/advanced-ui.js` – builds film-engine controls from an engine's `sections`
 - `js/engines/registry.js` – engine list (lazy `load()`); `js/engines/<id>/index.js` – engine contract
@@ -21,6 +26,8 @@ ES modules + WebAssembly need HTTP; opening index.html from disk does not work. 
 
 ## Current redesign
 Follow `plan_workflow.md` (look search, analysis/Auto, IndexedDB recovery, exact export and healing) one task at a time. The collage implementation is complete through Task 9; Task 10's cross-reload saving must integrate with workflow Task 5 rather than creating a second photo store. Show a short plan before editing, then stop after the task's Check list and tell me what to verify. Finished plans are archived in `docs/archive/`.
+
+Stabilisation runs alongside: `v3plan.md` (bugs, main-thread work, memory, parity, accessibility, structure). Tasks 0–7 and 10–12 are done; Tasks 8–9 (grain) wait for owner approval; Task 13 waits on Open decisions 4–6. Byte-identical exports are checked against `docs/v3/BASELINE.md` with `tools/v3-baseline.mjs`.
 
 ## Rules
 - Nothing leaves the device: no fetch except engine files and vendored assets already in the repo (`vendor/twemoji/`, CC-BY 4.0, credited in About); no analytics, no CDNs, no new runtime dependencies (write small helpers yourself, e.g. `js/zip.js`).

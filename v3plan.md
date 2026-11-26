@@ -257,10 +257,10 @@ Do this with, or right after, workflow Task 0 (pure `adjustPixels(data, width, h
 
 #### Task 13: Repo, docs and small guards
 - [ ] **[C]** `.gitignore:4` (`plan_*.md`) ignores `plan_workflow.md` and `plan_optics.md`, and `:68` ignores `docs/archive/`, while `CLAUDE.md` treats both as checked in: track them or change `CLAUDE.md` (Open decisions 4)
-- [ ] **[C]** README: "WebAssembly film engine" (Kamo is plain JS), "20" Basic looks (count them in `js/presets.js`), Windows-only run path; same wording in `CLAUDE.md`
-- [ ] **[R]** `CollagePlan.md`: Task 7 boxes unchecked though implemented; stickers, Twemoji and kits have no task or Check; Task 5b says `category:'style'` (code uses `layout`/`collage`/`diptych`); "Outside shape → canvas grows" not done (`js/collage/render.js:266`)
-- [ ] **[R]** `CollagePlan.md` Task 10 prerequisites to write down: stable photo ids from the session store, `slotSeq` restarting at 0 (`js/collage/model.js:23-25`), migration for `v !== 1` (`js/collage/store.js:11`)
-- [ ] **[R]** `js/zip.js`: no guard at 65,535 entries (`:63` wraps silently) and the 4 GB check ignores headers (`:38`): fail with a clear message
+- [x] **[C]** README: "WebAssembly film engine" (Kamo is plain JS), "20" Basic looks (count them in `js/presets.js`), Windows-only run path; same wording in `CLAUDE.md`
+- [x] **[R]** `CollagePlan.md`: Task 7 boxes unchecked though implemented; stickers, Twemoji and kits have no task or Check; Task 5b says `category:'style'` (code uses `layout`/`collage`/`diptych`); "Outside shape → canvas grows" not done (`js/collage/render.js:266`)
+- [x] **[R]** `CollagePlan.md` Task 10 prerequisites to write down: stable photo ids from the session store, `slotSeq` restarting at 0 (`js/collage/model.js:23-25`), migration for `v !== 1` (`js/collage/store.js:11`)
+- [x] **[R]** `js/zip.js`: no guard at 65,535 entries (`:63` wraps silently) and the 4 GB check ignores headers (`:38`): fail with a clear message
 - [ ] `Archive/` is 94 MB in 1,631 tracked files and is published by GitHub Pages (Open decisions 5)
 - [ ] Licence wording: repo GPL-3.0, Kamo engine code "Proprietary" (`js/engines/registry.js:14`, `credits.json`); make README, About and credits say the same thing (Open decisions 6)
 - [ ] Update `CLAUDE.md` "Current redesign" and archive this plan when finished
@@ -269,6 +269,7 @@ Do this with, or right after, workflow Task 0 (pure `adjustPixels(data, width, h
 **Check:** README steps work on macOS from a clean clone; About dialog matches `credits.json`.
 **Done when:** a fresh clone contains every file `CLAUDE.md` names.
 **Output changes:** no.
+*Partly done 2026-11-27:* README: "WebAssembly film engine" changed to the film engine's Web Workers (Kamo is plain JS; no `.wasm` in its manifest), 20 Basic looks to 17 (counted in `js/presets.js`), and run commands for macOS/Linux (`python3`) and Windows (`py`). CLAUDE.md has the same run fix, the new module layout (Task 12) and a v3 status line. `CollagePlan.md`: Task 7 boxes ticked; "Outside shape → canvas grows" marked **not done** (text is unclipped but the sheet keeps its size); Task 5b's category corrected (`layout`/`collage`/`diptych`, no `style`); a Task 9b entry with a Check for stickers, Twemoji and kits; Task 10 prerequisites written down (stable photo ids, `slotSeq` restarting at 0, migration for `v !== 1`, names never as HTML). `js/zip.js`: a clear error above 65,535 files and a 4 GB check that counts local headers, names and the central directory, before a file's bytes are read. The batch dialog shows both messages. Node cases (65,536 files; 3 GB + 1.5 GB; data under 4 GB but header over; UTF-8 name round-trip): the two limit cases failed before and all pass after. **Open:** `.gitignore` versus plans in git (Open decision 4), `Archive/` (5), licence wording (6), and archiving this plan (after Tasks 8, 9 and 13).
 
 ---
 

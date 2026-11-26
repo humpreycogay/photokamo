@@ -101,6 +101,27 @@ test('full-render key ignores frame and text, follows look, edits, crop and opti
     assert.notEqual(key(change), key({}), `${name} change needs a new render`);
 });
 
+// ---------- Task 13: zip.js limits ----------
+test('zip: over 65 535 files fails clearly', async repo => {
+  const { createZip } = await import(`${repo}/js/zip.js`);
+  const files = Array.from({ length: 65536 }, (_, i) => ({ name: `${i}.jpg`, blob: new Blob([]) }));
+  await assert.rejects(createZip(files), /65[ ,.]?535/);
+});
+test('zip: over 4 GB fails clearly, headers included', async repo => {
+  const { createZip } = await import(`${repo}/js/zip.js`);
+  const big = size => ({ size, arrayBuffer: async () => new ArrayBuffer(0) }); // a size without the bytes
+  await assert.rejects(createZip([{ name: 'a.jpg', blob: big(3e9) }, { name: 'b.jpg', blob: big(1.5e9) }]), /4 GB/);
+  // the data alone fits (0xffffffff − 20 bytes), its 30-byte header and name do not
+  await assert.rejects(createZip([{ name: 'a.jpg', blob: big(0xffffffff - 20) }]), /4 GB/);
+});
+test('zip: a UTF-8 file name round-trips', async repo => {
+  const { createZip } = await import(`${repo}/js/zip.js`);
+  const name = 'café-ü-写真.jpg', zip = new Uint8Array(await (await createZip([{ name, blob: new Blob([new Uint8Array([1, 2, 3])]) }])).arrayBuffer());
+  const view = new DataView(zip.buffer), length = view.getUint16(26, true);
+  assert.equal(view.getUint32(0, true), 0x04034b50); assert.equal(view.getUint16(6, true) & 0x0800, 0x0800, 'UTF-8 flag');
+  assert.equal(new TextDecoder().decode(zip.subarray(30, 30 + length)), name);
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }

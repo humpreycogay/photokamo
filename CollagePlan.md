@@ -303,7 +303,7 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 - **Not run:** Safari, Firefox, real touch devices.
 
 #### Task 5b: Styles from the owner's references (added 2026-11-25, pulls part of Release 4 forward)
-- [x] Three reference layouts rebuilt as `kind: 'free'`, `category: 'style'` templates on a 7:5 sheet: **Prints · 4** (overlapping white-bordered prints), **Feature + 3** (a big photo with a bordered panel of three over its edge), **Arc + circle** (a photo with a curved edge and a round photo over it, white keylines)
+- [x] Three reference layouts rebuilt as `kind: 'free'` templates (categories `layout`, `collage`, `diptych` in the code; there is no `style` category) on a 7:5 sheet: **Prints · 4** (overlapping white-bordered prints), **Feature + 3** (a big photo with a bordered panel of three over its edge), **Arc + circle** (a photo with a curved edge and a round photo over it, white keylines)
 - [x] Similar styles: Prints · 3, Prints · 5, Feature + 2, Feature + 4, Arc + circle (right), Arc + 2 circles
 - [x] Collage-only papers sampled from the references, **Taupe** `#a89a78` and **Clay** `#a69480` (`COLLAGE_PAPERS`); a style sets its paper, and the default comes back when leaving it unless the user picked one
 - [x] **Prints** section (styles): border width 0–2 % (full width, centred on each print's outline, drawn right after its photo so prints above cover it) and colour; Spacing, Margin and Corners hide for styles
@@ -331,10 +331,13 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 **Done when:** gutters stay exact while dividers move; captions never overlap photos.
 
 #### Task 7: Text and captions
-- [ ] Text layers on the sheet; `target` = sheet or slot (slot captions move with the slot, decision #3)
-- [ ] Presets: **Shared caption**, **Date** (today or typed; capture date waits for the metadata reader), **Slot captions**; on shaped collages, text is clipped by the shape unless "Outside shape" is chosen (then the canvas grows to fit)
-- [ ] Fonts, colour, alignment from the existing controls; fonts loaded before export (`ensureTextFonts`)
-- [ ] Text contrast hint uses the current backdrop when the background is transparent ("Contrast depends on where you place it") (moved from Task 4)
+- [x] Text layers on the sheet; `target` = sheet or slot (slot captions move with the slot, decision #3)
+- [x] Presets: **Shared caption**, **Date** (today or typed; capture date waits for the metadata reader), **Slot captions**; on shaped collages, text is clipped by the shape unless "Outside shape" is chosen
+- [ ] …"Outside shape" → the canvas grows to fit: **not done**. The text is no longer clipped (`js/collage/render.js`, `drawCollageTexts`), but the sheet keeps its size, so text past the edge is cut off
+- [x] Fonts, colour, alignment from the existing controls; fonts loaded before export (`ensureTextFonts`)
+- [x] Text contrast hint uses the current backdrop when the background is transparent ("Contrast depends on where you place it") (moved from Task 4)
+
+*Status checked 2026-11-27 (v3plan.md Task 13): implemented in `js/collage/text-ui.js` and `render.js`; the boxes were never ticked. Keyboard moves and 44 px handles came with v3 Task 10.*
 
 **Check:** caption + date on a grid and on a heart; swapped photos leave slot captions in place; export matches preview.
 **Done when:** text positions within 1 px scaled; no font fallback in export.
@@ -366,7 +369,22 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 
 ### Release 5: keep and polish
 
+#### Task 9b: Stickers, emoji and scrapbook kits (added after the plan; implemented)
+- [x] Stickers on the sheet (`js/collage/stickers.js`, `sticker-ui.js`): drawn shapes, words and scrapbook pieces, plus emoji drawn from the bundled Twemoji SVGs (`vendor/twemoji/`, CC-BY 4.0, credited in About), with the system emoji font as the fallback
+- [x] Picker dialog with search, group chips and Recent; handles drag, resize and rotate knobs, pinch; keys (arrows, + −, [ ], Delete); size/rotate sliders, flip, order, duplicate; one undo step per gesture
+- [x] Scrapbook kits (`category: 'kit'`): papers, mounts, tape, stickers and captions that come with the layout and leave with it unless edited (`swapKitLayers`)
+
+**Check:** add stickers from search and Recent; move/resize/rotate/delete by keyboard and pointer; switch kit → other layout → kit: untouched kit layers come and go, edited ones stay; export matches preview.
+*Recorded 2026-11-27 (v3plan.md Task 13): this work had no task or check. `tools/collage-check.mjs` validates the kit templates; v3 Task 11's scripted session covers stickers and a kit.*
+
 #### Task 10: Saving collages and QA
+
+**Prerequisites before cross-reload saving (from the v3 review):**
+1. Stable photo ids across reloads, from the session store (`plan_workflow.md` Task 5). Today's ids are `app.nextId` counters that start again at 1.
+2. Slot ids: `slotSeq` in `js/collage/model.js` restarts at 0 on every load, so a restored document's `s1, s2…` can collide with new slots. Seed it from the highest restored id (or use random ids).
+3. A migration path: `sanitizeCollageDoc` (`js/collage/store.js`) rejects any document whose `v !== 1`. Add `migrate(v)` steps before the version ever changes.
+4. Saved names come back from storage, so they must never be put into HTML (done in v3 Task 2: the menu is built with `textContent`).
+
 - [ ] With session recovery (`plan_workflow.md` Task 5): store collage documents in the session; missing photos → empty slots
 - [x] "Collages (N)" list in `#fileMenu` to reopen or delete
 - [ ] `docs/collage/PERF.md`: preview/export time and peak memory for 4, 9 and 36 photos (Basic-only and 3-film mixes) at Share/Full/Print, laptop and phone

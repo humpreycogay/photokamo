@@ -4,11 +4,11 @@ PhotoKamo is a privacy-first, browser-native photo editor for camera-inspired co
 
 ## Run locally
 
-This project has no build step or runtime dependencies. ES modules and the WebAssembly film engine require serving the files over HTTP:
+This project has no build step or runtime dependencies. ES modules and the film engine's Web Workers need the files served over HTTP (opening `index.html` from disk does not work). From the repository folder:
 
-```powershell
-cd D:\root\PhotoKamo
-python -m http.server 8080
+```sh
+python3 -m http.server 8080   # macOS / Linux
+py -m http.server 8080        # Windows (or: python -m http.server 8080)
 ```
 
 Open <http://localhost:8080>.
@@ -16,7 +16,7 @@ Open <http://localhost:8080>.
 ## Features
 
 - Open several photos at once (file picker, drag-and-drop, sample photo, live camera or mobile capture); a filmstrip to switch between them, with Ctrl/Cmd-click, Shift-click, keyboard or long-press selection, and Remove (or the Delete key) to take photos off the strip
-- One Looks grid: **Basic** (20 camera, film and creative looks with strength and favorites) and **Kamo**, the film engine (see below), with 81 one-tap film looks: 20 calibrated colour stocks, 30 lab/cinema pairings, push/pull, CineStill and look-alike recipes, and 31 B&W, instant, creative and extreme looks (infrared, negatives, cross-processing, redscale, cyanotype…)
+- One Looks grid: **Basic** (17 camera, film and creative looks with strength and favorites) and **Kamo**, the film engine (see below), with 81 one-tap film looks: 20 calibrated colour stocks, 30 lab/cinema pairings, push/pull, CineStill and look-alike recipes, and 31 B&W, instant, creative and extreme looks (infrared, negatives, cross-processing, redscale, cyanotype…)
 - Adjust (light, color, character) on top of every engine
 - Crop: 10 aspect ratios with Swap W×H, zoom, drag and resize, straighten (no empty corners), rotate 90°, flip, and the output size in pixels
 - Frames: Paper print (border width, extra at the bottom, paper colour, match the print paper), classic, instant and film strip, all drawn into the exported image

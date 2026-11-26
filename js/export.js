@@ -294,7 +294,7 @@ async function downloadBatch() {
     }
   } catch (error) {
     console.error(error);
-    elements.batchStatus.textContent = error?.message?.includes('4 GB') ? error.message : 'Export failed. Check your connection for film engines, or try JPEG.';
+    elements.batchStatus.textContent = /4 GB|65,535 files/.test(error?.message || '') ? error.message : 'Export failed. Check your connection for film engines, or try JPEG.'; // the ZIP limits (js/zip.js) explain themselves
   } finally { elements.batchProgressText.textContent = 'Rendering full quality'; }
 }
 // Share needs a fresh tap: the first tap renders the files, then sharing is one more tap.
