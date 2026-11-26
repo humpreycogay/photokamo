@@ -11,5 +11,5 @@
     { "name": "Film Scan Calibration data licence (CC BY 4.0)", "file": "data/film-scan-calibration/LICENSE-DATA.txt" },
     { "name": "Calibration attribution and third-party standards notice", "file": "data/film-scan-calibration/ATTRIBUTION.md" }
   ],
-  "changes": ["Adapted to PhotoKamo’s grouped engine controls and Web Worker runtime; calibration data is unmodified.", "2026-11-26 (v3 Task 3): SpectralDataStore no longer caches a failed load, so a look can be retried after a network error without a reload (test/store.test.js).", "2026-11-27 (v3 Task 13): LICENSE.md states the proprietary terms; the credits link to it instead of the repository."]
+  "changes": ["Adapted to PhotoKamo’s grouped engine controls and Web Worker runtime; calibration data is unmodified.", "2026-11-26 (v3 Task 3): SpectralDataStore no longer caches a failed load, so a look can be retried after a network error without a reload (test/store.test.js).", "2026-11-27 (v3 Task 13): LICENSE.md states the proprietary terms; the credits link to it instead of the repository.", "2026-11-27 (v3 Task 8): creative-look grain above 900 px is a smooth field sized to the picture, and spectral sharpening scales its radius with the full picture, so exports viewed at preview size match the preview (test/scale.test.js); previews up to 900 px are unchanged."]
 }

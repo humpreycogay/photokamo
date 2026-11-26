@@ -32,6 +32,8 @@ Before = commit `cef1818` (old `processPixels` on the main thread). After = `adj
 
 The after times include copying the photo into an ImageBitmap and transferring it to the Worker (about 0 to 25 ms on this laptop). In exchange, the main thread stays free.
 
+**Since v3 Task 8 (2026-11-27):** the five presets with grain export differently at full size (their grain is now sized to the picture): `faded-print` → `b28a6e664d5a6c96`, `silver-mono` → `b96784f58520a311`, `desert-dream` → `d89f845bdd9664b6`, `rose-memory` → `b1373cb4a7b8df1e`, `hard-noir` → `647ba33024ddccde`. The other 12 are unchanged.
+
 ## Synthetic fixtures
 
 `node tools/workflow-fixtures.mjs`: 6 fixtures (grey ramp, warm and cool grey cards, clipped highlights, alpha edges, noisy photo) × 5 adjustment sets = 30 cases. `adjustPixels` gives the same bytes as the old `processPixels`: the goldens in the file were recorded from the old loop via a stand-in canvas context. `tools/workflow-fixtures.html` repeats this in the browser and compares the canvas path with `adjustPixels` on the opaque fixtures and on the sample with all 17 presets.

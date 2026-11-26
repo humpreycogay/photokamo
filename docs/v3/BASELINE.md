@@ -17,10 +17,10 @@ Time = from clicking **Export** to the download event (includes rendering and en
 |---|---|---|---|---|---|---|
 | 1 | Basic · clean-pop | `3f8366e945412c94eb6a4ce0680ca165535c571d47da631ef80b1bc0dde702cd` | 1311 × 1514 | 619,933 | 130 / 127 | — |
 | 2 | Basic · warm-natural | `0dfe2694b89011432f4a8cc1373d2c2432db89211b402422c76028c07f0e0acd` | 1311 × 1514 | 596,971 | 124 / 129 | — |
-| 3 | Basic · faded-print | `7127eafd61f1ab7c646e22cd58fc3f7c71aef3de4f9e331769ea4c75d6368b2e` | 1311 × 1514 | 551,455 | 135 / 135 | — |
+| 3 | Basic · faded-print | `b28a6e664d5a6c967b6fb5fe1ba1f55f94bb9b90281e320fc14abb63369e15b7` | 1311 × 1514 | 559,304 | 199 / 170 | — |
 | 4 | Kamo · kodak-portra-400 | `efa5ca8a2b5c2d45f4751830c8cfcd0c76bfc03f2b1d36889f6c810f55cd51ab` | 1311 × 1514 | 726,314 | 964 / 961 | — |
 | 5 | Kamo · look-superia-xtra-400 | `eb0840a36dcf37f266dc5a2caa5682f80bc88a9c3c11991f354c3ab58e432091` | 1311 × 1514 | 705,185 | 880 / 996 | — |
-| 6 | Kamo · bw-ilford-hp5-plus | `7fae11339683b1a89e9b65258fceec4a6f73ae78d092536836bbfb07ca389f04` | 1311 × 1514 | 626,431 | 742 / 750 | — |
+| 6 | Kamo · bw-ilford-hp5-plus | `1060a1b737377536a28f0723aeb481cd00d60a676933e462d4593c824e53290d` | 1311 × 1514 | 622,091 | 731 / 752 | — |
 | 7 | Collage · grid-4 (2 × 2), 4 × sample | `514fc96dcf782a884444f69104ad95354e461862d8fe34d01fd26cdcd18f3d7e` | 2913 × 2913 | 1,861,683 | 278 / 284 | — |
 | 8 | Basic · clean-pop · share size | `e2363841364d5be70279216c2fd6301b0cb9e7698c93d60e9665953952c7cdda` | 1080 × 1247 | 394,670 | 186 / 185 | — |
 | 9 | Collage · diptych-side, slot 2 empty | `c8e6cbdd2673dae958f4c1d901a4e469ca4610123f1e239aef4b0237bb0efa9a` | 3433 × 2289 | 570,774 | 1026 / 1015 | — |
@@ -33,6 +33,8 @@ Console: no errors or warnings during any run. Network: no request outside `http
 
 - Task 4 (optics highlights): no baseline export uses the Lens stage, so all 7 hashes still hold.
 - Task 6 (2026-11-27): rows 8 and 9 added. Both scale the photo down, which rows 1–7 never do. They caught a Task 5 regression the other rows missed: the Worker path re-sampled an ImageBitmap instead of drawing the `<img>` at the smaller size, which changed every Share-size export and collage slots that need less than the full photo (max 12 levels). Fixed in Task 6: the scaling draw stays on the main thread, and the pixel loop stays in the Worker. Both rows were recorded at `cef1818` (before Task 5) and are equal to the current code.
+
+- Task 8 (2026-11-27, approved): rows 3 and 6 re-recorded. Grain above the preview size is now sized to the picture (Basic grain above 1000 px, Kamo creative-look grain above 900 px), so those two exports changed. The other 7 rows are unchanged.
 
 ## Node checks
 

@@ -122,6 +122,32 @@ test('zip: a UTF-8 file name round-trips', async repo => {
   assert.equal(new TextDecoder().decode(zip.subarray(30, 30 + length)), name);
 });
 
+// ---------- Task 8: grain parity between preview and export ----------
+/** Standard deviation of one channel, after averaging `block` × `block` pixel blocks (a downscale by `block`). */
+function blockStd(data, width, height, block) {
+  let sum = 0, sumSq = 0, n = 0;
+  for (let by = 0; by + block <= height; by += block) for (let bx = 0; bx + block <= width; bx += block) {
+    let total = 0;
+    for (let y = by; y < by + block; y++) for (let x = bx; x < bx + block; x++) total += data[(y * width + x) * 4];
+    const v = total / (block * block); sum += v; sumSq += v * v; n++;
+  }
+  const mean = sum / n; return Math.sqrt(sumSq / n - mean * mean);
+}
+test('Basic grain: a 6000 px export downscaled to 1000 px looks like the 1000 px preview (RMS within 15 %)', async repo => {
+  const { adjustPixels } = await import(`${repo}/js/renderer.js`);
+  const { defaultAdjustments } = await import(`${repo}/js/presets.js`);
+  const a = { ...defaultAdjustments, grain: 40 }, grey = size => { const d = new Uint8ClampedArray(size * size * 4).fill(128); return d; };
+  const small = grey(1000); adjustPixels(small, 1000, 1000, a);
+  const preview = blockStd(small, 1000, 1000, 1);
+  for (const [size, block] of [[3000, 3], [6000, 6]]) {
+    const big = grey(size); adjustPixels(big, size, size, a);
+    const scaled = blockStd(big, size, size, block);
+    assert.ok(Math.abs(scaled / preview - 1) < .15, `${size} px: grain RMS ${scaled.toFixed(2)} after ÷${block} vs ${preview.toFixed(2)} in the preview`);
+  }
+  const again = grey(3000); adjustPixels(again, 3000, 3000, a); const once = grey(3000); adjustPixels(once, 3000, 3000, a);
+  assert.deepEqual(again.subarray(0, 4000), once.subarray(0, 4000), 'grain is deterministic');
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }

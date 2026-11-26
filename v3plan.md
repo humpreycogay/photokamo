@@ -194,14 +194,15 @@ Do this with, or right after, workflow Task 0 (pure `adjustPixels(data, width, h
 ### Release C: output quality
 
 #### Task 8: Grain and sharpening parity between preview and export
-- [ ] **[C]** Basic grain is one noise sample per pixel (`js/renderer.js:116`), creative grain too (`engines/kamo-film-engine/src/index.js:217`), and spectral sharpening has a fixed 1 px radius (`src/spectral/render.js:431`), so grain visible at 1000 px almost vanishes at 24 MP
-- [ ] Scale the noise cell and the sharpen radius with image size, as spectral grain already does (`render.js:349-351`); keep the seed deterministic
-- [ ] Engine edits → tests, `credits.json` → `changes`, manifest regeneration
+- [x] **[C]** Basic grain is one noise sample per pixel (`js/renderer.js:116`), creative grain too (`engines/kamo-film-engine/src/index.js:217`), and spectral sharpening has a fixed 1 px radius (`src/spectral/render.js:431`), so grain visible at 1000 px almost vanishes at 24 MP
+- [x] Scale the noise cell and the sharpen radius with image size, as spectral grain already does (`render.js:349-351`); keep the seed deterministic
+- [x] Engine edits → tests, `credits.json` → `changes`, manifest regeneration
 
 **Tests:** Node case: grain RMS measured on a flat grey patch at 1000 px and 6000 px, after downscaling the large one to 1000 px, agrees within 15 %. Engine tests updated.
 **Check:** side by side, preview at fit against the export viewed at the same on-screen size: same apparent grain for one Basic look, one B&W look, one colour stock.
 **Done when:** parity fixture passes; no speed regression > 10 % at 4 MP.
 **Output changes:** yes, every export with grain > 0 above preview size. Needs owner approval before starting; re-record the baseline.
+*Done 2026-11-27 (owner approved):* Grain is sized to the picture. **Basic** (`adjustPixels`): up to 1000 px (the preview) it is unchanged, one seeded value per pixel. Above that, it is a smooth field with one cell per preview pixel, seeded by grid position and scaled so a preview-pixel-sized block averages to the node RMS. Measured strength at preview size, before → after: 0.50 / 0.33 / 0.17 → 0.99 / 0.99 / 0.98 of the preview at 2× / 3× / 6×. **Kamo creative looks** (`src/index.js`): the same scheme above 900 px (the engine preview), with the original distribution. **Spectral sharpening:** radius = round(full long edge ÷ 900), from the full frame (not the tile). **Spectral grain** was already physical. Node: Basic parity at 3000 and 6000 px within 15 % (failed before at 0.33), plus determinism. Engine (`test/scale.test.js`): creative grain parity (before: 2.16 vs 6.47) and sharpening edge overshoot parity (before: 22 vs 55). Engine 43/43, recorded in `credits.json` → `changes`, manifest unchanged. Speed at 4 MP: `adjustPixels` with grain 52 vs 51 ms (+2 %; the pixel loop is now row/column, so without grain it is faster: 33 vs 37 ms); creative 660 vs 665 ms; spectral 1307 vs 1338 ms. Exports: baseline rows 3 and 6 re-recorded (Faded Print, HP5); the other 7 are identical. Of the 17 presets, exactly the 5 with grain changed (`docs/v2/BASELINE.md` note). Side by side on a 24 MP photo (preview | new export ↓ | old export ↓) for Faded Print, HP5 and Portra 400: the new exports keep the preview's grain, the old ones had lost it (Portra was already fine).
 
 #### Task 9: Tiled full-size film renders (lift the 4 MP / 2 MP cap)
 - [ ] **[C]** Film "full" renders are capped at 4 MP, 2 MP on coarse pointers (`js/engines/kamo-film-engine/engine.js:2-6`); measured ~137 MB of typed arrays at 4 MP

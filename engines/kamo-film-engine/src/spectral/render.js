@@ -425,10 +425,12 @@ export function processSpectralImage(image, pipeline, settings, options = {}) {
   }
 
   // 11. Sharpening (unsharp mask on encoded values).
+  // The radius grows with the full picture (1 px up to ~1.5 × the 900 px preview), so an export viewed at preview size
+  // is sharpened like the preview (PhotoKamo v3 Task 8). The full size, not the tile, sets it.
   if (s.sharpening > 0) {
-    const k = s.sharpening / 100;
+    const k = s.sharpening / 100, radius = Math.max(1, Math.round(Math.max(region.fullWidth, region.fullHeight) / 900));
     for (const plane of [encR, encG, encB]) {
-      const blurred = boxBlur(plane, width, height, 1, 1);
+      const blurred = boxBlur(plane, width, height, radius, 1);
       for (let i = 0; i < n; i++) plane[i] += k * (plane[i] - blurred[i]);
     }
   }

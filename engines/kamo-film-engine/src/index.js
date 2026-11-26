@@ -88,6 +88,34 @@ function tone(value, contrast, toe, shoulder) {
   return 0.5 + (rolled - 0.5) * 2 ** contrast;
 }
 
+// Grain is sized to the picture, not to pixels (PhotoKamo v3 Task 8): up to GRAIN_REF_EDGE (the app's preview size)
+// each pixel gets its own random value, as before; a larger render draws the same grain bigger, as a smooth field
+// with one cell per preview pixel, scaled so the render viewed at preview size shows the preview's grain.
+const GRAIN_REF_EDGE = 900;
+/** One grain value per call (the original distribution: the mean of three uniforms, centred). */
+const grainSample = rng => (rng() + rng() + rng()) / 3 - 0.5;
+/** The grain field for a render larger than GRAIN_REF_EDGE as a per-row function, or null. */
+function grainRows(width, height, rng) {
+  const cell = Math.max(width, height) / GRAIN_REF_EDGE; if (cell <= 1) return null;
+  const gw = Math.ceil(width / cell) + 2, gh = Math.ceil(height / cell) + 2, nodes = new Float32Array(gw * gh);
+  let nodeSq = 0;
+  for (let i = 0; i < nodes.length; i++) { nodes[i] = grainSample(rng); nodeSq += nodes[i] * nodes[i]; }
+  const sample = (x, y) => {
+    const gx = x / cell, gy = y / cell, x0 = gx | 0, y0 = gy | 0, fx = gx - x0, fy = gy - y0, i = y0 * gw + x0;
+    return (nodes[i] * (1 - fx) + nodes[i + 1] * fx) * (1 - fy) + (nodes[i + gw] * (1 - fx) + nodes[i + gw + 1] * fx) * fy;
+  };
+  // Interpolation smooths the noise: scale it until a preview-pixel-sized block averages to the nodes' own RMS.
+  const block = Math.max(1, Math.round(cell)), bw = Math.min(64, Math.floor(width / block)), bh = Math.min(64, Math.floor(height / block));
+  let blockSq = 0;
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+    let total = 0;
+    for (let y = by * block; y < (by + 1) * block; y++) for (let x = bx * block; x < (bx + 1) * block; x++) total += sample(x, y);
+    blockSq += (total / (block * block)) ** 2;
+  }
+  const scale = Math.sqrt(nodeSq / nodes.length) / Math.sqrt(blockSq / Math.max(1, bw * bh) || 1), row = new Float32Array(width);
+  return y => { for (let x = 0; x < width; x++) row[x] = sample(x, y) * scale; return row; };
+}
+
 function random(seed) {
   let state = (Math.trunc(seed) || 1) >>> 0;
   return () => {
@@ -207,14 +235,15 @@ export class FilmEngine {
     const blurred = spatialAmount > 0
       ? blurRgb(output, width, height, Math.max(1, Math.round(Math.min(width, height) / 180)))
       : null;
-    const rng = random(settings.seed);
+    const rng = random(settings.seed), field = settings.grain ? grainRows(width, height, rng) : null;
     const cx = (width - 1) / 2 || 1, cy = (height - 1) / 2 || 1;
     for (let y = 0; y < height; y++) {
+      const fieldRow = field && field(y);
       for (let x = 0; x < width; x++) {
         const i = (y * width + x) * 4;
         const luminance = (output[i] * 0.2126 + output[i + 1] * 0.7152 + output[i + 2] * 0.0722) / 255;
         const highlight = clamp((luminance - 0.58) / 0.42);
-        const grain = ((rng() + rng() + rng()) / 3 - 0.5) * 92 * settings.grain * (0.45 + 0.55 * (1 - luminance));
+        const grain = (fieldRow ? fieldRow[x] : grainSample(rng)) * 92 * settings.grain * (0.45 + 0.55 * (1 - luminance));
         const distance = Math.sqrt(((x - cx) / cx) ** 2 + ((y - cy) / cy) ** 2) / Math.SQRT2;
         const vignette = 1 - settings.vignette * 0.62 * clamp((distance - 0.28) / 0.72) ** 2;
         for (let c = 0; c < 3; c++) {

@@ -84,8 +84,51 @@ function processPixels(ctx, width, height, a) {
   adjustPixels(imageData.data, width, height, a);
   ctx.putImageData(imageData, 0, 0);
 }
+// Basic grain is sized to the photo, not to pixels: a render up to GRAIN_REF_EDGE (the preview) has one noise value
+// per pixel; a larger one draws the same grain bigger (one smooth noise cell per preview pixel), so the export viewed
+// at preview size has the grain the preview showed (v3 Task 8). Seeded by position, so it repeats exactly.
+export const GRAIN_REF_EDGE = 1000;
+/** The grain noise field for a render larger than GRAIN_REF_EDGE, or null (then one seeded value per pixel). */
+function grainField(width, height) {
+  const cell = Math.max(width, height) / GRAIN_REF_EDGE; if (cell <= 1) return null;
+  const gw = Math.ceil(width / cell) + 2, gh = Math.ceil(height / cell) + 2, nodes = new Float32Array(gw * gh);
+  let nodeSq = 0;
+  for (let i = 0; i < nodes.length; i++) { nodes[i] = seededNoise(i); nodeSq += nodes[i] * nodes[i]; }
+  const sample = (x, y) => { // the measurement below; the render reads whole rows
+    const gx = x / cell, gy = y / cell, x0 = gx | 0, y0 = gy | 0, fx = gx - x0, fy = gy - y0, i = y0 * gw + x0;
+    return (nodes[i] * (1 - fx) + nodes[i + 1] * fx) * (1 - fy) + (nodes[i + gw] * (1 - fx) + nodes[i + gw + 1] * fx) * fy;
+  };
+  // Strength: interpolation smooths the noise, so scale it until a preview-pixel-sized block averages to the nodes'
+  // own RMS (measured on up to 64 × 64 blocks; the same nodes every time, so the scale is deterministic too).
+  const block = Math.max(1, Math.round(cell)), bw = Math.min(64, Math.floor(width / block)), bh = Math.min(64, Math.floor(height / block));
+  let blockSq = 0;
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+    let total = 0;
+    for (let y = by * block; y < (by + 1) * block; y++) for (let x = bx * block; x < (bx + 1) * block; x++) total += sample(x, y);
+    blockSq += (total / (block * block)) ** 2;
+  }
+  const scale = Math.sqrt(nodeSq / nodes.length) / Math.sqrt(blockSq / Math.max(1, bw * bh) || 1);
+  // Per column, once: the node to the left and the weight of the one to its right. Then each row of nodes is
+  // interpolated across once (kept while the pixel rows lie between it and the next), and a pixel row is a blend of two.
+  const x0 = new Int32Array(width), fx = new Float32Array(width);
+  for (let x = 0; x < width; x++) { const gx = x / cell; x0[x] = gx | 0; fx[x] = gx - x0[x]; }
+  const across = (gy, out) => {
+    const top = gy * gw;
+    for (let x = 0; x < width; x++) { const j = top + x0[x], f = fx[x]; out[x] = (nodes[j] * (1 - f) + nodes[j + 1] * f) * scale; }
+    return out;
+  };
+  let upper = across(0, new Float32Array(width)), lower = across(1, new Float32Array(width)), atNode = 0;
+  const row = new Float32Array(width);
+  /** Fills and returns the grain values of row `y` (rows are read in order). */
+  return y => {
+    const gy = y / cell, y0 = gy | 0, fy = gy - y0;
+    while (atNode < y0) { [upper, lower] = [lower, upper]; atNode++; across(atNode + 1, lower); }
+    for (let x = 0; x < width; x++) row[x] = upper[x] + (lower[x] - upper[x]) * fy;
+    return row;
+  };
+}
 /** The Basic adjustments on RGBA pixels in place (alpha untouched): pure, so it runs on the main thread, in a
- *  Worker or in Node. 8-bit code values throughout; grain is seeded by pixel index, so it repeats exactly. */
+ *  Worker or in Node. 8-bit code values throughout; grain is seeded by position, so it repeats exactly. */
 export function adjustPixels(data, width, height, a) {
   const exposure = 2 ** a.exposure;
   const contrast = Math.max(0, (100 + a.contrast) / 100) ** 1.35;
@@ -95,12 +138,15 @@ export function adjustPixels(data, width, height, a) {
   const brightness = a.brightness * 1.15;
   const fade = a.fade / 100;
   const grain = a.grain * .34;
+  const field = grain ? grainField(width, height) : null;
   const vignette = a.vignette / 100;
   const clarity = a.sharpness / 100;
   const cx = width / 2, cy = height / 2;
   const maxDistance = Math.sqrt(cx * cx + cy * cy);
 
-  for (let i = 0, pixel = 0; i < data.length; i += 4, pixel++) {
+  for (let y = 0, i = 0, pixel = 0; y < height; y++) {
+  const grainRow = field ? field(y) : null; // grain above the preview size: this row of the field
+  for (let x = 0; x < width; x++, i += 4, pixel++) {
     let r = data[i] * exposure;
     let g = data[i + 1] * exposure;
     let b = data[i + 2] * exposure;
@@ -133,16 +179,16 @@ export function adjustPixels(data, width, height, a) {
       r += localContrast; g += localContrast; b += localContrast;
     }
     if (grain) {
-      const noise = seededNoise(pixel) * grain * (.55 + Math.min(1, lum / 255) * .45);
+      const noise = (grainRow ? grainRow[x] : seededNoise(pixel)) * grain * (.55 + Math.min(1, lum / 255) * .45);
       r += noise; g += noise; b += noise;
     }
     if (vignette) {
-      const x = pixel % width, y = Math.floor(pixel / width);
       const distance = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / maxDistance;
       const factor = 1 - Math.max(0, distance - .3) ** 1.7 * vignette * 1.15;
       r *= factor; g *= factor; b *= factor;
     }
     data[i] = clamp(r); data[i + 1] = clamp(g); data[i + 2] = clamp(b);
+  }
   }
   return data;
 }
