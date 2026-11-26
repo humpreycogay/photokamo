@@ -145,7 +145,7 @@ export function createCollageExport(deps) {
     }
     if (layout.contact) drawContactMarks(ctx, doc, layout);
     drawStickers(ctx, doc, layout);
-    drawCollageTexts(ctx, doc, layout, deps.textFont);
+    drawCollageTexts(ctx, doc, layout);
     if (flatten) flattenSheet(ctx, layout, flatten);
     if (job === current) showProgress(true, 'Encoding', slots.length, slots.length);
     return canvas;

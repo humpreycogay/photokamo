@@ -286,7 +286,7 @@ export const textFonts = [
   ['typewriter', 'Typewriter', '"Courier New", Courier, ui-monospace, monospace'],
   ['poster', 'Poster', 'Impact, Haettenschweiler, "Arial Narrow Bold", "Arial Black", sans-serif'],
   ['script', 'Script', '"Segoe Script", "Snell Roundhand", "Brush Script MT", cursive'],
-  ['handwritten', 'Handwritten', 'Noteworthy, "Bradley Hand", "Segoe Print", cursive'],
+  ['handwritten', 'Handwritten', 'Caveat, Noteworthy, "Bradley Hand", "Segoe Print", cursive'], // Caveat is bundled (fonts/)
   ['rounded', 'Rounded', '"Arial Rounded MT Bold", "Varela Round", "Trebuchet MS", system-ui, sans-serif'],
   ['condensed', 'Condensed', '"Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", sans-serif'],
   ['clean', 'Clean sans', 'Avenir, "Avenir Next", Helvetica, Arial, sans-serif']
@@ -315,6 +315,7 @@ export function drawTexts(ctx, rect, texts = []) {
     const measured = measureTextLayer(ctx, rect, text); if (!measured) continue;
     const { lines, px, lineHeight, width, height, cx, cy, box } = measured;
     ctx.save(); ctx.font = textFont(text, px);
+    if (text.rotate) { ctx.translate(cx, cy); ctx.rotate(text.rotate * Math.PI / 180); ctx.translate(-cx, -cy); } // collage kit captions tilt with their print
     ctx.textBaseline = 'middle'; ctx.textAlign = text.align || 'center';
     const x = text.align === 'left' ? cx - width / 2 : text.align === 'right' ? cx + width / 2 : cx;
     ctx.globalAlpha = text.opacity ?? 1;

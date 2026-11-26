@@ -80,7 +80,8 @@ export function layoutGrid(template, width, height, { gutter = 0, margin = 0, ra
  *  document's `border` overrides the template's), stroked centred on each print's outline. Slots with a shape other
  *  than a rect carry `visible`, their outline polygon (hit tests, the stage overlay). `mount` { pad, bottom?, color,
  *  frame?: { width, color } } (fractions of the short edge) is a mat/polaroid card, and its frame, around the photo;
- *  template `decor` [{ kind: 'graph'|'lined'|'kraft', x, y, w, h, rotate }] are paper scraps under the prints. */
+ *  template `decor` [{ kind: 'graph'|'lined'|'kraft'|'paper', x, y, w, h, rotate, color?, pattern?, ink?, edge?, shadow? }] are
+ *  paper scraps and colour blocks under the prints (js/collage/render.js drawDecor). */
 export function layoutFree(template, width, height, { border = null, slots: fills = [] } = {}) {
   const short = Math.min(width, height), spec = border || template.border || null;
   const slots = template.slots.map((item, index) => {
@@ -91,9 +92,9 @@ export function layoutFree(template, width, height, { border = null, slots: fill
     const shape = item.shape && item.shape.kind !== 'rect' ? item.shape : null;
     const line = spec && item.border !== false && spec.width > 0 ? { width: Math.max(1, spec.width * short), color: spec.color } : null;
     const m = item.mount, mount = m ? { pad: px(m.pad, short), bottom: px(m.bottom ?? m.pad, short), color: m.color, frame: m.frame ? { width: Math.max(1, px(m.frame.width, short)), color: m.frame.color } : null } : null;
-    return slot(index, rect, { rotate: override?.rotate ?? item.rotate ?? 0, z: override?.z ?? item.z ?? 0, shape, shadow: Boolean(item.shadow), tape: item.tape || null, border: line, mount, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
+    return slot(index, rect, { rotate: override?.rotate ?? item.rotate ?? 0, z: override?.z ?? item.z ?? 0, shape, shadow: Boolean(item.shadow), tape: item.tape || null, tapeColor: item.tapeColor || null, border: line, mount, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
   });
-  const decor = (template.decor || []).map(d => ({ kind: d.kind, x: d.x * width, y: d.y * height, w: d.w * width, h: d.h * height, rotate: d.rotate || 0 }));
+  const decor = (template.decor || []).map(d => ({ ...d, x: d.x * width, y: d.y * height, w: d.w * width, h: d.h * height, rotate: d.rotate || 0 }));
   return { width, height, margin: 0, gutter: 0, slots, decor };
 }
 

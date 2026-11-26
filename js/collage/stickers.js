@@ -402,5 +402,5 @@ export function drawStickers(ctx, doc, layout) {
 export function cleanStickers(list) {
   const ok = value => Number.isFinite(value);
   return (Array.isArray(list) ? list : []).filter(item => item && typeof item.id === 'string' && stickerById(item.kind) && ok(item.x) && ok(item.y) && ok(item.size) && item.size > 0 && ok(item.rotate ?? 0))
-    .map(({ id, kind, x, y, size, rotate = 0, flip = false }) => ({ id, kind, x, y, size, rotate, flip: Boolean(flip) }));
+    .map(({ id, kind, x, y, size, rotate = 0, flip = false, kit }) => ({ id, kind, x, y, size, rotate, flip: Boolean(flip), ...(typeof kit === 'string' ? { kit } : {}) }));
 }

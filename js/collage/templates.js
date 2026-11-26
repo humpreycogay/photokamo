@@ -3,12 +3,12 @@
 // Shaped templates (Task 5) cut a fill layout by a sheet shape; `lockAspect` shapes keep their own proportions.
 import { naturalAspect } from './shapes.js';
 
-/** @typedef {{ id: string, name: string, category: 'diptych'|'layout'|'collage'|'shape'|'contact', aspect: [number, number],
+/** @typedef {{ id: string, name: string, category: 'diptych'|'layout'|'collage'|'kit'|'shape'|'contact', aspect: [number, number],
  *   kind: 'grid'|'free'|'shaped'|'contact', cols?: number[], rows?: number[], cells?: number[][], slots?: object[],
  *   strips?: number, frames?: number, frame?: [number, number], sheet?: { shape: object, hole?: number },
  *   fill?: object, lockAspect?: boolean, paper?: string, border?: { width: number, color: string } }} Template
  *  Free slots: { x, y, w, h (sheet fractions), z, shape?, border? (false: no print border), mount? (js/collage/layout.js) }.
- *  The picker lists Diptychs, Layouts and Collage; shapes and contact sheets stay available to code (templateFor). */
+ *  The picker lists Diptychs, Layouts, Collage and Scrapbook kits; shapes and contact sheets stay available to code (templateFor). */
 
 const grid = (id, name, aspect, cols, rows, cells) => ({ id, name, category: 'layout', aspect, kind: 'grid', cols, rows, cells });
 const gridFill = (cols, rows, cells) => ({ kind: 'grid', cols, rows, cells });
@@ -43,6 +43,116 @@ const polaroid = (x, y, w, h, rotate, z, tape = ['tc']) => ({ x, y, w, h, rotate
 const scrap = (kind, x, y, w, h, rotate) => ({ kind, x, y, w, h, rotate });
 const fill = (cols, rows) => Array.from({ length: cols * rows }, (_, i) => [i % cols, Math.floor(i / cols)]);
 const contact = (id, name, strips, frames, frame) => ({ id, name, category: 'contact', kind: 'contact', aspect: [17, 22], strips, frames, frame });
+
+// Scrapbook kits: a finished page on a 3:4 sheet. Prints and polaroids, paper scraps and colour blocks (`decor`), plus
+// stickers and captions (`stickers`, `text`) that arrive as ordinary layers when the kit is picked (js/collage/mode.js).
+// Kit geometry is written in sheet widths, y included (the sheet is KIT_H widths tall), and converted here.
+const KIT_H = 4 / 3, INK = '#1d1c1a', PAPER_WHITE = POLAROID.color;
+const kitPolaroid = (bottom = .075, color = PAPER_WHITE) => ({ pad: .022, bottom, color });
+const kitPrint = (color = PAPER_WHITE) => ({ pad: .014, color });
+const kitMat = (color, frame) => ({ pad: .026, color, frame: { width: .004, color: frame } });
+/** A print: photo top-left (x, y), width w, photo shape w:h `ratio`, on `mount`. */
+const kp = (x, y, w, ratio, rotate, mount, { z = 1, tape = ['tc'], tapeColor = null } = {}) =>
+  ({ x, y: y / KIT_H, w, h: w / ratio / KIT_H, rotate, z, shadow: true, border: false, mount, tape, ...(tapeColor ? { tapeColor } : {}) });
+/** A paper scrap or colour block (js/collage/render.js drawDecor). */
+const kd = (x, y, w, h, rotate, style = {}) => ({ kind: 'paper', x, y: y / KIT_H, w, h: h / KIT_H, rotate, ...style });
+const kitSticker = (kind, x, y, size, rotate = 0, flip = false) => ({ kind, x, y: y / KIT_H, size, rotate, flip });
+const kitText = (content, x, y, style = {}) => ({ content, x, y: y / KIT_H, size: .06, rotate: 0, color: INK, font: 'handwritten', bold: false, shadow: false, ...style });
+const TITLE = { font: 'playfair', size: .1 }, LABEL = { font: 'typewriter', size: .026, bold: true };
+/** Text centred on a print's caption strip (the polaroid's deep bottom edge), turned with the print. */
+function onPrint(slot, content, style = {}) {
+  const bottom = slot.mount.bottom ?? slot.mount.pad, cx = slot.x + slot.w / 2, cy = (slot.y + slot.h / 2) * KIT_H;
+  const dy = (slot.y + slot.h) * KIT_H + bottom / 2 - cy, a = slot.rotate * Math.PI / 180;
+  return kitText(content, cx - dy * Math.sin(a), cy + dy * Math.cos(a), { rotate: slot.rotate, size: Math.min(.07, bottom * .72), ...style });
+}
+const kit = (id, name, { paper, texture = 'fibre', decor = [], prints, stickers = [], text = [] }) =>
+  ({ id, name, category: 'kit', kind: 'free', aspect: [3, 4], paper, texture, border: { width: .018, color: '#fffdfa' }, slots: prints, decor, stickers, text });
+const flat = { edge: 'straight', shadow: false };
+
+const kits = [
+  (() => { // Summer days: the home screen's sample page
+    const tape = 'rgba(240,214,150,.72)', p = [kp(.094, .124, .492, 4 / 5, -3, kitPolaroid(.1), { z: 3, tapeColor: tape }), kp(.554, .064, .392, 3 / 2, 4, kitPrint(), { z: 2, tapeColor: tape }),
+      kp(.624, .395, .292, 1, 5, kitPolaroid(.065), { z: 2, tape: [] }), kp(.054, .896, .372, 4 / 3, 6, kitPrint(), { tapeColor: tape }), kp(.544, .827, .352, 1, -5, kitPolaroid(.07), { z: 4, tapeColor: tape })];
+    return kit('kit-summer-5', 'Summer days · 5', { paper: TAUPE, prints: p,
+      stickers: [kitSticker('emoji-2600', .08, .093, .14, -12), kitSticker('emoji-2728', .925, .707, .09, 10), kitSticker('emoji-1f33c', .9, 1.187, .12, 14)],
+      text: [onPrint(p[0], 'summer days'), onPrint(p[4], '♡'), kitText('little moments', .24, 1.24, { size: .075, rotate: -5, color: '#faf8f2' })] });
+  })(),
+  (() => { // Besties: blush paper, a polka-dot block, pink tape
+    const ink = '#8c3a4a', tape = 'rgba(240,160,180,.7)', p = [kp(.08, .3, .44, 1, -4, kitPolaroid(.09), { tapeColor: tape }), kp(.52, .44, .4, 4 / 5, 5, kitPolaroid(.08), { z: 2, tape: [] }),
+      kp(.14, .87, .34, 1, 3, kitPolaroid(.08), { z: 3, tapeColor: tape })];
+    return kit('kit-besties-3', 'Besties · 3', { paper: '#f1dcd6', prints: p,
+      decor: [kd(.52, 0, .48, .62, 0, { color: '#f7e8e3', pattern: 'dots', ink: 'rgba(196,96,118,.22)', ...flat }), kd(.03, .8, .46, .3, -5, { kind: 'graph' })],
+      stickers: [kitSticker('hearts', .86, .17, .14, 12), kitSticker('bow', .72, .44, .12, -6), kitSticker('sparkles', .6, .1, .08), kitSticker('bestie', .74, 1.18, .3, -6)],
+      text: [kitText('best friends', .3, .13, { ...TITLE, size: .095, color: ink }), kitText('FOREVER · ALWAYS', .3, .21, { ...LABEL, color: ink }), onPrint(p[0], 'us ♡'), onPrint(p[2], 'since day one', { size: .052 })] });
+  })(),
+  (() => { // Birthday: striped banner, teal and marigold tape, confetti strip
+    const ink = '#a8392f', p = [kp(.07, .33, .4, 1, -3, kitPolaroid(.08), { tapeColor: 'rgba(126,196,207,.78)' }), kp(.53, .31, .4, 1, 3.5, kitPolaroid(.08), { tapeColor: 'rgba(247,191,90,.8)' }),
+      kp(.08, .87, .4, 5 / 4, 2, kitPrint(), { z: 2, tapeColor: 'rgba(240,150,160,.75)' }), kp(.54, .84, .38, 5 / 4, -3, kitPolaroid(.075), { z: 2, tapeColor: 'rgba(126,196,207,.78)' })];
+    return kit('kit-birthday-4', 'Birthday · 4', { paper: '#fbf3e6', prints: p,
+      decor: [kd(0, 0, 1, .29, 0, { color: '#f6cfc6', pattern: 'stripes', ink: 'rgba(255,255,255,.38)', ...flat }), kd(-.02, 1.14, 1.04, .22, 0, { color: '#fbe7c9', pattern: 'dots', ink: 'rgba(232,120,90,.32)' })],
+      stickers: [kitSticker('sparkles', .06, .06, .07), kitSticker('balloon', .93, .37, .13, 10), kitSticker('cupcake', .1, 1.24, .13, -8), kitSticker('gift', .9, 1.25, .12, 8)],
+      text: [kitText('Happy Birthday', .5, .13, { ...TITLE, size: .105, color: ink }), kitText('MAKE A WISH', .5, .22, { ...LABEL, size: .03, color: ink }), onPrint(p[0], 'party time'), onPrint(p[3], 'best day ever', { size: .05 })] });
+  })(),
+  (() => { // Travel diary: kraft, graph and lined scraps, a journal note
+    const ink = '#2f3b46', tape = 'rgba(240,234,220,.75)', p = [kp(.5, .05, .44, 3 / 2, 3, kitPrint(), { tape: ['tl', 'tr'], tapeColor: tape }), kp(.07, .3, .4, 1, -4, kitPolaroid(.08), { z: 2, tapeColor: tape }),
+      kp(.54, .44, .38, 4 / 5, 4, kitPrint(), { z: 2, tapeColor: tape }), kp(.08, .9, .46, 3 / 2, -2, kitPrint(), { z: 3, tapeColor: tape })];
+    return kit('kit-travel-4', 'Travel diary · 4', { paper: '#d8c6a3', prints: p,
+      decor: [kd(.03, .52, .34, .45, -6, { kind: 'graph' }), kd(.56, 1.02, .4, .26, 3, { kind: 'lined' })],
+      stickers: [kitSticker('map-pin', .9, .42, .1, 8), kitSticker('emoji-2708', .47, .84, .12, -20), kitSticker('stamp', .88, .98, .13, 10), kitSticker('ticket', .25, 1.26, .22, -6)],
+      text: [kitText('Wanderlust', .25, .12, { ...TITLE, size: .085, color: ink }), kitText('NOTES FROM THE ROAD', .25, .19, { ...LABEL, color: ink }), onPrint(p[1], 'somewhere new'),
+        kitText('best trip ever', .78, 1.16, { size: .06, rotate: 3, color: '#2d3a66' })] });
+  })(),
+  (() => { // Wedding: ivory, a hairline gold border, matted prints with gold frames, no tape
+    const gold = '#c9a86a', ink = '#8a6a3b', mat = kitMat('#fffdf8', gold), p = [kp(.12, .3, .76, 3 / 2, 0, mat, { tape: [] }), kp(.12, .9, .35, 1, -1.5, mat, { tape: [] }), kp(.53, .9, .35, 1, 1.5, mat, { tape: [] })];
+    return kit('kit-wedding-3', 'Just married · 3', { paper: '#f5f0e8', texture: 'none', prints: p,
+      decor: [kd(.04, .04, .92, KIT_H - .08, 0, { color: '#d9c39a', ...flat }), kd(.046, .046, .908, KIT_H - .092, 0, { color: '#f5f0e8', ...flat })],
+      stickers: [kitSticker('leaf', .1, .2, .07, -35), kitSticker('leaf', .9, .2, .07, 35, true)],
+      text: [kitText('Just Married', .5, .14, { ...TITLE, size: .1, color: ink }), kitText('TWO HEARTS · ONE LOVE', .5, .23, { ...LABEL, color: ink })] });
+  })(),
+  (() => { // New baby: mint, a gingham band, baby-blue and pink tape
+    const ink = '#4f7266', p = [kp(.08, .29, .5, 4 / 5, -2, kitPolaroid(.09), { tapeColor: 'rgba(170,205,230,.78)' }), kp(.62, .28, .3, 1, 4, kitPolaroid(.065), { tapeColor: 'rgba(244,190,200,.78)' }),
+      kp(.6, .7, .32, 1, -3, kitPolaroid(.065), { z: 2, tapeColor: 'rgba(170,205,230,.78)' }), kp(.14, 1.03, .4, 2, 2, kitPrint(), { z: 3, tapeColor: 'rgba(244,190,200,.78)' })];
+    return kit('kit-baby-4', 'New baby · 4', { paper: '#e9f0ec', prints: p,
+      decor: [kd(-.02, .96, 1.04, .4, 0, { color: '#d7e6de', pattern: 'gingham', ink: 'rgba(255,255,255,.45)' })],
+      stickers: [kitSticker('cloud', .88, .13, .14), kitSticker('star', .1, .2, .07, -10), kitSticker('emoji-1f9f8', .84, 1.22, .14, 8), kitSticker('star', .62, 1.25, .06, 10)],
+      text: [kitText('hello, little one', .5, .12, { ...TITLE, size: .09, color: ink }), kitText('WELCOME TO THE WORLD', .5, .2, { ...LABEL, color: ink }), onPrint(p[0], 'so loved'), onPrint(p[2], '♡')] });
+  })(),
+  (() => { // Graduation: navy and gold
+    const gold = '#e6c77c', p = [kp(.07, .3, .48, 4 / 5, -3, kitPolaroid(.09), { tape: [] }), kp(.58, .32, .35, 1, 4, kitPolaroid(.07), { tapeColor: 'rgba(216,184,106,.85)' }),
+      kp(.56, .78, .36, 1, -4, kitPolaroid(.07), { z: 2, tapeColor: 'rgba(216,184,106,.85)' })];
+    return kit('kit-graduation-3', 'Graduation · 3', { paper: '#1f2b45', texture: 'none', prints: p,
+      decor: [kd(0, 0, 1, KIT_H, 0, { color: '#1f2b45', pattern: 'stripes', ink: 'rgba(255,255,255,.025)', ...flat }), kd(-.05, 1.1, 1.1, .12, -3, { color: '#d8b86a' })],
+      stickers: [kitSticker('emoji-1f393', .12, .28, .15, -15), kitSticker('star', .93, .25, .07, 12), kitSticker('sparkles', .07, 1.03, .08), kitSticker('graduate', .3, 1.21, .36, -4)],
+      text: [kitText('Congrats, Grad!', .5, .12, { ...TITLE, color: gold }), kitText('THE TASSEL WAS WORTH THE HASSLE', .5, .2, { ...LABEL, size: .024, color: gold }),
+        onPrint(p[0], 'we did it!'), onPrint(p[2], 'so proud', { size: .05 })] });
+  })(),
+  (() => { // Holidays: pine green, red gingham, red tape
+    const tape = 'rgba(200,64,58,.82)', p = [kp(.07, .31, .4, 1, -3, kitPolaroid(.08), { tapeColor: tape }), kp(.53, .3, .4, 1, 3, kitPolaroid(.08), { tapeColor: tape }),
+      kp(.08, .83, .4, 5 / 4, 2, kitPolaroid(.07), { z: 2, tape: [] }), kp(.53, .8, .4, 5 / 4, -2.5, kitPolaroid(.07), { z: 2, tape: [] })];
+    return kit('kit-holidays-4', 'Holidays · 4', { paper: '#2e4a3b', texture: 'none', prints: p,
+      decor: [kd(0, 1.1, 1, KIT_H - 1.1, 0, { color: '#b8433d', pattern: 'gingham', ink: 'rgba(255,255,255,.18)', ...flat })],
+      stickers: [kitSticker('emoji-2744', .06, .06, .07, -10), kitSticker('emoji-2744', .94, .2, .05, 15), kitSticker('emoji-1f384', .91, .3, .12, 8), kitSticker('emoji-1f381', .5, 1.27, .12)],
+      text: [kitText('Merry & Bright', .5, .13, { ...TITLE, size: .105, color: '#f4ead8' }), kitText("SEASON'S GREETINGS", .5, .215, { ...LABEL, color: '#e5c88a' }),
+        onPrint(p[0], 'cozy days'), onPrint(p[3], 'joy')] });
+  })(),
+  (() => { // Pets: warm cream, a dotted side panel, amber tape
+    const ink = '#6b4528', tape = 'rgba(232,170,96,.78)', p = [kp(.06, .28, .44, 1, -4, kitPolaroid(.08), { z: 2, tapeColor: tape }), kp(.56, .06, .36, 4 / 5, 4, kitPrint(), { tapeColor: tape }),
+      kp(.55, .58, .38, 1, 3, kitPolaroid(.075), { z: 2, tapeColor: tape }), kp(.1, .9, .42, 4 / 3, -2, kitPrint(), { z: 3, tapeColor: tape })];
+    return kit('kit-pets-4', 'Pets · 4', { paper: '#f2e4cc', prints: p,
+      decor: [kd(.55, 0, .45, KIT_H, 0, { color: '#e8d2ad', pattern: 'dots', ink: 'rgba(120,84,48,.15)', ...flat }), kd(.02, .95, .5, .3, -4, { kind: 'kraft' })],
+      stickers: [kitSticker('paw', .9, .57, .1, 15), kitSticker('heart', .48, .86, .08, 10), kitSticker('emoji-1f43e', .86, 1.2, .13, 10), kitSticker('paw', .6, 1.2, .08, -10)],
+      text: [kitText('my best friend', .27, .12, { ...TITLE, size: .072, color: ink }), kitText('GOOD BOY · GOOD GIRL', .27, .19, { ...LABEL, size: .024, color: ink }), onPrint(p[0], 'best buddy'), onPrint(p[2], '♡')] });
+  })(),
+  (() => { // Love: a blush card on a dark sheet, black polaroids with white handwriting
+    const ink = '#7d3341', card = '#1c1a1b', white = { color: '#f5ece9' }, p = [kp(.12, .33, .42, 1, -3, kitPolaroid(.085, card), { tape: [] }),
+      kp(.48, .44, .38, 4 / 5, 4, kitPolaroid(.08, card), { z: 2, tape: [] }), kp(.16, .86, .34, 4 / 3, -2, kitPolaroid(.075, card), { z: 3, tape: [] })];
+    return kit('kit-love-3', 'Love · 3', { paper: '#2a2326', texture: 'none', prints: p,
+      decor: [kd(.06, .06, .88, KIT_H - .12, 0, { color: '#efd7d2', edge: 'straight' })],
+      stickers: [kitSticker('hearts', .82, .13, .1, 10), kitSticker('emoji-1f48c', .14, .31, .1, -12), kitSticker('emoji-1f339', .82, 1.13, .14, -15)],
+      text: [kitText('you & me', .5, .17, { ...TITLE, size: .12, color: ink }), kitText('A LOVE STORY', .5, .26, { ...LABEL, color: ink }),
+        onPrint(p[0], 'forever', white), onPrint(p[2], 'xo', white)] });
+  })()
+];
 
 /** @type {Template[]} */
 export const templates = [
@@ -126,7 +236,8 @@ export const templates = [
     { x: .72, y: .36, w: .22, h: .36, rotate: 6, z: 3, shadow: true, tape: ['tc'] },
     polaroid(.1, .7, .32, .22, 5, 4),
     { x: .55, y: .72, w: .36, h: .22, rotate: -3, z: 3, shadow: true, tape: ['tr'] }
-  ], [scrap('graph', .04, .2, .3, .35, -4), scrap('lined', .55, .02, .4, .3, 3), scrap('kraft', .45, .62, .5, .32, -2)])
+  ], [scrap('graph', .04, .2, .3, .35, -4), scrap('lined', .55, .02, .4, .3, 3), scrap('kraft', .45, .62, .5, .32, -2)]),
+  ...kits
 ];
 
 export const templateById = id => templates.find(template => template.id === id) || null;

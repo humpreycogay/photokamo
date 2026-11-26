@@ -86,21 +86,39 @@ function drawSheetPaper(ctx, doc, layout) {
     ctx.restore();
   }
 }
-// Paper scraps under scrapbook prints: [fill, line colour] and their ruling.
-const SCRAPS = { graph: ['#f2efe6', 'rgba(84,112,140,.2)'], lined: ['#f6f1e2', 'rgba(70,96,150,.24)'], kraft: ['#c9b48c', null] };
+// Paper scraps under scrapbook prints: presets by kind; a decor item's own color / pattern / ink / edge / shadow win.
+// Patterns: graph, lined (with a margin rule), dots, stripes (diagonal), gingham. Edges: torn (top and bottom) or straight.
+const SCRAPS = { graph: { color: '#f2efe6', pattern: 'graph', ink: 'rgba(84,112,140,.2)' }, lined: { color: '#f6f1e2', pattern: 'lined', ink: 'rgba(70,96,150,.24)' },
+  kraft: { color: '#c9b48c' }, paper: { color: '#ffffff' } };
 function drawDecor(ctx, layout) {
-  const short = Math.min(layout.width, layout.height);
+  const short = Math.min(layout.width, layout.height), hair = Math.max(.5, short * .0009);
   layout.decor.forEach((d, i) => {
-    const [fill, line] = SCRAPS[d.kind] || SCRAPS.kraft, path = scrapPath({ x: -d.w / 2, y: -d.h / 2, w: d.w, h: d.h }, 211 + i, short * .004);
+    const style = { edge: 'torn', shadow: true, ...(SCRAPS[d.kind] || SCRAPS.kraft) };
+    for (const key of ['color', 'pattern', 'ink', 'edge', 'shadow']) if (d[key] !== undefined) style[key] = d[key];
+    const box = { x: -d.w / 2, y: -d.h / 2, w: d.w, h: d.h };
+    const path = style.edge === 'torn' ? scrapPath(box, 211 + i, short * .004) : new Path2D(); if (style.edge !== 'torn') path.rect(box.x, box.y, box.w, box.h);
     ctx.save(); ctx.translate(d.x + d.w / 2, d.y + d.h / 2); ctx.rotate(d.rotate * Math.PI / 180);
-    ctx.shadowColor = 'rgba(40,30,18,.18)'; ctx.shadowBlur = short * .008; ctx.shadowOffsetY = short * .003;
-    ctx.fillStyle = fill; ctx.fill(path); ctx.shadowColor = 'transparent'; ctx.clip(path);
-    if (line) {
-      const step = short * (d.kind === 'graph' ? .016 : .028); ctx.strokeStyle = line; ctx.lineWidth = Math.max(.5, short * .0009); ctx.beginPath();
-      for (let y = -d.h / 2 + step; y < d.h / 2; y += step) { ctx.moveTo(-d.w / 2, y); ctx.lineTo(d.w / 2, y); }
-      if (d.kind === 'graph') for (let x = -d.w / 2 + step; x < d.w / 2; x += step) { ctx.moveTo(x, -d.h / 2); ctx.lineTo(x, d.h / 2); }
+    if (style.shadow) { ctx.shadowColor = 'rgba(40,30,18,.18)'; ctx.shadowBlur = short * .008; ctx.shadowOffsetY = short * .003; }
+    ctx.fillStyle = style.color; ctx.fill(path); ctx.shadowColor = 'transparent'; ctx.clip(path);
+    const p = style.pattern, ink = style.ink || 'rgba(0,0,0,.12)', { x: left, y: top, w, h } = box;
+    if (p === 'graph' || p === 'lined') {
+      const step = short * (p === 'graph' ? .016 : .028); ctx.strokeStyle = ink; ctx.lineWidth = hair; ctx.beginPath();
+      for (let y = top + step; y < top + h; y += step) { ctx.moveTo(left, y); ctx.lineTo(left + w, y); }
+      if (p === 'graph') for (let x = left + step; x < left + w; x += step) { ctx.moveTo(x, top); ctx.lineTo(x, top + h); }
       ctx.stroke();
-      if (d.kind === 'lined') { ctx.strokeStyle = 'rgba(190,64,64,.32)'; ctx.beginPath(); ctx.moveTo(-d.w / 2 + d.w * .12, -d.h / 2); ctx.lineTo(-d.w / 2 + d.w * .12, d.h / 2); ctx.stroke(); }
+      if (p === 'lined') { ctx.strokeStyle = 'rgba(190,64,64,.32)'; ctx.beginPath(); ctx.moveTo(left + w * .12, top); ctx.lineTo(left + w * .12, top + h); ctx.stroke(); }
+    } else if (p === 'dots') {
+      const step = short * .045, r = step * .16; ctx.fillStyle = ink; ctx.beginPath();
+      for (let row = 0, y = top + step / 2; y < top + h + step; row++, y += step * .866) for (let x = left + (row % 2 ? step / 2 : 0); x < left + w + step; x += step) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+      ctx.fill();
+    } else if (p === 'stripes') {
+      const step = short * .05; ctx.strokeStyle = ink; ctx.lineWidth = step * .42; ctx.beginPath();
+      for (let x = left - h; x < left + w + h; x += step) { ctx.moveTo(x, top + h); ctx.lineTo(x + h, top); }
+      ctx.stroke();
+    } else if (p === 'gingham') {
+      const step = short * .05; ctx.fillStyle = ink;
+      for (let x = left; x < left + w; x += step * 2) ctx.fillRect(x, top, step, h);
+      for (let y = top; y < top + h; y += step * 2) ctx.fillRect(left, y, w, step);
     }
     ctx.restore();
   });
@@ -159,7 +177,7 @@ export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
   if (slot.tape) for (const corner of slot.tape) {
     const tape = tapeRect(slot.mount ? { ...mountRects(slot).outer, index: slot.index } : slot, corner);
     ctx.save(); rotateAbout(ctx, slot); ctx.translate(tape.x + tape.w / 2, tape.y + tape.h / 2); ctx.rotate(tape.rotate * Math.PI / 180);
-    ctx.fillStyle = 'rgba(225,211,165,.72)'; ctx.fillRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.strokeStyle = 'rgba(110,92,56,.13)'; ctx.lineWidth = Math.max(1, tape.h * .025); ctx.strokeRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.restore();
+    ctx.fillStyle = slot.tapeColor || 'rgba(225,211,165,.72)'; ctx.fillRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.strokeStyle = 'rgba(110,92,56,.13)'; ctx.lineWidth = Math.max(1, tape.h * .025); ctx.strokeRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.restore();
   }
 }
 /** Slots in drawing order (z, then layout order). */

@@ -6,11 +6,11 @@
 //   onHistory() after the undo/redo state changes.
 import { templates, templateById, slotCount } from './templates.js';
 import { layoutTemplate, paddedAspect, stickerPad, splitAxis, defaultSplits, clampSplits, moveSplit } from './layout.js';
-import { drawCollage, sheetPath, slotPath, drawOrder, collageTextRect, mountRects } from './render.js';
+import { drawCollage, drawPaper, drawCollageTexts, sheetPath, slotPath, drawOrder, collageTextRect, mountRects } from './render.js';
 import { measureTextLayer } from '../renderer.js';
 import { pointInPolygon, polygonCentroid } from './shapes.js';
 import { unrotatePoint } from './scrapbook.js';
-import { stickers, STICKER_GROUPS, stickerById, stickerBox, stickerCanvas, stickerMatches, onStickerArt, ensureStickerArt } from './stickers.js';
+import { stickers, STICKER_GROUPS, stickerById, stickerBox, stickerCanvas, stickerMatches, onStickerArt, ensureStickerArt, drawStickers } from './stickers.js';
 import { fillGeometry, normalizeFill, panBy, ZOOM_MIN, ZOOM_MAX } from './fill.js';
 import { ASPECTS, SPACING, COLLAGE_PAPERS, createDoc, fitSlots, cloneDoc, resetFraming, resetTransforms, swapSlots } from './model.js';
 import { DEFAULT_FILM, filmSettings } from './contact.js';
@@ -32,7 +32,7 @@ export function moveCollageText(text, rect, dx, dy, pixelsPerCssPixel = 1) {
 }
 
 /** Template categories the Layout picker lists; a new collage only ever starts on one of these. */
-const PICKER = ['diptych', 'layout', 'collage'];
+const PICKER = ['diptych', 'layout', 'collage', 'kit'];
 /** Most photos a picker template holds: a collage opens with at most this many. */
 export const COLLAGE_MAX = Math.max(...templates.filter(t => PICKER.includes(t.category)).map(slotCount));
 
@@ -45,7 +45,7 @@ export function templateFor(count) {
 export function createCollageMode(deps) {
   const stage = document.getElementById('collageStage'), canvas = document.getElementById('collageCanvas');
   const panel = document.getElementById('collagePanel'), status = document.getElementById('collageStatus');
-  const lists = [document.getElementById('collageDiptychs'), document.getElementById('collageTemplates'), document.getElementById('collageStyles')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
+  const lists = [document.getElementById('collageDiptychs'), document.getElementById('collageTemplates'), document.getElementById('collageStyles'), document.getElementById('collageKits')], aspects = document.getElementById('collageAspects'), paper = document.getElementById('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const slotsEl = document.getElementById('collageSlots'), byId = id => document.getElementById(id);
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
@@ -92,6 +92,8 @@ export function createCollageMode(deps) {
     const optionHtml = t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`;
     const byCount = category => templates.filter(t => t.category === category).sort((a, b) => slotCount(a) - slotCount(b));
     PICKER.forEach((category, i) => { lists[i].innerHTML = byCount(category).map(optionHtml).join(''); });
+    const kitFonts = new Set(templates.flatMap(t => (t.text || []).map(text => deps.textFont({ bold: false, ...text }, 32))));
+    Promise.all([...kitFonts].map(font => document.fonts.load(font).catch(() => {}))).then(() => { if (doc) drawThumbs(); }); // kit titles in the thumbnails
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
     paper.innerHTML = papers.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
       + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
@@ -180,7 +182,8 @@ export function createCollageMode(deps) {
 
   // ---------- Text and captions ----------
   const selectedText = () => doc?.text.find(text => text.id === textUi.selected) || null;
-  const newText = (content, target = 'sheet', extra = {}) => ({ id: `ct${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, content, target,
+  const newTextId = () => `ct${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const newText = (content, target = 'sheet', extra = {}) => ({ id: newTextId(), content, target,
     font: 'inter', size: .08, color: '#ffffff', x: .5, y: .85, align: 'center', bold: true, italic: false, shadow: true, opacity: 1, ...extra });
   function addTextLayer(text) { change(d => d.text.push(text)); textUi.selected = text.id; syncTextPanel(); textUi.content.focus(); textUi.content.select(); }
   function updateText(mutator) { const id = textUi.selected; if (!id) return; change(d => { const text = d.text.find(layer => layer.id === id); if (text) mutator(text); }); }
@@ -235,6 +238,7 @@ export function createCollageMode(deps) {
     if (was?.id !== next.id) {
       d.splits = null; // dividers start where the new layout puts them
       resetTransforms(d); // framing and scrapbook placement belong to the previous layout
+      swapKitLayers(d, was, next);
     }
     if (was && was.kind !== next.kind) d.border = null; // grid borders and print borders don't carry over
     d.templateId = next.id;
@@ -246,6 +250,23 @@ export function createCollageMode(deps) {
     fitAspect(d, next);
     fitSlots(d, slotCount(next));
     d.paper.texture = next.texture || 'none';
+  }
+  /** A kit's stickers and captions as layers, each tagged `kit: "<template>:<index>"` (without ids). */
+  const kitLayers = t => ({
+    text: (t?.text || []).map((layer, i) => { const { id, ...rest } = newText(layer.content, 'sheet', layer); return { ...rest, kit: `${t.id}:${i}` }; }),
+    stickers: (t?.stickers || []).map((layer, i) => ({ flip: false, ...layer, kit: `${t.id}:${i}` }))
+  });
+  /** Leaving a kit removes its layers the user hasn't changed (edited or moved ones stay); entering one adds its
+   *  layers, unless a layer from that kit is still there. */
+  function swapKitLayers(d, was, next) {
+    const old = kitLayers(was), fresh = kitLayers(next), untouched = (layer, list) => {
+      const original = layer.kit && list.find(item => item.kit === layer.kit);
+      return Boolean(original) && Object.keys(original).every(key => JSON.stringify(layer[key]) === JSON.stringify(original[key]));
+    };
+    d.text = d.text.filter(layer => !untouched(layer, old.text)); d.stickers = (d.stickers || []).filter(layer => !untouched(layer, old.stickers));
+    const has = (list, layer) => list.some(item => item.kit === layer.kit);
+    d.text.push(...fresh.text.filter(layer => !has(d.text, layer)).map(layer => ({ ...layer, id: newTextId() })));
+    d.stickers.push(...fresh.stickers.filter(layer => !has(d.stickers, layer)).map(layer => ({ ...layer, id: newStickerId() })));
   }
   function fitAspect(d, t) {
     if (t.lockAspect) d.aspect = paddedAspect(t.aspect[0] / t.aspect[1], stickerPad(d.sheet));
@@ -497,11 +518,12 @@ export function createCollageMode(deps) {
     const checkerLight = style.getPropertyValue('--raised').trim(), transparent = doc.sheet.background === 'transparent';
     const dpr = Math.min(2, devicePixelRatio || 1), box = 52;
     for (const list of lists) for (const option of list.querySelectorAll('[data-template]')) {
-      const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', a = shaped ? t.aspect[0] / t.aspect[1] : doc.aspect.w / doc.aspect.h;
+      const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', kit = t.category === 'kit', a = shaped || kit ? t.aspect[0] / t.aspect[1] : doc.aspect.w / doc.aspect.h;
       const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
       const thumb = option.querySelector('canvas'), layout = layoutTemplate(t, w, h, { gutter: .06, margin: shaped ? 0 : .06, border: t.kind === 'free' ? { width: 1.5 * dpr / Math.min(w, h), color: checkerLight } : null });
       thumb.width = w; thumb.height = h; thumb.style.width = `${w / dpr}px`; thumb.style.height = `${h / dpr}px`;
       const ctx = thumb.getContext('2d');
+      if (kit) { drawKitThumb(ctx, t, layout, slotColor); continue; }
       if (transparent || shaped) {
         const cell = Math.max(2, Math.round(4 * dpr));
         ctx.fillStyle = checkerLight; ctx.fillRect(0, 0, w, h); ctx.fillStyle = sheetColor;
@@ -516,6 +538,17 @@ export function createCollageMode(deps) {
         if (s.border) { ctx.strokeStyle = s.border.color; ctx.lineWidth = s.border.width; ctx.stroke(path); } // overlapping prints stay apart
       }
     }
+  }
+  /** A kit's thumbnail in its own colours: paper and scraps, mounts, grey photos, stickers and titles. */
+  function drawKitThumb(ctx, t, layout, slotColor) {
+    drawPaper(ctx, { sheet: { background: 'paper' }, paper: { color: t.paper, texture: 'none' } }, layout);
+    for (const s of drawOrder(layout)) {
+      ctx.save(); const cx = s.x + s.w / 2, cy = s.y + s.h / 2; ctx.translate(cx, cy); ctx.rotate((s.rotate || 0) * Math.PI / 180); ctx.translate(-cx, -cy);
+      const mount = mountRects(s)?.outer; if (mount) { ctx.fillStyle = s.mount.color; ctx.fillRect(mount.x, mount.y, mount.w, mount.h); }
+      ctx.fillStyle = slotColor; ctx.fillRect(s.x, s.y, s.w, s.h); ctx.restore();
+    }
+    drawStickers(ctx, { stickers: t.stickers }, layout);
+    drawCollageTexts(ctx, { text: kitLayers(t).text }, layout);
   }
   /** A shaped slot's visible part (less the hole) as a Path2D, in the layout's px; fill with 'evenodd'. */
   function visiblePath(slot, offsetX = 0, offsetY = 0, k = 1) {
@@ -549,7 +582,7 @@ export function createCollageMode(deps) {
     canvas.style.width = `${cssW}px`; canvas.style.height = `${cssH}px`;
     const layout = layoutTemplate(template(), width, height, doc);
     const ctx = canvas.getContext('2d');
-    drawCollage(ctx, doc, layout, imageOf, { captionHint: 'rgba(128,128,128,.45)', fontFor: deps.textFont });
+    drawCollage(ctx, doc, layout, imageOf, { captionHint: 'rgba(128,128,128,.45)' });
     view = { layout, k: width / cssW };
     syncDividers();
     if (layout.slots.some(slot => slot.visible)) drawShapedHighlight(ctx, layout);
@@ -559,12 +592,15 @@ export function createCollageMode(deps) {
   }
 
   /** Transparent DOM handles mirror the canvas text boxes, making each rendered text layer directly draggable. */
+  const fontsAsked = new Set(); // bundled fonts load on first use; redraw once they arrive
   function syncTextHandles(ctx) {
     const boxes = new Map();
     for (const text of doc.text || []) {
+      const font = deps.textFont(text, 32);
+      if (!fontsAsked.has(font) && !document.fonts.check(font)) { fontsAsked.add(font); document.fonts.load(font).then(scheduleDraw, () => {}); }
       const rect = collageTextRect(doc, view.layout, text);
       if (!rect) continue;
-      const measured = measureTextLayer(ctx, rect, { ...text, font: deps.textFont(text.font) });
+      const measured = measureTextLayer(ctx, rect, text);
       if (measured) boxes.set(text.id, measured.box);
     }
     while (textHandlesEl.children.length > boxes.size) textHandlesEl.lastElementChild.remove();
@@ -577,7 +613,7 @@ export function createCollageMode(deps) {
       const pad = 6 * view.k, w = Math.max(20 * view.k, box.w + 2 * pad), h = Math.max(20 * view.k, box.h + 2 * pad);
       handle.dataset.text = id; handle.setAttribute('aria-label', `Move text: ${String(text.content).split('\n')[0] || 'Untitled'}`);
       handle.setAttribute('aria-pressed', id === textUi.selected);
-      Object.assign(handle.style, { left: `${(box.x + box.w / 2 - w / 2) / view.k}px`, top: `${(box.y + box.h / 2 - h / 2) / view.k}px`, width: `${w / view.k}px`, height: `${h / view.k}px` });
+      Object.assign(handle.style, { left: `${(box.x + box.w / 2 - w / 2) / view.k}px`, top: `${(box.y + box.h / 2 - h / 2) / view.k}px`, width: `${w / view.k}px`, height: `${h / view.k}px`, rotate: text.rotate ? `${text.rotate}deg` : '' });
     });
   }
 
