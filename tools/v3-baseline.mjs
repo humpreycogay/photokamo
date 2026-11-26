@@ -1,5 +1,5 @@
 // v3 baseline exports (docs/v3/BASELINE.md): drives the real app in headless Chromium and prints sha256, size and
-// time for the 7 baseline exports as JSON. Dev-only; Playwright is NOT a repo dependency. Install it outside the repo:
+// time for the baseline exports as JSON. Dev-only; Playwright is NOT a repo dependency. Install it outside the repo:
 //   mkdir /tmp/pw && (cd /tmp/pw && npm i playwright)
 // The repo files are served to the page through Playwright routing (no http.server needed; it drops connections under load).
 //   PLAYWRIGHT=/tmp/pw/node_modules/playwright/index.mjs [PKCHROME=/path/to/chromium] node tools/v3-baseline.mjs > out.json
@@ -37,8 +37,9 @@ async function record(page, label, trigger) {
   out.push({ label, file: dl.suggestedFilename(), sha256: sha(buf), px: dims.join(' × '), bytes: buf.length, ms });
   console.error('done', label, ms);
 }
-const looks = [['basic', 'clean-pop'], ['basic', 'warm-natural'], ['basic', 'faded-print'], ['film', 'kodak-portra-400'], ['film', 'look-superia-xtra-400'], ['film', 'bw-ilford-hp5-plus']];
-for (const [kind, id] of looks) {
+// [kind, look, size]: 'share' exports scale the photo down (a different code path from Full).
+const looks = [['basic', 'clean-pop'], ['basic', 'warm-natural'], ['basic', 'faded-print'], ['film', 'kodak-portra-400'], ['film', 'look-superia-xtra-400'], ['film', 'bw-ilford-hp5-plus'], ['basic', 'clean-pop', 'share']];
+for (const [kind, id, size] of looks) {
   const { ctx, page } = await fresh();
   await page.click('#sampleButton', { timeout: 90000 });
   await page.waitForFunction(() => document.body.classList.contains('editing') || !!document.querySelector('[data-preset]:not([hidden])'), null, { timeout: 30000 });
@@ -46,7 +47,7 @@ for (const [kind, id] of looks) {
   if (kind === 'basic') await page.locator(`[data-preset="${id}"]`).first().click();
   else await page.evaluate(id => window.pickFilmLook('film:' + id), id);
   await page.waitForTimeout(kind === 'film' ? 6000 : 1500);
-  await record(page, `${kind === 'basic' ? 'Basic' : 'Kamo'} · ${id}`, async () => { await page.click('#exportButton'); await page.click('#confirmExport'); });
+  await record(page, `${kind === 'basic' ? 'Basic' : 'Kamo'} · ${id}${size ? ` · ${size} size` : ''}`, async () => { await page.click('#exportButton'); if (size) await page.click(`[data-size="${size}"]`); await page.click('#confirmExport'); });
   await ctx.close();
 }
 {
@@ -59,6 +60,16 @@ for (const [kind, id] of looks) {
   await page.locator('[data-template="grid-4"]').first().click();
   await page.waitForTimeout(3000);
   await record(page, 'Collage · grid-4 (2 × 2), 4 × sample', async () => { await page.click('#exportButton'); await page.click('#collageDownload'); });
+  await ctx.close();
+}
+{ // framed prints, one slot emptied: the photo is scaled down for its slot, and the empty frame is drawn (v3 Task 2)
+  const { ctx, page } = await fresh();
+  await page.setInputFiles('#fileInput', [1, 2].map(n => ({ name: `sample-${n}.jpg`, mimeType: 'image/jpeg', buffer: readFileSync(`${repo}/images/model.jpg`) })));
+  await page.waitForTimeout(3000);
+  await page.click('#collageButton'); await page.waitForTimeout(1500);
+  await page.locator('[data-template="diptych-side"]').first().click(); await page.waitForTimeout(2500);
+  await page.locator('#collageSlots [data-slot="1"]').click(); await page.waitForTimeout(300); await page.keyboard.press('Delete'); await page.waitForTimeout(1500);
+  await record(page, 'Collage · diptych-side, slot 2 empty', async () => { await page.click('#exportButton'); await page.click('#collageDownload'); });
   await ctx.close();
 }
 console.log(JSON.stringify({ browser: browser.version(), out, logs }, null, 1));

@@ -4,7 +4,7 @@ import { defaultOptics, normalizeOptics, isNeutral as opticsNeutral, renderOptic
 import { focusBlurRadius, WAVELENGTH_MM } from './optics/pipeline.js';
 import { APERTURES } from './optics/formats.js';
 import { FOCAL_LENGTHS } from './optics/formats.js';
-import { renderImage, renderEdit, frameCanvas, FRAME_COLORS, applyAdjustments, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
+import { renderImage, renderEdit, frameCanvas, FRAME_COLORS, applyAdjustments, capFramed, scaledCanvas, drawTexts, textFonts, textFont, defaultCrop, isIdentityCrop, cropGeometry, cropExtents, drawOriented, cropSource } from './renderer.js';
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
@@ -15,7 +15,7 @@ import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
 import { createCollageMode, COLLAGE_MAX } from './collage/mode.js';
 import { COLLAGE_PAPERS } from './collage/model.js';
-import { createCollageExport } from './collage/export.js';
+import { createCollageExport, canvasLimit } from './collage/export.js';
 import { createCollageStore } from './collage/store.js';
 
 const $ = selector => document.querySelector(selector);
@@ -100,7 +100,7 @@ const collage = createCollageMode({
 });
 const collageExport = createCollageExport({
   doc: () => collage.snapshot(), update: mutator => collage.update(mutator), paperColors, photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
-  photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
+  photoSize: photo => photoCroppedSize(photo),
   renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => useEngine(collageEngines, module), onProgress }),
   ensureTextFonts: texts => ensureTextFonts(texts), textFont,
   settingsKey: id => { const photo = photoById(id); return photo ? JSON.stringify(settingsOf(photo)) : null; },
@@ -1127,10 +1127,16 @@ function croppedSource(maxEdge = Infinity) {
 // The cropped source with the Lens optics applied (js/optics, in a Worker): the start of every look.
 // Preview sizes are cached until the photo, crop or optics change, so Adjust and Frames don't re-run it.
 const opticsCache = { key: '', sizes: new Map() };
+/** Frees the cached optics bitmaps. Each is closed a task after it settles: whoever awaited it has drawn or copied
+ *  it by then (every caller uses it straight after the await). */
+function dropOpticsCache(key = '') {
+  for (const promise of opticsCache.sizes.values()) promise.then(bitmap => setTimeout(() => bitmap?.close?.(), 0), () => {});
+  opticsCache.sizes.clear(); opticsCache.key = key;
+}
 async function opticsSource(maxEdge = Infinity) {
   if (opticsNeutral(state.optics)) return croppedSource(maxEdge);
   const key = JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
-  if (opticsCache.key !== key) { opticsCache.key = key; opticsCache.sizes.clear(); }
+  if (opticsCache.key !== key) dropOpticsCache(key);
   if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
   if (!opticsCache.sizes.has(maxEdge)) {
     const source = croppedSource(maxEdge), edge = Math.min(maxEdge, Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height));
@@ -1855,10 +1861,13 @@ function postAdjust(message, { replaceable = false } = {}) {
 function adjustFull(bitmap, adjustments) {
   return adjustments ? postAdjust({ bitmap, adjustments }) : Promise.resolve(bitmap);
 }
-/** The Basic edit of `source` (scaled to `edge`, adjusted) as an ImageBitmap, made in the Worker: the same pixels as
- *  renderEdit, without blocking the main thread. For anything larger than the preview (zoom, export, batch, collage). */
+/** The Basic edit of `source` (scaled to `edge`, adjusted) as an ImageBitmap: the same pixels as renderEdit. The
+ *  scaling draw stays here (an <img> may decode at the smaller size); the pixel work runs in the Worker. For anything
+ *  larger than the preview (zoom, export, batch, collage). */
 async function renderEditOff(source, adjustments, edge, options) {
-  return postAdjust({ bitmap: await createImageBitmap(source), adjustments, edge }, options);
+  const scaled = scaledCanvas(source, edge), bitmap = await createImageBitmap(scaled);
+  scaled.width = 0; scaled.height = 0;
+  return Object.values(adjustments).some(Boolean) ? postAdjust({ bitmap, adjustments }, options) : bitmap;
 }
 /** frameCanvas over an off-thread edit; the edit's bitmap is freed once it is drawn into the frame. */
 function frameBitmap(bitmap, frame, texts) { const output = frameCanvas(bitmap, frame, texts); bitmap.close(); return output; }
@@ -1905,6 +1914,7 @@ async function runAdvancedPreview() {
     if (!bitmap) {
       showDeveloping(true);
       bitmap = await module.render(await ensurePreviewBitmap(), cloneParams(advParams()), { quality: 'preview', onStatus: showPreviewStatus });
+      if (enginePreview.bitmap !== bitmap) enginePreview.bitmap?.close?.();
       enginePreview = { key, bitmap };
     }
     if (engine.status === 'idle' || engine.status === 'preparing') setEngineStatus('ready');
@@ -1968,7 +1978,7 @@ async function renderFullQuality() {
     const bitmap = await adjustFull(raw, edits);
     if (state.renderAbort !== controller) return;
     state.renderAbort = null; state.renderQuality = 'full';
-    state.fullRender = { key, bitmap };
+    setFullRender(key, bitmap);
     presentAdvanced(bitmap, frame); syncRenderStatus();
   } catch (error) {
     if (state.renderAbort === controller) { state.renderAbort = null; state.renderQuality = 'preview'; syncRenderStatus(); }
@@ -2231,8 +2241,8 @@ function releaseImage() {
   state.fullRender?.bitmap?.close?.(); state.fullRender = null;
   enginePreview.bitmap?.close?.(); enginePreview = { key: '', bitmap: null };
   state.image = null; state.imageId++; state.originalKey = ''; state.originalCanvas = null; state.editedCanvas = null;
-  croppedCache.key = ''; croppedCache.sizes.clear(); cropUi.thumb = null; cropUi.thumbId = -1;
-  exportCanvas = { key: '', canvas: null }; preparedExport = null;
+  croppedCache.key = ''; croppedCache.sizes.clear(); cropUi.thumb = null; cropUi.thumbId = -1; dropOpticsCache();
+  freeExport();
 }
 function showPhoto(target, image) {
   state.image = image; state.imageId++; state.filename = target.filename;
@@ -2778,6 +2788,16 @@ function setTab(tabButton) {
 let exportCanvas = { key: '', canvas: null };
 let preparedExport = null; // { key, promise, file }
 let prepareTimer;
+/** The engine's full render (kept for export and full-quality view); the one it replaces is freed. */
+function setFullRender(key, bitmap) { if (state.fullRender?.bitmap !== bitmap) state.fullRender?.bitmap?.close?.(); state.fullRender = { key, bitmap }; }
+/** Frees the export sheet's canvas and file (closed dialog, other photo): phones can't keep a full-size copy around. */
+function freeExport() {
+  if (exportCanvas.canvas) { exportCanvas.canvas.width = 0; exportCanvas.canvas.height = 0; }
+  exportCanvas = { key: '', canvas: null }; preparedExport = null;
+}
+// Largest canvas this device can draw (measured once, js/collage/export.js); exports are capped to it, frame included.
+let deviceLimit = 0;
+const deviceCap = (width, height, frame) => capFramed(width, height, frame, deviceLimit ||= canvasLimit());
 
 const canShareFiles = (() => {
   try { return Boolean(navigator.canShare?.({ files: [new File([new Blob(['x'], { type: 'image/jpeg' })], 'test.jpg', { type: 'image/jpeg' })] })); } catch { return false; }
@@ -2786,7 +2806,9 @@ const canShareFiles = (() => {
 function exportDimensions() {
   const { width, height } = croppedSize();
   const module = activeModule();
-  return module ? module.fullRenderSize(width, height) : { width, height, capped: false };
+  const engine = module ? module.fullRenderSize(width, height) : { width, height, capped: false };
+  const device = deviceCap(engine.width, engine.height, renderFrame());
+  return device.capped ? { ...device, limit: 'device' } : { ...engine, limit: engine.capped ? 'engine' : null };
 }
 function exportEdge(size = state.exportSize) {
   const { width, height } = exportDimensions();
@@ -2804,7 +2826,7 @@ async function renderAdvancedExport(edge) {
   if (!full) {
     const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
     full = await adjustFull(raw, edits);
-    state.fullRender = { key, bitmap: full };
+    setFullRender(key, full);
   }
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   await ensureTextFonts(state.text);
@@ -2836,7 +2858,8 @@ function syncExportOptions() {
   const shareButton = document.querySelector('[data-size="share"]');
   shareButton.disabled = !canShrink;
   const target = exportDimensions();
-  elements.fullSizeDetail.textContent = target.capped ? `${target.width} × ${target.height} · film engine limit` : `${width} × ${height}`;
+  elements.fullSizeDetail.textContent = target.limit === 'device' ? `${target.width} × ${target.height} · limited to ${Math.round(deviceLimit / 1e5) / 10} MP on this device`
+    : target.limit === 'engine' ? `${target.width} × ${target.height} · film engine limit` : `${width} × ${height}`;
   const platform = PLATFORMS[state.crop.platform];
   elements.shareSizeDetail.textContent = !canShrink ? 'Already small' : platform ? `${platform.group} · ${platform.w} × ${platform.h}` : `${SHARE_WIDTH} px wide`;
   elements.qualityGroup.hidden = state.exportFormat === 'image/png';
@@ -2854,7 +2877,8 @@ function prepareExport() {
     await ensureTextFonts(state.text);
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : frameBitmap(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), renderFrame(), state.text) };
+    if (exportCanvas.key !== canvasKey) { if (exportCanvas.canvas) exportCanvas.canvas.width = 0; exportCanvas = { key: canvasKey, canvas: null }; }
+    if (!exportCanvas.canvas) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : frameBitmap(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), renderFrame(), state.text) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -2935,11 +2959,17 @@ function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob); const link = document.createElement('a');
   link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
-/** A photo's final image (full size, its look, crop, edits and frame) as a canvas. */
+/** A photo's size after its crop (any photo, in view or not). */
+function photoCroppedSize(photo) {
+  const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height };
+  const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) };
+}
+/** A photo's final image (full size, its look, crop, edits and frame) as a canvas, within the device canvas limit. */
 async function renderPhotoFull(photo, engineModules, onProgress) {
   const texts = settingsOf(photo).text || [];
   await ensureTextFonts(texts);
-  const { image, tint, settings } = await renderPhotoEdit(photo, { onEngine: module => useEngine(engineModules, module), onProgress });
+  const size = photoCroppedSize(photo), cap = deviceCap(size.width, size.height, frameFor(settingsOf(photo).frame, null));
+  const { image, tint, settings } = await renderPhotoEdit(photo, { edge: cap.capped ? Math.max(cap.width, cap.height) : Infinity, onEngine: module => useEngine(engineModules, module), onProgress });
   const output = frameCanvas(image, frameFor(settings.frame, tint), texts);
   image.close?.();
   return output;
@@ -3401,7 +3431,7 @@ $('#surpriseButton').addEventListener('click', async () => {
 
 elements.export.addEventListener('click', openExport);
 $('#exportClose').addEventListener('click', () => elements.exportDialog.close());
-elements.exportDialog.addEventListener('close', () => clearTimeout(prepareTimer));
+elements.exportDialog.addEventListener('close', () => { clearTimeout(prepareTimer); if (!preparedExport || preparedExport.file) freeExport(); }); // a render still running finishes, then waits for the next open
 elements.exportDialog.addEventListener('click', event => { if (event.target === elements.exportDialog) elements.exportDialog.close(); });
 elements.exportForm.addEventListener('submit', event => { event.preventDefault(); downloadPhoto(); });
 elements.shareButton.addEventListener('click', sharePhoto);

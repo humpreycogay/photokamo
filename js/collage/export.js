@@ -146,7 +146,9 @@ export function createCollageExport(deps) {
       const fill = doc.slots[slot.index], photo = deps.photoById(fill.photoId), natural = deps.photoSize(photo);
       const report = (part = 0) => { if (job === current) showProgress(true, `Rendering ${photo.name}`, n, slots.length, part); };
       report();
-      const { image } = await deps.renderEdit(photo, { edge: slotEdge(natural.width, natural.height, slot.w, slot.h, fill), onProgress: report });
+      // Never above this device's canvas limit, even when the slot needs the whole photo (slotEdge → Infinity).
+      const fit = capSize(natural, limit), edge = Math.min(slotEdge(natural.width, natural.height, slot.w, slot.h, fill), Math.max(fit.width, fit.height));
+      const { image } = await deps.renderEdit(photo, { edge, onProgress: report });
       if (current.cancelled) { freeImage(image); throw cancelled(); }
       drawCollageSlot(ctx, doc, layout, slot, image);
       freeImage(image); // one full photo render at a time

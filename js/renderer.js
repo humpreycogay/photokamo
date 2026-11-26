@@ -64,6 +64,21 @@ function frameLayout(width, height, frame) {
   return { width, height, x: 0, y: 0, background: '#000' };
 }
 
+/** Size of the canvas a `width` × `height` photo becomes in `frame`. */
+export function framedSize(width, height, frame) { const { width: w, height: h } = frameLayout(width, height, frame); return { width: w, height: h }; }
+/** Photo size (≤ width × height, same aspect) whose framed result has at most `maxPixels` pixels: frames add their
+ *  border after the edit, so the limit applies to the framed canvas. `capped` says whether it had to shrink. */
+export function capFramed(width, height, frame, maxPixels) {
+  const framed = ({ width: w, height: h }) => { const f = framedSize(w, h, frame); return f.width * f.height; };
+  if (framed({ width, height }) <= maxPixels) return { width, height, capped: false };
+  let scale = Math.sqrt(maxPixels / framed({ width, height }));
+  for (;;) { // frame margins round to whole pixels: step down until the framed canvas really fits
+    const size = { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+    if (framed(size) <= maxPixels || scale < 1e-3) return { ...size, capped: true };
+    scale *= .998;
+  }
+}
+
 function processPixels(ctx, width, height, a) {
   const imageData = ctx.getImageData(0, 0, width, height);
   adjustPixels(imageData.data, width, height, a);
@@ -338,6 +353,13 @@ export function renderImage(image, adjustments, frame = 'none', maxEdge = 1400, 
 }
 /** The Basic edit alone (scaled to maxEdge, adjustments applied), without frame or text. */
 export function renderEdit(image, adjustments, maxEdge = 1400) {
+  const photo = scaledCanvas(image, maxEdge);
+  if (hasAdjustments(adjustments)) processPixels(photo.getContext('2d', { willReadFrequently: true }), photo.width, photo.height, adjustments);
+  return photo;
+}
+/** `image` drawn at most `maxEdge` px on its long side: the first half of renderEdit. Drawing an <img> lets the browser
+ *  decode at the smaller size, so this stays where the image is (main thread) to keep the exact same pixels. */
+export function scaledCanvas(image, maxEdge = 1400) {
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
@@ -349,7 +371,6 @@ export function renderEdit(image, adjustments, maxEdge = 1400) {
   photoCtx.imageSmoothingEnabled = true;
   photoCtx.imageSmoothingQuality = 'high';
   photoCtx.drawImage(image, 0, 0, width, height);
-  if (hasAdjustments(adjustments)) processPixels(photoCtx, width, height, adjustments);
   return photo;
 }
 

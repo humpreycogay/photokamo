@@ -19,7 +19,7 @@ function imageAt(bitmap, maxEdge, maxPixels) {
 async function warm(job) { if (!job.creative) await store.pipeline(job.stockId, job.outputId); }
 self.addEventListener('message', async event => {
   const message = event.data;
-  if (message.type === 'image') { source = { imageId: message.imageId, bitmap: message.bitmap }; return; }
+  if (message.type === 'image') { source?.bitmap.close(); source = { imageId: message.imageId, bitmap: message.bitmap }; return; } // our copy of the last photo
   try {
     if (message.type === 'warm') { await warm(message.job); post({ type: 'done', jobId: message.jobId, bitmap: null }); return; }
     if (message.type !== 'render') return;

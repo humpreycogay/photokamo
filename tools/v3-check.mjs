@@ -71,6 +71,22 @@ test('adjustPixels equals the old canvas-bound processPixels byte for byte', asy
   assert.deepEqual(failures, [], failures.join('; '));
 });
 
+// ---------- Task 6: device canvas cap ----------
+test('capFramed keeps the framed export under the device limit and the photo aspect within 1 px', async repo => {
+  const { capFramed, framedSize } = await import(`${repo}/js/renderer.js`);
+  const frames = ['none', 'paper', { id: 'paper', width: 8, bottom: 12, paper: '#ffffff' }, 'gallery', 'instant', 'sprocket', 'film-leak', 'film-collage', 'fit-square', 'blur-portrait'];
+  const sizes = [[7728, 5152], [5152, 7728], [8064, 6048], [12000, 3000], [4000, 4000], [1311, 1514], [6000, 4000]];
+  for (const limit of [16.7e6, 12e6, 4e6]) for (const frame of frames) for (const [w, h] of sizes) {
+    const cap = capFramed(w, h, frame, limit), f = framedSize(cap.width, cap.height, frame), label = `${w}×${h} ${JSON.stringify(frame)} ≤ ${limit / 1e6} MP`;
+    assert.ok(f.width * f.height <= limit, `${label}: framed ${f.width}×${f.height} is over the limit`);
+    assert.ok(cap.width <= w && cap.height <= h, `${label}: grew`);
+    assert.ok(Math.abs(cap.width * h - cap.height * w) <= Math.max(w, h), `${label}: aspect ${cap.width}×${cap.height}`);
+    const full = framedSize(w, h, frame);
+    if (full.width * full.height <= limit) assert.deepEqual(cap, { width: w, height: h, capped: false }, `${label}: fits, so unchanged`);
+    else assert.ok(cap.capped && f.width * f.height >= limit * .97, `${label}: shrank too far (${(f.width * f.height / 1e6).toFixed(2)} MP)`);
+  }
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }

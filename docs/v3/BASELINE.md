@@ -22,6 +22,8 @@ Time = from clicking **Export** to the download event (includes rendering and en
 | 5 | Kamo · look-superia-xtra-400 | `eb0840a36dcf37f266dc5a2caa5682f80bc88a9c3c11991f354c3ab58e432091` | 1311 × 1514 | 705,185 | 880 / 996 | — |
 | 6 | Kamo · bw-ilford-hp5-plus | `7fae11339683b1a89e9b65258fceec4a6f73ae78d092536836bbfb07ca389f04` | 1311 × 1514 | 626,431 | 742 / 750 | — |
 | 7 | Collage · grid-4 (2 × 2), 4 × sample | `514fc96dcf782a884444f69104ad95354e461862d8fe34d01fd26cdcd18f3d7e` | 2913 × 2913 | 1,861,683 | 278 / 284 | — |
+| 8 | Basic · clean-pop · share size | `e2363841364d5be70279216c2fd6301b0cb9e7698c93d60e9665953952c7cdda` | 1080 × 1247 | 394,670 | 186 / 185 | — |
+| 9 | Collage · diptych-side, slot 2 empty | `c8e6cbdd2673dae958f4c1d901a4e469ca4610123f1e239aef4b0237bb0efa9a` | 3433 × 2289 | 570,774 | 1026 / 1015 | — |
 
 The owner phone column is still to fill in: same steps by hand on the phone, timed from tapping Export (or Save) to the file being ready.
 
@@ -30,6 +32,7 @@ Console: no errors or warnings during any run. Network: no request outside `http
 ## Changes since recording
 
 - Task 4 (optics highlights): no baseline export uses the Lens stage, so all 7 hashes still hold.
+- Task 6 (2026-11-27): rows 8 and 9 added. Both scale the photo down, which rows 1–7 never do. They caught a Task 5 regression the other rows missed: the Worker path re-sampled an ImageBitmap instead of drawing the `<img>` at the smaller size, which changed every Share-size export and collage slots that need less than the full photo (max 12 levels). Fixed in Task 6: the scaling draw stays on the main thread, and the pixel loop stays in the Worker. Both rows were recorded at `cef1818` (before Task 5) and are equal to the current code.
 
 ## Node checks
 

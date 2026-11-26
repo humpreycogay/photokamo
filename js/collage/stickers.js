@@ -353,7 +353,11 @@ function paintArt(ctx, sticker, px, h, pad) {
 }
 
 /** A sticker rendered about `width` px wide (see sizeStep), with its die-cut outline, on a canvas padded by `pad` px. Cached. */
-const cache = new Map();
+// Bounded by pixels, not entries: a few export-size stickers would otherwise hold hundreds of MB on a phone. Stickers
+// above CACHE_MAX_PX wide (exports) are drawn without being kept.
+const cache = new Map(), CACHE_MAX_PX = 1024, CACHE_PIXELS = 16e6;
+let cachedPixels = 0;
+const pixelsOf = entry => entry.canvas.width * entry.canvas.height;
 export function stickerCanvas(sticker, width) {
   const px = sizeStep(width), key = `${sticker.id}:${px}`;
   if (cache.has(key)) { const entry = cache.get(key); cache.delete(key); cache.set(key, entry); return entry; } // most recently used last
@@ -374,7 +378,9 @@ export function stickerCanvas(sticker, width) {
     octx.drawImage(silhouette, 0, 0); octx.drawImage(art, 0, 0);
   }
   const entry = { canvas: out, pad };
-  cache.set(key, entry); if (cache.size > 120) cache.delete(cache.keys().next().value);
+  if (px > CACHE_MAX_PX) return entry;
+  cache.set(key, entry); cachedPixels += pixelsOf(entry);
+  while (cachedPixels > CACHE_PIXELS || cache.size > 120) { const [oldest, old] = cache.entries().next().value; cache.delete(oldest); cachedPixels -= pixelsOf(old); }
   return entry;
 }
 
