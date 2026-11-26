@@ -19,14 +19,15 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Site files (everything except Archive/ and repository tooling)
         run: |
           mkdir _site
           rsync -a --exclude '.git' --exclude '.github' --exclude 'Archive/' ./ _site/
           test -f _site/index.html && test ! -e _site/Archive
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+          include-hidden-files: true # keep .nojekyll
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
