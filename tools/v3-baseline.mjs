@@ -1,17 +1,26 @@
 // v3 baseline exports (docs/v3/BASELINE.md): drives the real app in headless Chromium and prints sha256, size and
 // time for the 7 baseline exports as JSON. Dev-only; Playwright is NOT a repo dependency. Install it outside the repo:
 //   mkdir /tmp/pw && (cd /tmp/pw && npm i playwright)
-//   python3 -m http.server 8080 &   # from the repo root
+// The repo files are served to the page through Playwright routing (no http.server needed; it drops connections under load).
 //   PLAYWRIGHT=/tmp/pw/node_modules/playwright/index.mjs [PKCHROME=/path/to/chromium] node tools/v3-baseline.mjs > out.json
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 const repo = new URL('..', import.meta.url).pathname.replace(/\/$/, ''), base = 'http://localhost:8080/';
 const browser = await chromium.launch({ executablePath: process.env.PKCHROME || undefined });
 const out = [], logs = [];
 const sha = b => createHash('sha256').update(b).digest('hex');
+const types = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', wasm: 'application/wasm',
+  jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', svg: 'image/svg+xml', woff2: 'font/woff2', txt: 'text/plain' };
 async function fresh() {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true });
+  await ctx.route(`${base}**`, route => {
+    let path = decodeURIComponent(new URL(route.request().url()).pathname);
+    if (path.endsWith('/')) path += 'index.html';
+    const file = repo + path;
+    if (!existsSync(file) || !statSync(file).isFile()) return route.fulfill({ status: 404, body: 'not found' });
+    route.fulfill({ status: 200, body: readFileSync(file), contentType: types[file.split('.').pop()] || 'application/octet-stream' });
+  });
   const page = await ctx.newPage();
   page.on('console', m => { if (['error', 'warning'].includes(m.type())) logs.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', e => logs.push('pageerror: ' + e.message));

@@ -318,16 +318,18 @@ function deleteMyLook(id) {
   if (!confirm(`Delete “${look.name}”? Photos that use it keep their settings.`)) return;
   myLooks = myLooks.filter(item => item.id !== id);
   saveMyLooks(); buildMyLookTiles();
-  if (state.myLookId === id) state.myLookId = null;
+  if (state.myLookId === id) change(() => { state.myLookId = null; });
   syncLooks(); syncDeleteMyLook();
   toast(`Deleted “${look.name}”.`);
 }
 function syncDeleteMyLook() { const look = currentMyLook(); $('#deleteMyLook').hidden = !(isFilm() && look && !look.builtIn); }
 async function pickMyLook(id) {
   const look = myLooks.find(item => item.id === id); if (!look) return;
+  const tap = ++filmLookTap;
   let module;
   try { module = await loadEngine(look.engine); }
   catch (error) { console.error(error); toast(`The ${engineById(look.engine).label} engine could not be loaded. Check your connection and try again.`); return; }
+  if (tap !== filmLookTap) return;
   change(() => { state.engine = look.engine; state.engineParams[look.engine] = module.normalizeParams(look.params); state.myLookId = id; });
 }
 function saveAsMyLook() {
@@ -2145,17 +2147,18 @@ async function addFiles(fileList, { view = true } = {}) {
 async function viewPhoto(id, decoded = null) {
   const target = photoById(id);
   if (!target || (id === app.activeId && state.image)) return;
-  stashActive();
+  // Decode before leaving the current photo: if it fails, that photo stays in view and editable.
   const token = ++app.viewToken;
-  app.activeId = id; app.focusId = id;
-  renderQueue.remove(id); // the photo in view renders through the main preview
-  syncStrip();
   let image = decoded;
   if (!image) {
     try { image = await decodeImage(target.file); }
     catch { if (token === app.viewToken) toast('PhotoKamo could not decode that image.'); return; }
   }
-  if (token !== app.viewToken) return;
+  if (token !== app.viewToken || !photoById(id)) return;
+  stashActive();
+  app.activeId = id; app.focusId = id;
+  renderQueue.remove(id); // the photo in view renders through the main preview
+  syncStrip();
   showPhoto(target, image);
 }
 /** Saves the editor's settings and history into the photo in view and frees its decoded data. */
@@ -2163,6 +2166,7 @@ function stashActive() {
   const current = activePhoto();
   if (!current || !state.image) return;
   if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
+  if (textUi.start) { clearTimeout(textUi.timer); commit(textUi.start); textUi.start = null; }
   current.settings = snapshot(); current.undo = state.undo; current.redo = state.redo;
   // Left before its thumb caught up with the last change: render the thumb in the background.
   if (current.previewKey !== JSON.stringify(current.settings) && (current.preview || isEdited(current.settings))) renderQueue.add(current.id);
@@ -3320,7 +3324,7 @@ document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListen
 $('#zoomIn').addEventListener('click', () => stepZoom(1)); $('#zoomOut').addEventListener('click', () => stepZoom(-1));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; state.text = []; state.optics = defaultOptics(); }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', async () => {
   // Film looks only when their engine needs no download: Surprise me never starts one.
@@ -3393,14 +3397,17 @@ new MutationObserver(() => { if (elements.aboutDialog.open) syncEngineStorage();
 $('#engineStorageRemove').addEventListener('click', removeSavedEngines);
 
 document.addEventListener('keydown', event => {
+  // Undo/redo keys: not in a text field (it has its own undo) or a dialog; sliders and buttons keep them.
+  const history = (event.ctrlKey || event.metaKey) && !document.querySelector('dialog[open]')
+    && !event.target.closest?.('textarea,[contenteditable],input:not([type=range],[type=checkbox],[type=radio],[type=button],[type=color],[type=file])');
   if (collage.active) { // the collage's own history; Esc goes back to the photo
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
-    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
+    if (history && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+    else if (history && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
     else if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]') && !popoverOpen()) { event.preventDefault(); if (!collage.escape()) exitCollage(); }
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
+  if (history && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+  if (history && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
   if (event.key === '\\' && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); if (!event.repeat) setHolding(true); }
   // Zoom keys (desktop): + / = in, − out, 0 Fit. Not while typing, in a dialog or on the Crop tab.
   const typing = event.target.closest?.('input,textarea,select,[contenteditable]') || document.querySelector('dialog[open]');

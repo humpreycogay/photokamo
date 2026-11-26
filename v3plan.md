@@ -70,12 +70,12 @@ node tools/v3-check.mjs                              # added in Task 0, grows wi
 *Done 2026-11-26:* collage-check 10 errors → 0 (fails before, passes after); `v3-check.mjs` 1 case; 7 baseline exports recorded by the new `tools/v3-baseline.mjs` (headless Chromium, byte-identical over 2 runs; Basic ≈130 ms, Kamo 740–990 ms, collage ≈275 ms on an M5). Owner-phone timings still open.
 
 #### Task 1: Editor state and undo (`js/app.js`)
-- [ ] **[C]** `pickMyLook` (`:326-331`) ignores the stale-tap guard that `pickFilmLook` has (`:259-263`): take `const tap = ++filmLookTap` before the `await` and return if it changed
-- [ ] **[C]** Global Ctrl/Cmd+Z and Ctrl/Cmd+Y (`:3402-3403`) fire while typing and inside dialogs: skip when the target is `input, textarea, select, [contenteditable]` or a `dialog[open]` exists (the `typing` test already written at `:3406`); same guard in the collage branch (`:3396-3398`)
-- [ ] **[C]** Revert (`:3323`) leaves `state.text` and `state.optics`: reset both, so `isEdited` is false afterwards (confirm intent with the owner in the task plan)
-- [ ] **[C]** `deleteMyLook` (`:321`) changes `state.myLookId` outside `change()`: route it through `change()`
-- [ ] **[R]** Text nudge commit can land on the wrong photo (`:1384` timer vs `stashActive` `:2165`): flush `textUi.start` in `stashActive`, as `cropUi.start` already is
-- [ ] **[R]** A failed decode in `viewPhoto` (`:2148-2156`) leaves `activeId` on the new photo with the old canvas: decode first, then stash and switch; on failure keep the old photo in view and toast
+- [x] **[C]** `pickMyLook` (`:326-331`) ignores the stale-tap guard that `pickFilmLook` has (`:259-263`): take `const tap = ++filmLookTap` before the `await` and return if it changed
+- [x] **[C]** Global Ctrl/Cmd+Z and Ctrl/Cmd+Y (`:3402-3403`) fire while typing and inside dialogs: skip when the target is `input, textarea, select, [contenteditable]` or a `dialog[open]` exists (the `typing` test already written at `:3406`); same guard in the collage branch (`:3396-3398`)
+- [x] **[C]** Revert (`:3323`) leaves `state.text` and `state.optics`: reset both, so `isEdited` is false afterwards (confirm intent with the owner in the task plan)
+- [x] **[C]** `deleteMyLook` (`:321`) changes `state.myLookId` outside `change()`: route it through `change()`
+- [x] **[R]** Text nudge commit can land on the wrong photo (`:1384` timer vs `stashActive` `:2165`): flush `textUi.start` in `stashActive`, as `cropUi.start` already is
+- [x] **[R]** A failed decode in `viewPhoto` (`:2148-2156`) leaves `activeId` on the new photo with the old canvas: decode first, then stash and switch; on failure keep the old photo in view and toast
 
 **Tests:** these are DOM-bound, so the repro steps below are the test. Add a Node case only if a helper is extracted (e.g. an `isTypingTarget` function).
 **Check:**
@@ -88,6 +88,7 @@ node tools/v3-check.mjs                              # added in Task 0, grows wi
 
 **Done when:** all six pass on desktop and phone; no other behaviour changes.
 **Output changes:** no.
+*Done 2026-11-26:* Revert also clears text and lens (Open decision 2, recommended option). Ctrl/Cmd+Z/Y skip text fields and open dialogs but still work on sliders. Headless repro (checks 2, 3, 5, 6, plus "Ctrl+Z on a focused slider still undoes"): 2, 3, 5, 6 failed before, all pass after. Check 5 reproduced: the nudge landed on photo 2 as its undo step. Check 6 as written can't happen, because `addFiles` drops undecodable files. Reproduced instead by making `HTMLImageElement.decode` reject after adding, which left photo 2 "in view" with photo 1's image released. Checks 1 and 4 fixed from reading, still to check by hand. Baseline: 7/7 byte-identical.
 
 #### Task 2: Collage correctness (`js/collage/`, `js/app.js` glue)
 - [ ] **[C]** Stale export: `exportKey` (`export.js:78`) omits the photos' edit settings. Add each visible photo's settings key (via a new `deps` callback) to the key

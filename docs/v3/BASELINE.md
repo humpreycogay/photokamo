@@ -4,7 +4,7 @@ Recorded 2026-11-26 at commit `57806ec` (+ Task 0, which changes no app code) fo
 
 ## How the exports were made
 
-`tools/v3-baseline.mjs` drives the real app (`python3 -m http.server 8080`) in headless Chromium **159.0.8154.6** (Playwright, installed outside the repo; see the script header), viewport 1400 × 900, dev laptop Apple M5. Each look gets a fresh browser context (empty storage):
+`tools/v3-baseline.mjs` drives the real app (repo files served through Playwright routing as `http://localhost:8080/`) in headless Chromium **159.0.8154.6** (Playwright, installed outside the repo; see the script header), viewport 1400 × 900, dev laptop Apple M5. Each look gets a fresh browser context (empty storage):
 
 - Photo exports: **Try a sample** (`images/model.jpg`) → pick the look (Basic: click its tile; Kamo: `pickFilmLook("film:<id>")`) → **Export** with the dialog defaults (JPEG, quality 92 %, Full size) → **Download**.
 - Collage: add `images/model.jpg` four times (`sample-1…4.jpg`) → **Create collage** → template **2 × 2** (`grid-4`) → **Export** with defaults → **Download**.
