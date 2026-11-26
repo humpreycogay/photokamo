@@ -1133,7 +1133,14 @@ async function opticsSource(maxEdge = Infinity) {
   if (opticsCache.key !== key) { opticsCache.key = key; opticsCache.sizes.clear(); }
   if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
   if (!opticsCache.sizes.has(maxEdge)) {
-    const promise = renderOptics(croppedSource(maxEdge), state.optics, maxEdge, { replaceable: true });
+    const source = croppedSource(maxEdge), edge = Math.min(maxEdge, Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height));
+    // A waiting preview can be taken over by a newer one at another size (js/optics/index.js): its bitmap is the
+    // wrong size for this entry, so it isn't kept, and this size renders again.
+    const promise = renderOptics(source, state.optics, maxEdge, { replaceable: true }).then(bitmap => {
+      if (Math.abs(Math.max(bitmap.width, bitmap.height) - edge) <= 1 || opticsCache.sizes.get(maxEdge) !== promise) return bitmap;
+      opticsCache.sizes.delete(maxEdge);
+      return opticsSource(maxEdge);
+    });
     promise.catch(() => { if (opticsCache.sizes.get(maxEdge) === promise) opticsCache.sizes.delete(maxEdge); });
     opticsCache.sizes.set(maxEdge, promise);
   }

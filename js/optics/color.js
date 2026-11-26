@@ -10,10 +10,17 @@ for (let i = 0; i <= ENCODE_SIZE; i++) { const v = i / ENCODE_SIZE; toSrgb[i] = 
 /** Linear value → sRGB code, clipped at white. */
 export const encode = v => toSrgb[v <= 0 ? 0 : v >= 1 ? ENCODE_SIZE : (v * ENCODE_SIZE + .5) | 0];
 
-/** Linear value → sRGB code with a highlight shoulder: values above KNEE roll off smoothly towards white
- *  instead of clipping, so added glow keeps its gradation. Used only when bloom or diffusion is on. */
-const KNEE = .9, ROOM = 1 - KNEE;
-export const encodeShoulder = v => encode(v <= KNEE ? v : KNEE + ROOM * (1 - Math.exp(-(v - KNEE) / ROOM)));
+/** `base` plus `added` light (glow, bokeh) → sRGB code. Added light that would pass KNEE rolls off towards white
+ *  (rational shoulder: slope 1 at the knee, never reaching 1) instead of clipping, so glow keeps its gradation;
+ *  the base itself is never changed: with nothing added this is exactly encode(base), so whites stay 255 and
+ *  pixels with and without added light match. Light taken away (diffusion) just encodes. */
+const KNEE = .9;
+function shoulder(base, v) {
+  const start = base > KNEE ? base : KNEE; if (start >= 1) return 255;
+  const room = 1 - start, y = (v - start) / room;
+  return encode(start + room * y / (1 + y));
+}
+export const encodeAdd = (base, added) => { const v = base + added; return added <= 0 || v <= KNEE ? encode(v) : shoulder(base, v); }; // small: inlined in the pixel loops
 
 /** sRGB fraction (0–1) → linear. */
 export const linearOf = v => (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);

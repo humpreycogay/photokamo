@@ -21,8 +21,8 @@
 //   (two Gaussians, weights summing to 1), so total light is preserved. H = I·w(L): w is 1 everywhere when
 //   Highlights is 0 (overall softness) and favours bright areas as Highlights rises (glow around lights).
 // Bloom (glare): bright light above a soft-knee threshold on linear luminance is blurred at four scales,
-//   weighted, tinted and added: out = I + α·Σ wᵢ·Gᵢ ∗ T(I). It adds light, so encoding rolls highlights off
-//   with a shoulder instead of clipping.
+//   weighted, tinted and added: out = I + α·Σ wᵢ·Gᵢ ∗ T(I). It adds light, so the added light rolls off
+//   towards white with a shoulder instead of clipping (color.js encodeAdd); the image itself is never darkened.
 // Depth of field (simulated): one photo has no depth, so a mask m(x, y) from the Focus area controls stands in
 //   for it: 0 where the subject is sharp, 1 for a background at infinity. The thin-lens blur circle for a
 //   point at infinity with the lens focused at distance s is c = f² / (N·(s − f)) on the format; the blur
@@ -41,7 +41,7 @@
 // Blur sizes are fractions of the half-diagonal, so they look the same at every image size.
 // All are artistic approximations of lens behaviour, not measured lens profiles.
 import { normalizeOptics } from './params.js';
-import { toLinear, encode, encodeShoulder, linearOf } from './color.js';
+import { toLinear, encode, encodeAdd, linearOf } from './color.js';
 import { downsample, blur, upsampler } from './layers.js';
 import { formatById } from './formats.js';
 import { bokehLayer, coverage } from './bokeh.js';
@@ -262,7 +262,7 @@ function applyFocus(image, o) {
     for (const plane of num) { const level = new Float32Array(n); for (let j = 0; j < n; j++) level[j] = plane[j] * inverse[j]; levels.push(level); }
   }
   if (bokeh) levels.push(...bokeh);
-  const up = upsampler(w, h, width, height), { x0, x1, fx } = up, first = radii[0], put = bokeh ? encodeShoulder : encode, B = K * 3;
+  const up = upsampler(w, h, width, height), { x0, x1, fx } = up, first = radii[0], B = K * 3;
   const lerp = (row, x) => row[x0[x]] + (row[x1[x]] - row[x0[x]]) * fx[x];
   for (let y = 0, i = 0; y < height; y++) {
     const rows = up.row(levels, y);
@@ -275,7 +275,7 @@ function applyFocus(image, o) {
       const shapes = bokeh ? Math.min(1, m / .1) : 0; // the sharp subject hides the background's bokeh
       for (let c = 0; c < 3; c++) {
         const a = lo < 0 ? toLinear[data[i + c]] : lerp(rows[lo * 3 + c], x), b = lerp(rows[hi * 3 + c], x);
-        data[i + c] = put(a + (b - a) * t + (shapes ? shapes * lerp(rows[B + c], x) : 0));
+        data[i + c] = encodeAdd(a + (b - a) * t, shapes ? shapes * lerp(rows[B + c], x) : 0); // bokeh adds light
       }
     }
   }
@@ -329,13 +329,14 @@ function applyGlow(image, o) {
   for (let y = 0, i = 0; y < height; y++) {
     const rows = up.row(layers, y), sr = scatter ? rows : null, gr = glow ? rows.slice(scatter ? 3 : 0) : null;
     for (let x = 0; x < width; x++, i += 4) {
-      let r = toLinear[data[i]], g = toLinear[data[i + 1]], b = toLinear[data[i + 2]];
+      const r0 = toLinear[data[i]], g0 = toLinear[data[i + 1]], b0 = toLinear[data[i + 2]];
+      let r = r0, g = g0, b = b0;
       if (sr) {
         const k = s * diffusionWeight(o, luma(r, g, b));
         r += s * lerp(sr[0], x) - k * r; g += s * lerp(sr[1], x) - k * g; b += s * lerp(sr[2], x) - k * b;
       }
       if (gr) { r += lerp(gr[0], x); g += lerp(gr[1], x); b += lerp(gr[2], x); }
-      data[i] = encodeShoulder(r); data[i + 1] = encodeShoulder(g); data[i + 2] = encodeShoulder(b);
+      data[i] = encodeAdd(r0, r - r0); data[i + 1] = encodeAdd(g0, g - g0); data[i + 2] = encodeAdd(b0, b - b0);
     }
   }
   return image;

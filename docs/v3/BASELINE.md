@@ -27,6 +27,10 @@ The owner phone column is still to fill in: same steps by hand on the phone, tim
 
 Console: no errors or warnings during any run. Network: no request outside `http://localhost:8080`.
 
+## Changes since recording
+
+- Task 4 (optics highlights): no baseline export uses the Lens stage, so all 7 hashes still hold.
+
 ## Node checks
 
 ```

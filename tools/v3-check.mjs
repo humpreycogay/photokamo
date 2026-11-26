@@ -38,6 +38,30 @@ test('verifyDigest accepts the right bytes and rejects wrong or truncated ones',
   assert.equal(await verifyDigest(new Uint8Array(0), createHash('sha256').update('').digest('hex')), true, 'empty input');
 });
 
+// ---------- Task 4: optics highlights ----------
+const opticsImage = (width, height, value) => ({ width, height, data: new Uint8ClampedArray(width * height * 4).fill(value) });
+test('optics: glow keeps clipped whites at 255, focus blur leaves no seam', async repo => {
+  const { applyOptics } = await import(`${repo}/js/optics/pipeline.js`);
+  const { defaultOptics } = await import(`${repo}/js/optics/params.js`);
+  const cases = { 'diffusion 1': { diffusion: 1 }, 'bloom 50': { bloom: 50 }, 'radial focus + bokeh + bloom': { focusMode: 'radial', bloom: 40 } };
+  for (const [name, values] of Object.entries(cases)) {
+    const image = applyOptics(opticsImage(160, 120, 255), { ...defaultOptics(), ...values });
+    let low = 255; for (let i = 0; i < image.data.length; i += 4) low = Math.min(low, image.data[i], image.data[i + 1], image.data[i + 2]);
+    assert.equal(low, 255, `${name}: a white image stays 255 (darkest ${low})`);
+  }
+});
+test('optics: encodeAdd is encode without added light, monotonic, exact below the knee', async repo => {
+  const { encode, encodeAdd } = await import(`${repo}/js/optics/color.js`);
+  for (let i = 0; i <= 1000; i++) assert.equal(encodeAdd(i / 1000, 0), encode(i / 1000), `base ${i / 1000}`);
+  assert.equal(encodeAdd(1, .5), 255); assert.equal(encodeAdd(.3, .2), encode(.5)); assert.equal(encodeAdd(.8, -.1), encode(.7));
+  for (const base of [0, .2, .5, .85, .95, .999]) {
+    let last = -1;
+    for (let k = 0; k <= 400; k++) { const code = encodeAdd(base, k / 100); assert.ok(code >= last, `monotonic at base ${base}, added ${k / 100}`); last = code; }
+    assert.ok(encodeAdd(base, 4) >= 254, `a lot of added light reaches white from base ${base}`);
+  }
+  assert.ok(encodeAdd(.85, .1) < 255 && encodeAdd(.85, .1) > encode(.9), 'light past the knee keeps gradation');
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }
