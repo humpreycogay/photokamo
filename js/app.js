@@ -6,6 +6,7 @@ import { COLLAGE_PAPERS } from './collage/model.js';
 import { createCollageStore } from './collage/store.js';
 import { engineById, engines, legacyEngineId, loadCredits, loadEngine } from './engines/registry.js';
 import { filmLooks } from './film-looks.js';
+import { applySettings, change, cloneParams, cloneTexts, commit, restore, sameSnapshot, setHistoryHooks, snapshot } from './history.js';
 import { APERTURES, FOCAL_LENGTHS } from './optics/formats.js';
 import { cameraControls, cameraOf, controls as opticsControls, defaultOptics, expandProfile, fieldOfView, formatById, formats as cameraFormats, isNeutral as opticsNeutral, matchesProfile, normalizeOptics, opticsRenderKey, profileById as lensProfileById, profiles as lensProfiles, renderOptics, sceneOf, sections as opticsSections } from './optics/index.js';
 import { WAVELENGTH_MM, focusBlurRadius } from './optics/pipeline.js';
@@ -69,38 +70,6 @@ const VIEW_KEY = 'photokamo:film-view';
 const dial = { view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'dial' ? 'dial' : 'list'; } catch { return 'list'; } })(), paths: {}, px: 1, chipsKey: '', drag: null, frame: 0 };
 
 
-// ---------- History ----------
-const cloneParams = params => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
-const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id, params]) => [id, cloneParams(params)]));
-// Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
-const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder }, color: null } : { id: frame.id, border: { ...defaultBorder, ...frame.border }, color: frame.color ?? null });
-// A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
-function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, optics: { ...state.optics }, frame: cloneFrame(state.frame), text: cloneTexts(state.text) }; }
-// Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
-function migrateSnapshot(value) {
-  if (value.look) return value;
-  const { presetId = 'original', strength = 100, engineParams = {}, myLookId = null, edits = {}, frame = 'none' } = value;
-  const engineId = value.mode === 'advanced' && engineById(value.engine) ? value.engine : PRESETS;
-  return { look: { engine: engineId, presetId, strength, engineParams, myLookId }, edits, frame };
-}
-/** Puts settings ({ look, edits, crop, frame }) into the editor state without syncing the UI. */
-function applySettings(value) {
-  const { look, edits, frame, crop, text, optics } = migrateSnapshot(value);
-  state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
-  state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
-  state.edits = { ...edits }; state.frame = cloneFrame(frame); state.crop = { ...defaultCrop, ...crop };
-  state.text = cloneTexts(text); state.optics = normalizeOptics(optics);
-}
-function restore(value) {
-  applySettings(value);
-  syncControls(); scheduleRender(); // syncControls loads the engine if the restored one isn't active
-}
-function sameSnapshot(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-function commit(previous = snapshot()) {
-  if (sameSnapshot(previous, snapshot())) return;
-  state.undo.push(previous); if (state.undo.length > 50) state.undo.shift(); state.redo = []; updateButtons();
-  if (app.liveEdit) applyToPhotos(otherSelected(), applyParts); // live: the same change goes to the other selected photos
-}
 function undo() { if (collage.active) { collage.undo(); return; } if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
 function redo() { if (collage.active) { collage.redo(); return; } if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); }
 function updateButtons() {
@@ -108,7 +77,6 @@ function updateButtons() {
   elements.redo.disabled = collage.active ? !collage.canRedo : !state.redo.length;
   syncStrip();
 }
-function change(mutator) { const previous = snapshot(); mutator(); commit(previous); syncControls(); scheduleRender(); }
 function pickLook(id) {
   filmLookTap++; // a film look still loading its engine must not apply after this
   change(() => { state.presetId = id; state.edits = {}; state.engine = PRESETS; state.myLookId = null; });
@@ -1270,7 +1238,6 @@ function syncCrop() {
 // batch export and thumbnails draw them into the image (frameCanvas(…, texts)).
 const TEXT_COLORS = [['#ffffff', 'White'], ['#111110', 'Black'], ['#f4efe4', 'Warm white'], ['#ffd25a', 'Gold'], ['#ff8a4c', 'Orange'], ['#e8473a', 'Red'], ['#e96ca5', 'Pink'], ['#a98be8', 'Purple'], ['#1f3a68', 'Navy'], ['#67b7e8', 'Sky blue'], ['#58b89c', 'Teal'], ['#8c8c86', 'Grey']];
 const textUi = { selected: null, boxes: [], drag: null, start: null, timer: 0 };
-const cloneTexts = texts => (texts || []).map(text => ({ ...text }));
 // Text may sit anywhere on the framed image, borders included: positions stay relative to the
 // photo, so below the photo is y > 1 and the limits come from the frame around it.
 function textBounds() {
@@ -3047,6 +3014,9 @@ function buildBatch() {
   elements.batchDialog.addEventListener('cancel', event => { if (stop()) event.preventDefault(); });
   elements.batchDialog.addEventListener('click', event => { if (event.target === elements.batchDialog && !stop()) elements.batchDialog.close(); });
 }
+
+// History calls back into the editor through these (js/history.js sits below the panels and the preview).
+setHistoryHooks({ syncControls, scheduleRender, afterCommit() { updateButtons(); if (app.liveEdit) applyToPhotos(otherSelected(), applyParts); } });
 
 // ---------- Wiring ----------
 buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
