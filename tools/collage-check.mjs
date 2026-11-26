@@ -44,9 +44,19 @@ for (const t of templates) {
     check(['grid', 'radial', 'free'].includes(t.fill?.kind), `${t.id} bad fill`);
     check(!t.sheet.hole || (t.sheet.hole > 0 && t.sheet.hole < .8), `${t.id} bad hole`);
   } else if (t.kind === 'free') {
-    check(['style', 'scrapbook'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
+    check(['diptych', 'layout', 'collage'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
     check(slotCount(t) >= 2 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (styles hold 2–9)`);
     for (const [i, s] of t.slots.entries()) check(s.w > 0 && s.h > 0 && s.x >= -1e-9 && s.y >= -1e-9 && s.x + s.w <= 1 + 1e-9 && s.y + s.h <= 1 + 1e-9, `${t.id} slot ${i} leaves the sheet`);
+    // Mounts (frames, polaroid cards) stay on the sheet at the template's own aspect (rotation aside, ±1 %).
+    const [aw, ah] = t.aspect, own = layoutTemplate(t, 1000 * aw / Math.min(aw, ah), 1000 * ah / Math.min(aw, ah));
+    for (const s of own.slots) if (s.mount) {
+      const m = s.mount, f = m.frame?.width || 0, x0 = s.x - m.pad - f, y0 = s.y - m.pad - f, x1 = s.x + s.w + m.pad + f, y1 = s.y + s.h + m.bottom + f, tol = 10;
+      check(x0 >= -tol && y0 >= -tol && x1 <= own.width + tol && y1 <= own.height + tol, `${t.id} slot ${s.index} mount leaves the sheet`);
+      for (const o of own.slots) if (o !== s && o.mount && !t.slots[s.index].rotate && !t.slots[o.index].rotate) {
+        const ox0 = o.x - o.mount.pad - f, oy0 = o.y - o.mount.pad - f, ox1 = o.x + o.w + o.mount.pad + f, oy1 = o.y + o.h + o.mount.bottom + f;
+        check(x1 <= ox0 || ox1 <= x0 || y1 <= oy0 || oy1 <= y0, `${t.id} frames ${s.index} and ${o.index} overlap`);
+      }
+    }
     // Every print shows at least 40 % of itself (sampled on a 120 × 120 grid over its box, inside its shape).
     const layout = layoutTemplate(t, 1400, 1000), inShape = (s, x, y) => (s.visible ? pointInPolygon(s.visible, x, y) : true);
     for (const s of layout.slots) {
@@ -158,11 +168,28 @@ for (const t of templates.filter(t => t.kind === 'grid')) {
   check(JSON.stringify(filmSettings(null)) === JSON.stringify(DEFAULT_FILM), 'contact film defaults');
 }
 
+// ---------- Stickers ----------
+{
+  const { stickers, STICKER_GROUPS, stickerById, cleanStickers, stickerBox } = await import(`${repo}/js/collage/stickers.js`);
+  const groups = STICKER_GROUPS.map(([id]) => id), ids = new Set();
+  for (const s of stickers) {
+    check(!ids.has(s.id), `sticker ${s.id} duplicated`); ids.add(s.id);
+    check(groups.includes(s.group) && s.name && s.w > 0 && s.w <= 100 && s.h > 0 && s.h <= 100 && typeof s.draw === 'function', `sticker ${s.id} bad definition`);
+  }
+  for (const group of groups) check(stickers.filter(s => s.group === group).length >= 8, `sticker group ${group} has few stickers`);
+  const { existsSync } = await import('node:fs'), { fileURLToPath } = await import('node:url');
+  for (const s of stickers.filter(s => s.emoji)) check(s.file && existsSync(fileURLToPath(s.file)), `sticker ${s.id} has no Twemoji SVG (${s.file})`);
+  const clean = cleanStickers([{ id: 'a', kind: 'heart', x: .5, y: .5, size: .2, rotate: 10, extra: 1 }, { id: 'b', kind: 'nope', x: .5, y: .5, size: .2 }, { id: 'c', kind: 'star', x: NaN, y: 0, size: .2 }, null]);
+  golden('clean stickers', clean, [{ id: 'a', kind: 'heart', x: .5, y: .5, size: .2, rotate: 10, flip: false }]);
+  const box = stickerBox({ kind: 'tape-pink', x: .5, y: .25, size: .5, rotate: 30 }, { width: 1000, height: 800 });
+  check(box.cx === 500 && box.cy === 200 && box.w === 400 && Math.abs(box.h - 112) < 1e-9 && box.rotate === 30 && stickerById('tape-pink') === box.sticker, `sticker box ${JSON.stringify({ ...box, sticker: undefined })}`);
+}
+
 // ---------- Dividers and caption space (Task 6) ----------
 {
   const { splitAxis, defaultSplits, clampSplits, moveSplit, MIN_SPLIT } = await import(`${repo}/js/collage/layout.js`);
   const axes = Object.fromEntries(templates.filter(t => splitAxis(t)).map(t => [t.id, splitAxis(t)]));
-  golden('split axes', axes, { 'grid-2-side': 'x', 'grid-2-stack': 'y', 'grid-3-cols': 'x', 'grid-3-rows': 'y' });
+  golden('split axes', axes, { 'grid-2-side': 'x', 'grid-2-stack': 'y', 'grid-3-cols': 'x', 'grid-3-rows': 'y', 'bands-3': 'y', 'bands-4': 'y', 'grid-4-cols': 'x' });
   golden('default splits', [defaultSplits(byId('grid-2-side')), defaultSplits(byId('grid-3-cols')).map(v => +v.toFixed(4))], [[.5], [.3333, .6667]]);
   golden('clampSplits', [clampSplits([.05], 2), clampSplits([.5, .55], 3), clampSplits([.9, .95], 3), clampSplits([.5], 3)], [[MIN_SPLIT], [.5, .65], [.7, .85], null]);
   golden('moveSplit', [moveSplit([.3, .6], 0, .5), moveSplit([.3, .6], 1, .2), moveSplit([.5], 0, 2)], [[.45, .6], [.3, .45], [.85]]);

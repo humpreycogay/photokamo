@@ -5,7 +5,8 @@ import { fillGeometry } from './fill.js';
 import { drawOriented, drawTexts } from '../renderer.js';
 import { perforations, filmWear } from '../film.js';
 import { filmSettings, frameNumber } from './contact.js';
-import { fibres, tapeRect } from './scrapbook.js';
+import { fibres, tapeRect, scrapPath } from './scrapbook.js';
+import { drawStickers } from './stickers.js';
 
 /** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
  *  1 px on each side, so resampling never lets paper show along a slot's edge. */
@@ -70,7 +71,10 @@ function drawSticker(ctx, doc, layout, { shadow = true } = {}) {
 export function drawPaper(ctx, doc, layout, { shadow = true } = {}) {
   ctx.clearRect(0, 0, layout.width, layout.height);
   if (layout.shaped) drawSticker(ctx, doc, layout, { shadow });
-  if (doc.sheet.background !== 'paper') return;
+  if (doc.sheet.background === 'paper') drawSheetPaper(ctx, doc, layout);
+  if (layout.decor?.length) drawDecor(ctx, layout);
+}
+function drawSheetPaper(ctx, doc, layout) {
   ctx.fillStyle = doc.paper.color;
   if (layout.shaped) ctx.fill(sheetPath(layout.paper), 'evenodd'); else ctx.fillRect(0, 0, layout.width, layout.height);
   if (doc.paper.texture === 'fibre') {
@@ -82,6 +86,47 @@ export function drawPaper(ctx, doc, layout, { shadow = true } = {}) {
     ctx.restore();
   }
 }
+// Paper scraps under scrapbook prints: [fill, line colour] and their ruling.
+const SCRAPS = { graph: ['#f2efe6', 'rgba(84,112,140,.2)'], lined: ['#f6f1e2', 'rgba(70,96,150,.24)'], kraft: ['#c9b48c', null] };
+function drawDecor(ctx, layout) {
+  const short = Math.min(layout.width, layout.height);
+  layout.decor.forEach((d, i) => {
+    const [fill, line] = SCRAPS[d.kind] || SCRAPS.kraft, path = scrapPath({ x: -d.w / 2, y: -d.h / 2, w: d.w, h: d.h }, 211 + i, short * .004);
+    ctx.save(); ctx.translate(d.x + d.w / 2, d.y + d.h / 2); ctx.rotate(d.rotate * Math.PI / 180);
+    ctx.shadowColor = 'rgba(40,30,18,.18)'; ctx.shadowBlur = short * .008; ctx.shadowOffsetY = short * .003;
+    ctx.fillStyle = fill; ctx.fill(path); ctx.shadowColor = 'transparent'; ctx.clip(path);
+    if (line) {
+      const step = short * (d.kind === 'graph' ? .016 : .028); ctx.strokeStyle = line; ctx.lineWidth = Math.max(.5, short * .0009); ctx.beginPath();
+      for (let y = -d.h / 2 + step; y < d.h / 2; y += step) { ctx.moveTo(-d.w / 2, y); ctx.lineTo(d.w / 2, y); }
+      if (d.kind === 'graph') for (let x = -d.w / 2 + step; x < d.w / 2; x += step) { ctx.moveTo(x, -d.h / 2); ctx.lineTo(x, d.h / 2); }
+      ctx.stroke();
+      if (d.kind === 'lined') { ctx.strokeStyle = 'rgba(190,64,64,.32)'; ctx.beginPath(); ctx.moveTo(-d.w / 2 + d.w * .12, -d.h / 2); ctx.lineTo(-d.w / 2 + d.w * .12, d.h / 2); ctx.stroke(); }
+    }
+    ctx.restore();
+  });
+}
+/** The mat (or polaroid card) and the frame's outer edge around a mounted print, in its unrotated space. */
+export function mountRects(slot) {
+  const m = slot.mount; if (!m) return null;
+  const f = m.frame?.width || 0, mat = { x: slot.x - m.pad, y: slot.y - m.pad, w: slot.w + 2 * m.pad, h: slot.h + m.pad + m.bottom };
+  return { mat, outer: { x: mat.x - f, y: mat.y - f, w: mat.w + 2 * f, h: mat.h + 2 * f } };
+}
+const rotateAbout = (ctx, slot) => { if (!slot.rotate) return; const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2; ctx.translate(cx, cy); ctx.rotate(slot.rotate * Math.PI / 180); ctx.translate(-cx, -cy); };
+/** A mounted print's frame and mat, with its shadow on the wall/paper; a faint line where the mat meets the photo. */
+function drawMount(ctx, slot) {
+  const { mat, outer } = mountRects(slot), m = slot.mount, short = Math.min(outer.w, outer.h), hair = Math.max(1, short * .002);
+  ctx.save(); rotateAbout(ctx, slot);
+  if (slot.shadow) { ctx.shadowColor = 'rgba(20,15,10,.3)'; ctx.shadowBlur = short * .04; ctx.shadowOffsetY = short * .018; }
+  ctx.fillStyle = m.frame ? m.frame.color : m.color; ctx.fillRect(outer.x, outer.y, outer.w, outer.h);
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = hair;
+  if (m.frame) {
+    ctx.strokeStyle = 'rgba(0,0,0,.1)'; ctx.strokeRect(outer.x + hair / 2, outer.y + hair / 2, outer.w - hair, outer.h - hair);
+    ctx.fillStyle = m.color; ctx.fillRect(mat.x, mat.y, mat.w, mat.h);
+    ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.strokeRect(mat.x + hair / 2, mat.y + hair / 2, mat.w - hair, mat.h - hair);
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.strokeRect(slot.x - hair / 2, slot.y - hair / 2, slot.w + hair, slot.h + hair);
+  ctx.restore();
+}
 /** For formats without alpha (JPEG): fills what is still transparent with `color`, under everything drawn, which
  *  composites exactly as drawing over that colour would, so edges never darken. */
 export function flattenSheet(ctx, layout, color) {
@@ -92,7 +137,8 @@ export function flattenSheet(ctx, layout, color) {
 export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
   if (!image && !emptyFill) return;
   const path = slotPath(slot), cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
-  if (slot.shadow) {
+  if (slot.mount) drawMount(ctx, slot);
+  else if (slot.shadow) {
     ctx.save(); if (slot.rotate) { ctx.translate(cx, cy); ctx.rotate(slot.rotate * Math.PI / 180); ctx.translate(-cx, -cy); }
     ctx.shadowColor = 'rgba(20,15,10,.3)'; ctx.shadowBlur = Math.min(slot.w, slot.h) * .045; ctx.shadowOffsetY = Math.min(slot.w, slot.h) * .025;
     ctx.fillStyle = '#fff'; ctx.fill(path); ctx.restore();
@@ -111,7 +157,8 @@ export function drawSlot(ctx, doc, slot, image, emptyFill = null) {
     ctx.strokeStyle = slot.border.color; ctx.lineWidth = slot.border.width; ctx.lineJoin = 'miter'; ctx.stroke(path); ctx.restore();
   }
   if (slot.tape) for (const corner of slot.tape) {
-    const tape = tapeRect(slot, corner); ctx.save(); ctx.translate(tape.x + tape.w / 2, tape.y + tape.h / 2); ctx.rotate((slot.rotate + tape.rotate) * Math.PI / 180);
+    const tape = tapeRect(slot.mount ? { ...mountRects(slot).outer, index: slot.index } : slot, corner);
+    ctx.save(); rotateAbout(ctx, slot); ctx.translate(tape.x + tape.w / 2, tape.y + tape.h / 2); ctx.rotate(tape.rotate * Math.PI / 180);
     ctx.fillStyle = 'rgba(225,211,165,.72)'; ctx.fillRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.strokeStyle = 'rgba(110,92,56,.13)'; ctx.lineWidth = Math.max(1, tape.h * .025); ctx.strokeRect(-tape.w / 2, -tape.h / 2, tape.w, tape.h); ctx.restore();
   }
 }
@@ -211,6 +258,7 @@ export function drawCollage(ctx, doc, layout, imageFor, { emptyFill = 'rgba(128,
   if (layout.contact) drawContactBase(ctx, doc, layout);
   for (const slot of drawOrder(layout)) drawCollageSlot(ctx, doc, layout, slot, imageFor(slot.index), layout.contact ? null : emptyFill);
   if (layout.contact) drawContactMarks(ctx, doc, layout);
+  drawStickers(ctx, doc, layout); // above the photos, under the text
   // Preview only: a placeholder bar where each caption will go (the text arrives with text layers, Task 7).
   if (captionHint) for (const { caption, index } of layout.slots) {
     if (!caption) continue;

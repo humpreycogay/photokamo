@@ -7,10 +7,11 @@
 /** @typedef {{ v: 1, templateId: string, aspect: { w: number, h: number }, aspectAuto: boolean,
  *   sheet: { shape: object, background: 'paper'|'transparent', outline: object|null, shadow: boolean },
  *   gutter: number, margin: number, radius: number, paper: { color: string, texture: string },
- *   border: object|null, splits: number[]|null, captionSpace: boolean, slots: SlotFill[], text: object[], film: object|null, flatten: string }} CollageDoc
+ *   border: object|null, splits: number[]|null, captionSpace: boolean, slots: SlotFill[], text: object[], stickers: object[], film: object|null, flatten: string }} CollageDoc
  *  gutter, margin and radius are fractions of the sheet's short edge. aspectAuto: the sheet follows the template's
  *  aspect until the user picks one. splits: divider positions of a one-row/one-column grid (js/collage/layout.js),
- *  null = the template's; captionSpace: a band of paper under each photo for its caption (grids). */
+ *  null = the template's; captionSpace: a band of paper under each photo for its caption (grids). stickers:
+ *  { id, kind (js/collage/stickers.js), x, y (centre, 0–1 of the sheet), size (width, fraction of the short edge), rotate (°), flip }. */
 
 /** Sheet aspects offered in the panel: [label, w, h]. */
 export const ASPECTS = [['1:1', 1, 1], ['4:5', 4, 5], ['3:2', 3, 2], ['2:3', 2, 3], ['9:16', 9, 16], ['16:9', 16, 9]];
@@ -49,7 +50,7 @@ export function createDoc(photoIds, template, paperColor) {
     v: 1, templateId: template.id, aspect: { w: template.aspect[0], h: template.aspect[1] }, aspectAuto: true,
     sheet: { shape: { kind: 'rect' }, background: 'paper', outline: null, shadow: false },
     gutter: .02, margin: .04, radius: 0, paper: { color: paperColor, texture: 'none' },
-    border: null, splits: null, captionSpace: false, slots: photoIds.map(id => emptySlot(id)), text: [], film: null, flatten: '#ffffff'
+    border: null, splits: null, captionSpace: false, slots: photoIds.map(id => emptySlot(id)), text: [], stickers: [], film: null, flatten: '#ffffff'
   };
 }
 /** Pads the slot list so a template with `count` slots has one fill per slot; extra fills are kept (in order)

@@ -1,6 +1,6 @@
 # Collage: references and licence register
 
-PhotoKamo's collage mode (`js/collage/`, `tools/collage-check.mjs`) is **original GPL-3.0 code**, written for this repository from `CollagePlan.md`. Nothing third-party is used.
+PhotoKamo's collage mode (`js/collage/`, `tools/collage-check.mjs`) is **original GPL-3.0 code**, written for this repository from `CollagePlan.md`. The only third-party asset is the Twemoji emoji subset (register below).
 
 Rules:
 - No third-party code, libraries, templates, shapes, masks, textures, fonts or images are copied or bundled. No CDNs and no runtime dependencies (`CLAUDE.md`).
@@ -13,7 +13,7 @@ Rules:
 
 | Asset | Path | Source | Licence | Notes |
 |---|---|---|---|---|
-| — | — | — | — | No bundled collage assets: every shape, texture and decoration is generated in code |
+| Twemoji emoji SVGs (subset, unmodified) | `vendor/twemoji/svg/` | [jdecked/twemoji](https://github.com/jdecked/twemoji) v17.0.3, `assets/svg/` | CC-BY 4.0 (`vendor/twemoji/LICENSE-GRAPHICS`), GPL-3.0-compatible | Emoji stickers only; credited in About. Regenerate with `tools/twemoji-subset.mjs`. Drawn stickers, shapes, textures and tape remain generated in code |
 
 ## Technical references (principles only)
 

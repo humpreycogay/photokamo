@@ -75,22 +75,26 @@ export function layoutGrid(template, width, height, { gutter = 0, margin = 0, ra
   return { width, height, margin: m, gutter: g, cols, rows, axis, slots };
 }
 
-/** Free: slots in normalised sheet coordinates { x, y, w, h, rotate, z, shape, shadow, border }; margin, gutter and
+/** Free: slots in normalised sheet coordinates { x, y, w, h, rotate, z, shape, shadow, border, tape, mount }; margin, gutter and
  *  corner radius don't apply. Styles give their prints a border ({ width: fraction of the short edge, color }; the
  *  document's `border` overrides the template's), stroked centred on each print's outline. Slots with a shape other
- *  than a rect carry `visible`, their outline polygon (hit tests, the stage overlay). */
+ *  than a rect carry `visible`, their outline polygon (hit tests, the stage overlay). `mount` { pad, bottom?, color,
+ *  frame?: { width, color } } (fractions of the short edge) is a mat/polaroid card, and its frame, around the photo;
+ *  template `decor` [{ kind: 'graph'|'lined'|'kraft', x, y, w, h, rotate }] are paper scraps under the prints. */
 export function layoutFree(template, width, height, { border = null, slots: fills = [] } = {}) {
   const short = Math.min(width, height), spec = border || template.border || null;
   const slots = template.slots.map((item, index) => {
     const override = fills[index]?.layout || null;
     const nx = override?.x ?? item.x, ny = override?.y ?? item.y;
     const x = Math.round(nx * width), y = Math.round(ny * height);
-    const rect = { x, y, w: Math.round((item.x + item.w) * width) - x, h: Math.round((item.y + item.h) * height) - y };
+    const rect = { x, y, w: Math.round((nx + item.w) * width) - x, h: Math.round((ny + item.h) * height) - y };
     const shape = item.shape && item.shape.kind !== 'rect' ? item.shape : null;
     const line = spec && item.border !== false && spec.width > 0 ? { width: Math.max(1, spec.width * short), color: spec.color } : null;
-    return slot(index, rect, { rotate: override?.rotate ?? item.rotate ?? 0, z: override?.z ?? item.z ?? 0, shape, shadow: Boolean(item.shadow), tape: item.tape || null, border: line, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
+    const m = item.mount, mount = m ? { pad: px(m.pad, short), bottom: px(m.bottom ?? m.pad, short), color: m.color, frame: m.frame ? { width: Math.max(1, px(m.frame.width, short)), color: m.frame.color } : null } : null;
+    return slot(index, rect, { rotate: override?.rotate ?? item.rotate ?? 0, z: override?.z ?? item.z ?? 0, shape, shadow: Boolean(item.shadow), tape: item.tape || null, border: line, mount, ...(shape ? { visible: shapePolygon(shape, rect, .5), holeVisible: null } : {}) });
   });
-  return { width, height, margin: 0, gutter: 0, slots };
+  const decor = (template.decor || []).map(d => ({ kind: d.kind, x: d.x * width, y: d.y * height, w: d.w * width, h: d.h * height, rotate: d.rotate || 0 }));
+  return { width, height, margin: 0, gutter: 0, slots, decor };
 }
 
 /** Contact sheet: strips include the real film edge around photo gates. They are centred inside the margin and carry

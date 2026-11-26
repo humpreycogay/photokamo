@@ -23,7 +23,7 @@ ES modules + WebAssembly need HTTP; opening index.html from disk does not work. 
 Follow `plan_workflow.md` (look search, analysis/Auto, IndexedDB recovery, exact export and healing) one task at a time. The collage implementation is complete through Task 9; Task 10's cross-reload saving must integrate with workflow Task 5 rather than creating a second photo store. Show a short plan before editing, then stop after the task's Check list and tell me what to verify. Finished plans are archived in `docs/archive/`.
 
 ## Rules
-- Nothing leaves the device: no fetch except engine files already in the repo; no analytics, no CDNs, no new runtime dependencies (write small helpers yourself, e.g. `js/zip.js`).
+- Nothing leaves the device: no fetch except engine files and vendored assets already in the repo (`vendor/twemoji/`, CC-BY 4.0, credited in About); no analytics, no CDNs, no new runtime dependencies (write small helpers yourself, e.g. `js/zip.js`).
 - Keep files as plain ES modules; no TypeScript, no bundler, no frameworks.
 - Rendering heavy work stays in the engine Workers; never block the main thread for full-res renders.
 - Undo: every user-visible change goes through `change()` / `commit()` once per gesture (commit on pointer-up, not on every move).

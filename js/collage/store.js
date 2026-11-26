@@ -2,6 +2,7 @@
 // plan_workflow.md Task 5 lands; keeping storage separate here avoids pretending ephemeral photo ids survive reloads.
 import { templateById, slotCount } from './templates.js';
 import { cloneDoc, fitSlots } from './model.js';
+import { cleanStickers } from './stickers.js';
 
 const finite = value => Number.isFinite(value);
 
@@ -11,6 +12,7 @@ export function sanitizeCollageDoc(value, photoExists = () => true) {
     || value.aspect.w <= 0 || value.aspect.h <= 0 || !Array.isArray(value.slots) || !value.sheet || !value.paper) return null;
   const doc = cloneDoc(value);
   fitSlots(doc, slotCount(templateById(doc.templateId)));
+  doc.stickers = cleanStickers(doc.stickers);
   for (const slot of doc.slots) {
     if (!slot || typeof slot.id !== 'string') return null;
     if (slot.photoId != null && !photoExists(slot.photoId)) slot.photoId = null;

@@ -184,6 +184,7 @@
           <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
           <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
           <div class="collage-dividers" id="collageDividers"></div>
+          <div class="collage-sticker-handles" id="collageStickerHandles" aria-label="Stickers in the collage" aria-describedby="collageStickerKeys"></div>
           <div class="collage-text-handles" id="collageTextHandles" aria-label="Text in the collage"></div>
         </div>
         <div class="collage-stage-tools" id="collageStageTools" hidden>
@@ -500,9 +501,11 @@
             <input id="collageFileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple aria-label="Choose photos for the collage" tabindex="-1">
           </section>
           <div class="panel-heading"><h3 class="collage-label" id="collageLayoutTitle">Layout</h3><button class="button button-ghost" id="collageResetTransforms" type="button">Reset transformations</button></div>
-          <p class="collage-sublabel" id="collageGridsTitle">Grids</p>
+          <p class="collage-sublabel" id="collageDiptychsTitle">Diptychs <span>· framed prints on a wall</span></p>
+          <div class="collage-templates" id="collageDiptychs" role="listbox" aria-labelledby="collageLayoutTitle collageDiptychsTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageGridsTitle">Layouts <span>· grids, bands and masks</span></p>
           <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle collageGridsTitle" aria-orientation="horizontal"></div>
-          <p class="collage-sublabel" id="collageStylesTitle">Styles <span>· masks and overlapping prints</span></p>
+          <p class="collage-sublabel" id="collageStylesTitle">Collage <span>· scrapbook, polaroids and overlapping prints</span></p>
           <div class="collage-templates" id="collageStyles" role="listbox" aria-labelledby="collageLayoutTitle collageStylesTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
           <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle" aria-describedby="collageAspectHint"></div>
@@ -560,6 +563,23 @@
               <label class="check-row" id="collageOutsideShapeRow" hidden><input type="checkbox" id="collageOutsideShape"> Outside shape</label>
               <p class="collage-hint" id="collageTextContrast" hidden>Contrast depends on where you place it.</p>
               <button class="button button-ghost text-delete" id="collageDeleteText" type="button">Delete this text</button>
+            </div>
+          </section>
+          <section class="collage-stickers" aria-labelledby="collageStickersTitle">
+            <div class="panel-heading"><h3 class="collage-label sticker-title" id="collageStickersTitle"><svg class="sticker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 13V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7"/><path d="M21 13l-8 8v-5a3 3 0 0 1 3-3z"/><path d="M8 13.5c1.3 1.3 3.2 1.5 4.6.6"/><circle cx="9" cy="9" r=".9" fill="currentColor"/><circle cx="15" cy="9" r=".9" fill="currentColor"/></svg>Stickers</h3></div>
+            <button class="button button-secondary sticker-add" id="collageAddSticker" type="button" aria-haspopup="dialog"><span class="sticker-add-badge"><svg class="sticker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 13V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7"/><path d="M21 13l-8 8v-5a3 3 0 0 1 3-3z"/><path d="M8 13.5c1.3 1.3 3.2 1.5 4.6.6"/><circle cx="9" cy="9" r=".9" fill="currentColor"/><circle cx="15" cy="9" r=".9" fill="currentColor"/></svg></span><span class="sticker-add-text">Add stickers<small>Emoji, hearts, words, animals…</small></span><span class="sticker-add-preview" id="collageStickerPreview" aria-hidden="true"></span></button>
+            <p class="collage-hint" id="collageStickerKeys">On the sheet, drag a sticker to move it, drag its corner to resize and the top dot to rotate, or pinch. Keys: arrows move, + and − resize, [ and ] rotate, Delete removes.</p>
+            <div class="sticker-editor" id="collageStickerEditor" hidden>
+              <p class="collage-sublabel" id="collageStickerName" aria-live="polite"></p>
+              <div class="slider-row"><label class="slider-label" for="collageStickerSize"><span>Size</span><output id="collageStickerSizeOutput" for="collageStickerSize">20%</output></label><input id="collageStickerSize" type="range" min="4" max="90" step="1"></div>
+              <div class="slider-row"><label class="slider-label" for="collageStickerRotate"><span>Rotate</span><output id="collageStickerRotateOutput" for="collageStickerRotate">0°</output></label><input id="collageStickerRotate" type="range" min="-180" max="180" step="1"></div>
+              <div class="sticker-actions">
+                <button class="button button-ghost" id="collageStickerFlip" type="button" aria-pressed="false">Flip</button>
+                <button class="button button-ghost" id="collageStickerBack" type="button">Send back</button>
+                <button class="button button-ghost" id="collageStickerForward" type="button">Bring forward</button>
+                <button class="button button-ghost" id="collageStickerDuplicate" type="button">Duplicate</button>
+                <button class="button button-ghost text-delete" id="collageStickerDelete" type="button">Delete sticker</button>
+              </div>
             </div>
           </section>
           <div class="collage-sticker" id="collageSticker" hidden>
@@ -756,6 +776,24 @@
     </form>
   </dialog>
 
+  <dialog id="stickerDialog" class="sheet-dialog sticker-dialog" aria-labelledby="stickerDialogTitle">
+    <div class="dialog-card sticker-card">
+      <span class="sheet-handle" aria-hidden="true"></span>
+      <div class="export-head">
+        <div><p class="eyebrow">Collage</p><h2 id="stickerDialogTitle">Add a sticker</h2></div>
+        <button class="dialog-close" id="stickerDialogClose" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="sticker-search">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <label class="visually-hidden" for="stickerSearch">Search stickers</label>
+        <input id="stickerSearch" type="search" placeholder="Search: heart, cat, birthday, pizza…" autocomplete="off" spellcheck="false" aria-describedby="stickerResultCount" aria-controls="stickerResults">
+      </div>
+      <div class="sticker-filters" id="stickerFilters" role="radiogroup" aria-label="Sticker groups"></div>
+      <p class="sticker-count" id="stickerResultCount" aria-live="polite"></p>
+      <div class="sticker-results" id="stickerResults" aria-label="Stickers" role="group"></div>
+    </div>
+  </dialog>
+
   <dialog class="fullscreen-dialog" id="fullscreenDialog" aria-label="Full screen photo">
     <canvas id="fullscreenCanvas" role="img" aria-label="Edited photo"></canvas>
     <span class="original-badge fullscreen-badge" id="fullscreenBadge" hidden>Original</span>
@@ -788,8 +826,9 @@
       <ul class="engine-list" id="licenceList">
         <li>PhotoKamo · <a href="LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>
         <li>Inter, Playfair Display, Caveat fonts · <a href="fonts/OFL-Inter.txt" target="_blank" rel="noopener noreferrer">SIL OFL 1.1<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+        <li>Emoji stickers: Twemoji by Twitter, Inc and other contributors · <a href="vendor/twemoji/LICENSE-GRAPHICS" target="_blank" rel="noopener noreferrer">CC-BY 4.0<span class="visually-hidden"> (opens in a new tab)</span></a></li>
       </ul>
-      <p>Collage layouts, masks, film markings, paper fibres and tape are original PhotoKamo code and generated geometry; no third-party collage assets are bundled. <a href="docs/collage/REFERENCES.md" target="_blank" rel="noopener noreferrer">Collage references and asset register<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
+      <p>Collage layouts, masks, film markings, paper fibres, tape and the drawn stickers are original PhotoKamo code and generated geometry. Emoji stickers use Twemoji graphics, bundled with the app and loaded only from it. <a href="docs/collage/REFERENCES.md" target="_blank" rel="noopener noreferrer">Collage references and asset register<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
       <p class="engine-storage" id="engineStorage" hidden><span id="engineStorageText"></span> <button class="text-button" id="engineStorageRemove" type="button">Remove</button></p>
       <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://humpreycogay.github.io/" target="_blank" rel="noopener noreferrer">humpreycogay.github.io <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
       <p class="about-version">rel. 11222026</p>

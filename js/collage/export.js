@@ -10,6 +10,7 @@
 import { templateById, slotCount } from './templates.js';
 import { layoutTemplate } from './layout.js';
 import { drawPaper, drawCollageSlot, drawOrder, drawCollageTexts, flattenSheet, drawContactBase, drawContactMarks } from './render.js';
+import { drawStickers, ensureStickerArt } from './stickers.js';
 import { shareSize, printSize, fullSize, capSize, slotEdge, PRINT_PAPERS, PRINT_DPI } from './sizes.js';
 
 const LIMIT_KEY = 'photokamo:canvas-limit';
@@ -127,7 +128,7 @@ export function createCollageExport(deps) {
     const canvas = document.createElement('canvas'); canvas.width = size.width; canvas.height = size.height;
     const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('This device cannot make a canvas that large');
     const layout = layoutTemplate(template, size.width, size.height, doc);
-    await deps.ensureTextFonts(doc.text || []);
+    await Promise.all([deps.ensureTextFonts(doc.text || []), ensureStickerArt(doc.stickers)]);
     const flatten = flattenFor(doc, current.format);
     drawPaper(ctx, doc, layout, { shadow: !flatten }); // sticker shadows are for PNG/WebP
     if (layout.contact) drawContactBase(ctx, doc, layout);
@@ -143,6 +144,7 @@ export function createCollageExport(deps) {
       freeImage(image); // one full photo render at a time
     }
     if (layout.contact) drawContactMarks(ctx, doc, layout);
+    drawStickers(ctx, doc, layout);
     drawCollageTexts(ctx, doc, layout, deps.textFont);
     if (flatten) flattenSheet(ctx, layout, flatten);
     if (job === current) showProgress(true, 'Encoding', slots.length, slots.length);
