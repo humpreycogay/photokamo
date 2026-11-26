@@ -44,7 +44,7 @@ for (const t of templates) {
     check(['grid', 'radial', 'free'].includes(t.fill?.kind), `${t.id} bad fill`);
     check(!t.sheet.hole || (t.sheet.hole > 0 && t.sheet.hole < .8), `${t.id} bad hole`);
   } else if (t.kind === 'free') {
-    check(['diptych', 'layout', 'collage'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
+    check(['diptych', 'layout', 'collage', 'kit'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
     check(slotCount(t) >= 2 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (styles hold 2–9)`);
     for (const [i, s] of t.slots.entries()) check(s.w > 0 && s.h > 0 && s.x >= -1e-9 && s.y >= -1e-9 && s.x + s.w <= 1 + 1e-9 && s.y + s.h <= 1 + 1e-9, `${t.id} slot ${i} leaves the sheet`);
     // Mounts (frames, polaroid cards) stay on the sheet at the template's own aspect (rotation aside, ±1 %).
