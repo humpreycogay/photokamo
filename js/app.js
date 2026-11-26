@@ -9,6 +9,7 @@ import { renderImage, renderEdit, frameCanvas, FRAME_COLORS, applyAdjustments, c
 // worker and data load only when it is chosen as the engine (activateEngine).
 import { engines, legacyEngineId, engineById, loadEngine, loadCredits } from './engines/registry.js';
 import { filmLooks } from './film-looks.js';
+import { fullRenderKeyOf } from './render-keys.js';
 import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffects } from './advanced-ui.js';
 import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
@@ -420,8 +421,10 @@ let manifestsRead = null;
 const downloadBadge = id => (engineBytes[id] >= 1e6 && !savedEngineIds.has(id) ? `${Math.ceil(engineBytes[id] / 1e6)} MB` : '');
 /** Ready without a download: saved on this device, or an engine with no runtime files (manifest: false). */
 const engineReady = id => savedEngineIds.has(id) || engineById(id)?.manifest === false;
-async function syncDownloadBadges() {
-  manifestsRead ||= Promise.all(engines.filter(entry => entry.manifest !== false).map(entry => fetch(new URL('manifest.json', entry.folder))
+/** `sizes: false` reads only what is saved on this device (Cache Storage names); the manifests are fetched once film
+ *  tiles are on screen, so a page load requests no engine file until then. */
+async function syncDownloadBadges({ sizes = true } = {}) {
+  if (sizes) manifestsRead ||= Promise.all(engines.filter(entry => entry.manifest !== false).map(entry => fetch(new URL('manifest.json', entry.folder))
     .then(response => (response.ok ? response.json() : null))
     .then(manifest => { if (manifest?.files) engineBytes[entry.id] = Object.values(manifest.files).reduce((sum, file) => sum + (file.size || 0), 0); })
     .catch(() => {})));
@@ -649,27 +652,45 @@ function renderPresetPreviews() {
   }, error => console.warn(error.message));
 }
 
-/** Render Film thumbnails from the same sample used by Basic, one at a time to avoid competing workers. */
-async function renderFilmPreviews(image) {
-  let module;
-  try { module = await loadEngine('kamo-film-engine'); }
-  catch (error) { console.warn('Could not load Kamo film previews.', error); return; }
-  const users = new Set(); useEngine(users, module); // no other user stops the Worker under the tiles
-  // 71 tiles of 200 px: render from a ~400 px copy rather than at the 900 px preview size.
-  const scale = Math.min(1, 400 / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
-  const source = await createImageBitmap(image, { resizeWidth: Math.round((image.naturalWidth || image.width) * scale), resizeHeight: Math.round((image.naturalHeight || image.height) * scale), resizeQuality: 'high' });
-  for (const look of filmTileLooks) {
-    const canvas = elements.lookGrid.querySelector(`[data-film="${look.id}"] canvas`);
-    if (!canvas) continue;
-    try {
-      const preview = await module.render(source, expandLook(module, look.values['kamo-film-engine']), { quality: 'preview' });
-      drawCover(canvas.getContext('2d'), preview, canvas.width, canvas.height, .3);
-      canvas.closest('.look-thumb').classList.add('has-preview');
-      preview.close?.();
-    } catch (error) { console.warn(`Could not render the ${look.name} film preview.`, error); }
-    await new Promise(resolve => setTimeout(resolve, 0));
-  }
-  source.close?.(); releaseEngines(users, { stop: false });
+// Film tile thumbnails (Open decision 3: rendered on the device, lazily). A tile renders when it first comes near the
+// screen, one at a time in idle time, from the same sample as Basic: the Kamo engine (code, data, Worker) loads only
+// once a film tile is actually seen, never on a plain page load.
+const filmThumbs = { image: null, queue: [], running: false, module: null, source: null, users: new Set() };
+const whenIdle = () => new Promise(resolve => (window.requestIdleCallback || (callback => setTimeout(callback, 50)))(resolve, { timeout: 1000 }));
+function renderFilmPreviews(image) {
+  filmThumbs.image = image;
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting) { observer.unobserve(entry.target); filmThumbs.queue.push(entry.target); }
+    pumpFilmThumbs();
+  }, { rootMargin: '200px' });
+  for (const tile of elements.lookGrid.querySelectorAll('[data-film]')) observer.observe(tile);
+}
+async function pumpFilmThumbs() {
+  if (filmThumbs.running || !filmThumbs.queue.length) return;
+  filmThumbs.running = true;
+  try {
+    if (!filmThumbs.module) {
+      syncDownloadBadges();
+      try { filmThumbs.module = await loadEngine('kamo-film-engine'); }
+      catch (error) { console.warn('Could not load Kamo film previews.', error); filmThumbs.queue = []; return; }
+      // 200 px tiles: render from a ~400 px copy rather than at the 900 px preview size.
+      const image = filmThumbs.image, width = image.naturalWidth || image.width, height = image.naturalHeight || image.height, scale = Math.min(1, 400 / Math.max(width, height));
+      filmThumbs.source = await createImageBitmap(image, { resizeWidth: Math.round(width * scale), resizeHeight: Math.round(height * scale), resizeQuality: 'high' });
+    }
+    const module = filmThumbs.module; useEngine(filmThumbs.users, module); // no other user stops the Worker under the tiles
+    while (filmThumbs.queue.length) {
+      await whenIdle();
+      const tile = filmThumbs.queue.shift(), look = filmLookById(tile.dataset.film), canvas = tile.querySelector('canvas');
+      if (!look || !canvas) continue;
+      try {
+        const preview = await module.render(filmThumbs.source, expandLook(module, look.values['kamo-film-engine']), { quality: 'preview' });
+        drawCover(canvas.getContext('2d'), preview, canvas.width, canvas.height, .3);
+        canvas.closest('.look-thumb').classList.add('has-preview');
+        preview.close?.();
+      } catch (error) { console.warn(`Could not render the ${look.name} film preview.`, error); }
+    }
+    releaseEngines(filmThumbs.users, { stop: false });
+  } finally { filmThumbs.running = false; pumpFilmThumbs(); }
 }
 
 // ---------- Adjust panel ----------
@@ -1873,16 +1894,17 @@ async function renderEditOff(source, adjustments, edge, options) {
 function frameBitmap(bitmap, frame, texts) { const output = frameCanvas(bitmap, frame, texts); bitmap.close(); return output; }
 // The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
 const bitmapKey = () => JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
-/** Input for an engine *preview*: with Lens optics on, they run at preview size (fast, like Basic) and the result
- *  is scaled back up to the full size, which the engine expects for its physical scale (grain, MTF). The
- *  engine's preview is small, so it looks the same; Render full quality and export use ensureBitmap(). */
+/** Input for an engine *preview*: with Lens optics on, they run at preview size (fast, like Basic), and that bitmap
+ *  goes to the engine as it is: the engine downsizes every preview input to its preview edge anyway and uses no
+ *  other size (an upscale to full size cost a full-size bitmap for nothing). Render full quality and export use
+ *  ensureBitmap(). */
 async function ensurePreviewBitmap() {
   if (opticsNeutral(state.optics)) return ensureBitmap();
   const key = bitmapKey();
   if (state.previewBitmap && state.previewBitmapKey === key) return state.previewBitmap;
-  const edge = Math.max(PREVIEW_EDGE, activeModule()?.engineInfo.previewEdge ?? 0), { width, height } = croppedSize();
+  const edge = Math.max(PREVIEW_EDGE, activeModule()?.engineInfo.previewEdge ?? 0);
   const lensed = await opticsSource(edge);
-  const bitmap = await createImageBitmap(lensed, { resizeWidth: width, resizeHeight: height, resizeQuality: 'high' });
+  const bitmap = await createImageBitmap(lensed); // our own copy: the optics cache frees its bitmaps
   if (bitmapKey() !== key) { bitmap.close(); return ensurePreviewBitmap(); }
   state.previewBitmap?.close?.(); state.previewBitmap = bitmap; state.previewBitmapKey = key;
   return bitmap;
@@ -1898,6 +1920,8 @@ async function ensureBitmap() {
 }
 function scheduleAdvancedRender(delay = ADVANCED_DEBOUNCE) {
   state.renderToken++; // drop any pending Simple render
+  // Only the frame or text changed since the full-quality render: show it again in the new frame, no engine run.
+  if (state.renderQuality === 'full' && state.fullRender?.key === fullRenderKey()) { clearTimeout(advancedTimer); presentAdvanced(state.fullRender.bitmap, renderFrame()); return; }
   if (state.renderAbort) cancelFullRender();
   if (state.renderQuality === 'full') { state.renderQuality = 'preview'; syncRenderStatus(); }
   clearTimeout(advancedTimer);
@@ -1963,7 +1987,7 @@ function setRenderProgress(value) {
   }
 }
 // The full render holds the engine output with Adjust edits applied.
-const fullRenderKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams(), state.edits]);
+const fullRenderKey = () => fullRenderKeyOf({ imageId: state.imageId, crop: state.crop, optics: state.optics, engine: state.engine, params: advParams(), edits: state.edits });
 async function renderFullQuality() {
   const module = activeModule();
   if (!isFilm() || !state.image || !module) return;
@@ -3094,8 +3118,8 @@ function buildBatch() {
 
 // ---------- Wiring ----------
 buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
-// Download badges once the page is idle: two small manifest files, no engine code.
-(window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges(), { timeout: 3000 });
+// Saved engines once the page is idle (Cache Storage names only; badge sizes wait for the film tiles).
+(window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges({ sizes: false }), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
 $('#closeButton').addEventListener('click', closePhoto);
 $('#saveButton').addEventListener('click', openExport);

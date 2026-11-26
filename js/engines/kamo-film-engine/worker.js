@@ -7,7 +7,7 @@ const post = (message, transfer = []) => self.postMessage(message, transfer);
 const files = engineFiles({ engineId: 'kamo-film-engine', base: ENGINE, onProgress: progress => post({ type: 'download', ...progress }) });
 const store = new SpectralDataStore(async path => JSON.parse(new TextDecoder().decode(await files.bytes(`${DATA}${path}`))));
 const creative = new FilmEngine(); // RGB look model for creative stocks (job.creative); needs no data files
-let source = null;
+let source = null, scaled = null; // scaled: the last preview-size input { key, image } (re-made only for a new photo or size)
 
 function imageAt(bitmap, maxEdge, maxPixels) {
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height), Math.sqrt(maxPixels / (bitmap.width * bitmap.height)));
@@ -19,14 +19,21 @@ function imageAt(bitmap, maxEdge, maxPixels) {
 async function warm(job) { if (!job.creative) await store.pipeline(job.stockId, job.outputId); }
 self.addEventListener('message', async event => {
   const message = event.data;
-  if (message.type === 'image') { source?.bitmap.close(); source = { imageId: message.imageId, bitmap: message.bitmap }; return; } // our copy of the last photo
+  if (message.type === 'image') { source?.bitmap.close(); source = { imageId: message.imageId, bitmap: message.bitmap }; scaled = null; return; } // our copy of the last photo
   try {
     if (message.type === 'warm') { await warm(message.job); post({ type: 'done', jobId: message.jobId, bitmap: null }); return; }
     if (message.type !== 'render') return;
     if (!source || source.imageId !== message.imageId) throw new Error('Image not loaded in Kamo');
     post({ type: 'status', jobId: message.jobId, text: 'Developing with Kamo…' }); post({ type: 'progress', jobId: message.jobId, value: 0.05 });
     const full = message.quality === 'full';
-    const image = imageAt(source.bitmap, full ? Infinity : message.maxEdge, message.maxPixels);
+    // Previews reuse the downsized input (a copy: renders may change it in place); full renders make their own.
+    let image;
+    if (full) image = imageAt(source.bitmap, Infinity, message.maxPixels);
+    else {
+      const key = `${source.imageId}:${message.maxEdge}:${message.maxPixels}`;
+      if (scaled?.key !== key) scaled = { key, image: imageAt(source.bitmap, message.maxEdge, message.maxPixels) };
+      image = new ImageData(new Uint8ClampedArray(scaled.image.data), scaled.image.width, scaled.image.height);
+    }
     post({ type: 'progress', jobId: message.jobId, value: 0.15 });
     if (message.job.creative?.invert) for (let i = 0; i < image.data.length; i += 4) { image.data[i] = 255 - image.data[i]; image.data[i + 1] = 255 - image.data[i + 1]; image.data[i + 2] = 255 - image.data[i + 2]; }
     const result = message.job.creative ? creative.process(image, message.job.creative) : await renderWithStore(store, image, { ...message.job, histogram: false });

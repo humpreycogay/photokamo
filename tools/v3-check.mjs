@@ -87,6 +87,20 @@ test('capFramed keeps the framed export under the device limit and the photo asp
   }
 });
 
+// ---------- Task 7: full-quality render reuse ----------
+test('full-render key ignores frame and text, follows look, edits, crop and optics', async repo => {
+  const { fullRenderKeyOf } = await import(`${repo}/js/render-keys.js`);
+  const { defaultOptics } = await import(`${repo}/js/optics/params.js`);
+  const base = { imageId: 3, crop: { x: .5, y: .5, w: 1, h: 1 }, optics: defaultOptics(), engine: 'kamo-film-engine', params: { stock: 'portra-400', grain: 20 }, edits: { exposure: .3 },
+    frame: { id: 'none' }, text: [] };
+  const key = settings => fullRenderKeyOf({ ...base, ...settings });
+  assert.equal(key({ frame: { id: 'instant' } }), key({}), 'frame change keeps the render');
+  assert.equal(key({ text: [{ id: 't', content: 'Hi' }] }), key({}), 'text change keeps the render');
+  for (const [name, change] of Object.entries({ look: { params: { stock: 'gold-200', grain: 20 } }, edits: { edits: { exposure: .35 } }, crop: { crop: { x: .4, y: .5, w: .8, h: .8 } },
+    optics: { optics: { ...defaultOptics(), bloom: 20 } }, photo: { imageId: 4 }, engine: { engine: 'other' } }))
+    assert.notEqual(key(change), key({}), `${name} change needs a new render`);
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }
