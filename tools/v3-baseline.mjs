@@ -6,7 +6,7 @@
 const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, statSync } from 'node:fs';
-const repo = new URL('..', import.meta.url).pathname.replace(/\/$/, ''), base = 'http://localhost:8080/';
+const repo = new URL('..', import.meta.url).pathname.replace(/\/$/, ''), base = 'http://localhost:8080/', START = `${base}?dev`; // ?dev: the console helpers (pickFilmLook)
 const browser = await chromium.launch({ executablePath: process.env.PKCHROME || undefined });
 const out = [], logs = [];
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -25,7 +25,7 @@ async function fresh() {
   page.on('console', m => { if (['error', 'warning'].includes(m.type())) logs.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', e => logs.push('pageerror: ' + e.message));
   page.on('request', r => { if (!r.url().startsWith(base) && !r.url().startsWith('data:') && !r.url().startsWith('blob:')) logs.push('offsite: ' + r.url()); });
-  await page.goto(base); await page.waitForLoadState('networkidle');
+  await page.goto(START); await page.waitForLoadState('networkidle');
   return { ctx, page };
 }
 async function record(page, label, trigger) {
