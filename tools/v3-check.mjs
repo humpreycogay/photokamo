@@ -22,6 +22,22 @@ test('collage export key follows the visible photos\' edits', async repo => {
   settings[2] = '{"look":"changed"}'; assert.notEqual(key(), before, 'an edited photo in a slot changes the key');
 });
 
+// ---------- Task 3: engine file integrity ----------
+test('verifyDigest accepts the right bytes and rejects wrong or truncated ones', async repo => {
+  const { verifyDigest } = await import(`${repo}/js/engines/engine-files.js`);
+  const { createHash } = await import('node:crypto');
+  const { readFileSync } = await import('node:fs');
+  const manifest = JSON.parse(readFileSync(`${repo}/engines/kamo-film-engine/manifest.json`, 'utf8'));
+  const [path, { sha256 }] = Object.entries(manifest.files).find(([file]) => file.endsWith('.json'));
+  const bytes = new Uint8Array(readFileSync(`${repo}/engines/kamo-film-engine/${path}`));
+  assert.equal(await verifyDigest(bytes, sha256), true, 'file matches its manifest entry');
+  assert.equal(await verifyDigest(bytes, sha256.toUpperCase()), true, 'hex case does not matter');
+  assert.equal(await verifyDigest(bytes.slice(0, -1), sha256), false, 'truncated');
+  const wrong = bytes.slice(); wrong[0] ^= 1;
+  assert.equal(await verifyDigest(wrong, sha256), false, 'one bit changed');
+  assert.equal(await verifyDigest(new Uint8Array(0), createHash('sha256').update('').digest('hex')), true, 'empty input');
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }

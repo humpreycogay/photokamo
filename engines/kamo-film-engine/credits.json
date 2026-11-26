@@ -11,5 +11,5 @@
     { "name": "Film Scan Calibration data licence (CC BY 4.0)", "file": "data/film-scan-calibration/LICENSE-DATA.txt" },
     { "name": "Calibration attribution and third-party standards notice", "file": "data/film-scan-calibration/ATTRIBUTION.md" }
   ],
-  "changes": ["Adapted to PhotoKamo’s grouped engine controls and Web Worker runtime; calibration data is unmodified."]
+  "changes": ["Adapted to PhotoKamo’s grouped engine controls and Web Worker runtime; calibration data is unmodified.", "2026-11-26 (v3 Task 3): SpectralDataStore no longer caches a failed load, so a look can be retried after a network error without a reload (test/store.test.js)."]
 }

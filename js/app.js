@@ -72,13 +72,28 @@ let toastTimer;
 // Collage mode (js/collage/mode.js): slots show each photo's own edit without frame or text. A fast pass from the
 // queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
 const collageEngines = new Set();
+// Engine modules are shared (one Kamo Worker for the editor, queue, batch, collage and look tiles). Each user holds
+// the module while it renders; when a user is done, the Worker stops only if nobody else holds it and the editor
+// isn't using it, so one user finishing never kills another's render.
+const engineHolds = new Map();
+/** Adds `module` to a user's set, holding it once per user. */
+function useEngine(users, module) { if (users.has(module)) return; users.add(module); engineHolds.set(module, (engineHolds.get(module) || 0) + 1); }
+/** Lets go of every module in a user's set; `stop: false` keeps the Worker running even when no one holds it. */
+function releaseEngines(users, { stop = true } = {}) {
+  for (const module of users) {
+    const left = (engineHolds.get(module) || 1) - 1;
+    if (left > 0) engineHolds.set(module, left); else engineHolds.delete(module);
+    if (stop && !left && module !== engine.module) module.dispose?.();
+  }
+  users.clear();
+}
 let activeCollageId = null;
 const collageStore = createCollageStore({ photoExists: id => Boolean(photoById(id)) });
 const collage = createCollageMode({
   photos: () => app.photos, photoById: id => photoById(id), settingsOf: photo => settingsOf(photo), paperColors,
   addFiles: files => addFiles(files, { view: false }),
   editPhoto: id => editFromCollage(id),
-  renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => collageEngines.add(module) }),
+  renderSlot: (photo, { pass, edge, job }) => renderPhotoEdit(photo, { edge: pass === 'fast' ? QUEUE_EDGE : edge, quality: 'preview', from: pass === 'fast' ? 'thumb' : 'full', job, onEngine: module => useEngine(collageEngines, module) }),
   textFonts, textFont,
   onHistory: () => updateButtons(),
   onDocument: doc => { if (activeCollageId) { collageStore.save(doc, { id: activeCollageId }); syncSavedCollages(); } }
@@ -86,7 +101,7 @@ const collage = createCollageMode({
 const collageExport = createCollageExport({
   doc: () => collage.snapshot(), update: mutator => collage.update(mutator), paperColors, photoById: id => photoById(id), get canShareFiles() { return canShareFiles; }, isPhone: () => mobileQuery.matches, toast: text => toast(text),
   photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
-  renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => collageEngines.add(module), onProgress }),
+  renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => useEngine(collageEngines, module), onProgress }),
   ensureTextFonts: texts => ensureTextFonts(texts), textFont,
   settingsKey: id => { const photo = photoById(id); return photo ? JSON.stringify(settingsOf(photo)) : null; },
   download: file => downloadBlob(file, file.name)
@@ -639,6 +654,7 @@ async function renderFilmPreviews(image) {
   let module;
   try { module = await loadEngine('kamo-film-engine'); }
   catch (error) { console.warn('Could not load Kamo film previews.', error); return; }
+  const users = new Set(); useEngine(users, module); // no other user stops the Worker under the tiles
   // 71 tiles of 200 px: render from a ~400 px copy rather than at the 900 px preview size.
   const scale = Math.min(1, 400 / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
   const source = await createImageBitmap(image, { resizeWidth: Math.round((image.naturalWidth || image.width) * scale), resizeHeight: Math.round((image.naturalHeight || image.height) * scale), resizeQuality: 'high' });
@@ -653,7 +669,7 @@ async function renderFilmPreviews(image) {
     } catch (error) { console.warn(`Could not render the ${look.name} film preview.`, error); }
     await new Promise(resolve => setTimeout(resolve, 0));
   }
-  source.close?.();
+  source.close?.(); releaseEngines(users, { stop: false });
 }
 
 // ---------- Adjust panel ----------
@@ -1461,7 +1477,7 @@ function activateEngine(id = state.engine) {
   if (engine.module) {
     // Another engine was chosen: stop the old one (its worker can hold hundreds of MB).
     if (state.renderAbort) cancelFullRender();
-    engine.unsubscribe?.(); engine.module.dispose?.();
+    engine.unsubscribe?.(); if (!engineHolds.has(engine.module)) engine.module.dispose?.(); // else its last user stops it
     engine.module = null; engine.id = null; engine.unsubscribe = null;
   }
   if (engine.builtFor !== id) { buildAdvanced(advancedRoots, null); engine.builtFor = null; }
@@ -2432,8 +2448,7 @@ function exitCollage({ keepCache = false } = {}) {
   if (!collage.active) return;
   collage.close({ keepCache });
   document.body.classList.remove('collage-mode');
-  for (const module of collageEngines) if (module !== engine.module) module.dispose?.();
-  collageEngines.clear();
+  releaseEngines(collageEngines);
   updateButtons(); renderQueue.pump();
   const target = collageReturnFocus?.isConnected && collageReturnFocus.offsetParent ? collageReturnFocus : elements.canvas;
   target.focus?.({ preventScroll: true }); collageReturnFocus = null;
@@ -2609,7 +2624,7 @@ async function renderPhotoThumb(id, job) {
   const photo = photoById(id); if (!photo) return null;
   const texts = photo.settings.text || [];
   await ensureTextFonts(texts);
-  const edit = await renderPhotoEdit(photo, { edge: QUEUE_EDGE, quality: 'preview', job, onEngine: module => { if (module !== engine.module) queueEngines.add(module); } });
+  const edit = await renderPhotoEdit(photo, { edge: QUEUE_EDGE, quality: 'preview', job, onEngine: module => { if (module !== engine.module) useEngine(queueEngines, module); } });
   return edit && frameCanvas(edit.image, frameFor(edit.settings.frame, edit.tint), texts);
 }
 const renderQueue = createRenderQueue({
@@ -2623,8 +2638,7 @@ const renderQueue = createRenderQueue({
     syncStrip();
   },
   onIdle: () => {
-    for (const module of queueEngines) if (module !== engine.module) module.dispose?.();
-    queueEngines.clear();
+    releaseEngines(queueEngines);
   }
 });
 
@@ -2889,7 +2903,7 @@ function downloadBlob(blob, name) {
 async function renderPhotoFull(photo, engineModules, onProgress) {
   const texts = settingsOf(photo).text || [];
   await ensureTextFonts(texts);
-  const { image, tint, settings } = await renderPhotoEdit(photo, { onEngine: module => engineModules.add(module), onProgress });
+  const { image, tint, settings } = await renderPhotoEdit(photo, { onEngine: module => useEngine(engineModules, module), onProgress });
   const output = frameCanvas(image, frameFor(settings.frame, tint), texts);
   image.close?.();
   return output;
@@ -2922,7 +2936,7 @@ async function renderBatch(photos, each = null) {
     }
   } finally {
     batch.running = false;
-    for (const module of engineModules) if (module !== engine.module) module.dispose?.();
+    releaseEngines(engineModules);
     syncBatch(); renderQueue.pump();
   }
   if (batch.cancel) { toast(`Export stopped after ${plural(files.length, 'photo')}.`); return null; }

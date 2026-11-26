@@ -6,8 +6,17 @@
 //   visit reads them from disk with no network request. A new engine version (new manifest) gets a
 //   new cache and the old one is deleted.
 // - Without Cache Storage (non-secure page, private mode quirks, quota errors) it simply fetches.
+// - Each download is checked against the manifest's sha256 before it is used or saved; a mismatch is fetched once
+//   more past the HTTP cache, then fails. Offline (no manifest), the copy saved last time is used.
 
 const PREFIX = 'photokamo-engine:';
+
+/** True when `bytes` hash to `sha256` (hex); null when this page can't hash (crypto.subtle needs a secure page). */
+export async function verifyDigest(bytes, sha256) {
+  if (!globalThis.crypto?.subtle) return null;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('') === String(sha256).toLowerCase();
+}
 
 /** @param {{ engineId: string, base: URL, onProgress?: (p: { loaded: number, total: number, done: boolean }) => void }} options */
 export function engineFiles({ engineId, base, onProgress }) {
@@ -23,9 +32,11 @@ export function engineFiles({ engineId, base, onProgress }) {
   const cache = () => (cachePromise ||= (async () => {
     try {
       const m = await manifest();
-      if (!m?.version || typeof caches === 'undefined') return null;
+      if (typeof caches === 'undefined') return null;
+      const mine = (await caches.keys()).filter(key => key.startsWith(`${PREFIX}${engineId}:`));
+      if (!m?.version) return mine.length ? await caches.open(mine[mine.length - 1]) : null; // offline: the newest saved copy
       const name = `${PREFIX}${engineId}:${m.version}`;
-      for (const key of await caches.keys()) if (key.startsWith(`${PREFIX}${engineId}:`) && key !== name) await caches.delete(key);
+      for (const key of mine) if (key !== name) await caches.delete(key);
       return await caches.open(name);
     } catch { return null; }
   })());
@@ -39,6 +50,19 @@ export function engineFiles({ engineId, base, onProgress }) {
     onProgress({ loaded, total: known ? total : 0, done: [...progress.values()].every(item => item.done) });
   }
   async function expectedSize(path) { return (await manifest())?.files?.[path]?.size || 0; }
+  async function expectedHash(path) { return (await manifest())?.files?.[path]?.sha256 || null; }
+  /** Downloads `path` and checks it against the manifest; a bad copy is fetched once more, bypassing the HTTP cache. */
+  async function download(url, path) {
+    const sha256 = await expectedHash(path);
+    for (const cache of ['default', 'reload']) {
+      const response = await fetch(url, { cache });
+      if (!response.ok) throw new Error(`Could not load ${path} (HTTP ${response.status})`);
+      const data = await readCounted(path, response);
+      if (!sha256 || (await verifyDigest(data, sha256)) !== false) return { data, type: response.headers.get('content-type') || 'application/octet-stream' };
+      console.warn(`${path} did not match the engine manifest${cache === 'default' ? '; downloading it again' : ''}.`);
+    }
+    throw new Error(`${path} failed its integrity check. Try again later.`);
+  }
 
   async function readCounted(path, response) {
     const item = { loaded: 0, total: (await expectedSize(path)) || Number(response.headers.get('content-length')) || 0, done: false };
@@ -70,10 +94,8 @@ export function engineFiles({ engineId, base, onProgress }) {
         const url = new URL(path, base).href;
         const saved = await (await cache())?.match(url).catch(() => null);
         if (saved) return new Uint8Array(await saved.arrayBuffer());
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Could not load ${path} (HTTP ${response.status})`);
-        const data = await readCounted(path, response);
-        await store(url, data, response.headers.get('content-type') || 'application/octet-stream');
+        const { data, type } = await download(url, path);
+        await store(url, data, type); // only a verified copy is saved
         return data;
       })();
       promise.catch(() => inflight.delete(path));
@@ -90,7 +112,10 @@ export function engineFiles({ engineId, base, onProgress }) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Could not load the film engine (HTTP ${response.status})`);
     const [compile, save] = response.body.tee();
-    readCounted(path, new Response(save)).then(data => store(url, data, 'application/wasm')).catch(() => {});
+    readCounted(path, new Response(save)).then(async data => {
+      const sha256 = await expectedHash(path);
+      if (!sha256 || (await verifyDigest(data, sha256)) !== false) await store(url, data, 'application/wasm'); // a bad copy fails to compile and is never saved
+    }).catch(() => {});
     return new Response(compile, { headers: { 'Content-Type': 'application/wasm' } });
   }
 

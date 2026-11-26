@@ -12,6 +12,17 @@ export { FilmPipeline, LUT_SIZE, OUTPUT_SPACES } from './pipeline.js';
 export { buildEquipment, buildFilmStock, buildPrintMaterial, buildStandards, fitMtf } from './materials.js';
 export { gaussianBlur, processSpectralImage, recoverHighlights, sampleLut } from './render.js';
 
+/** The cached promise for `key`, made once; a rejected one is dropped so the next call tries again (a failed
+ *  download must not stay failed until a reload). */
+function once(map, key, make) {
+  if (!map.has(key)) {
+    const promise = Promise.resolve().then(make);
+    map.set(key, promise);
+    promise.catch(() => { if (map.get(key) === promise) map.delete(key); });
+  }
+  return map.get(key);
+}
+
 /**
  * Loads and caches datasets through a caller-supplied JSON reader, so the same
  * engine runs in Node (fs) and browsers/workers (fetch).
@@ -25,55 +36,40 @@ export class SpectralDataStore {
   }
 
   async json(path) {
-    if (!this.raw.has(path)) this.raw.set(path, Promise.resolve(this.readJson(path)));
-    return this.raw.get(path);
+    return once(this.raw, path, () => this.readJson(path));
   }
 
   async standards() {
-    if (!this.built.has('standards')) {
-      this.built.set('standards', (async () => {
-        const entries = await Promise.all(Object.entries(standardFiles)
-          .map(async ([key, path]) => [key, await this.json(path)]));
-        return buildStandards(Object.fromEntries(entries));
-      })());
-    }
-    return this.built.get('standards');
+    return once(this.built, 'standards', async () => {
+      const entries = await Promise.all(Object.entries(standardFiles)
+        .map(async ([key, path]) => [key, await this.json(path)]));
+      return buildStandards(Object.fromEntries(entries));
+    });
   }
 
   async equipment() {
-    if (!this.built.has('equipment')) {
-      this.built.set('equipment', (async () => {
-        const entries = await Promise.all(Object.entries(equipmentFiles)
-          .map(async ([key, path]) => [key, await this.json(path)]));
-        return buildEquipment(Object.fromEntries(entries));
-      })());
-    }
-    return this.built.get('equipment');
+    return once(this.built, 'equipment', async () => {
+      const entries = await Promise.all(Object.entries(equipmentFiles)
+        .map(async ([key, path]) => [key, await this.json(path)]));
+      return buildEquipment(Object.fromEntries(entries));
+    });
   }
 
   async stock(id) {
     const entry = getSpectralStock(id);
     if (!entry) throw new RangeError(`Unknown spectral stock: ${id}`);
-    const key = `stock:${id}`;
-    if (!this.built.has(key)) {
-      this.built.set(key, (async () => {
-        const [curves, dyes, sensitivity, mtf] = await Promise.all([
-          this.json(entry.files.curves), this.json(entry.files.dyes), this.json(entry.files.sensitivity),
-          entry.files.mtf ? this.json(entry.files.mtf) : null,
-        ]);
-        return buildFilmStock(entry, { curves, dyes, sensitivity, mtf });
-      })());
-    }
-    return this.built.get(key);
+    return once(this.built, `stock:${id}`, async () => {
+      const [curves, dyes, sensitivity, mtf] = await Promise.all([
+        this.json(entry.files.curves), this.json(entry.files.dyes), this.json(entry.files.sensitivity),
+        entry.files.mtf ? this.json(entry.files.mtf) : null,
+      ]);
+      return buildFilmStock(entry, { curves, dyes, sensitivity, mtf });
+    });
   }
 
   async printMaterial(output) {
     if (output.type !== 'print') return null;
-    const key = `print:${output.id}`;
-    if (!this.built.has(key)) {
-      this.built.set(key, this.json(output.file).then(raw => buildPrintMaterial(output, raw)));
-    }
-    return this.built.get(key);
+    return once(this.built, `print:${output.id}`, async () => buildPrintMaterial(output, await this.json(output.file)));
   }
 
   /** Returns a cached FilmPipeline for a stock/output pair. */
@@ -82,17 +78,13 @@ export class SpectralDataStore {
     if (!entry) throw new RangeError(`Unknown spectral stock: ${stockId}`);
     const output = (outputId && getSpectralOutput(outputId)) || outputsForStock(entry)[0];
     if (!output.kinds.includes(entry.kind)) throw new RangeError(`${output.label} cannot render ${entry.name}.`);
-    const key = `pipeline:${stockId}:${output.id}`;
-    if (!this.built.has(key)) {
-      this.built.set(key, (async () => {
-        const [standards, stock, print, equipment] = await Promise.all([
-          this.standards(), this.stock(stockId), this.printMaterial(output),
-          output.printing === 'tricolor' ? this.equipment() : null,
-        ]);
-        return new FilmPipeline(standards, stock, output, print, equipment);
-      })());
-    }
-    return this.built.get(key);
+    return once(this.built, `pipeline:${stockId}:${output.id}`, async () => {
+      const [standards, stock, print, equipment] = await Promise.all([
+        this.standards(), this.stock(stockId), this.printMaterial(output),
+        output.printing === 'tricolor' ? this.equipment() : null,
+      ]);
+      return new FilmPipeline(standards, stock, output, print, equipment);
+    });
   }
 }
 
