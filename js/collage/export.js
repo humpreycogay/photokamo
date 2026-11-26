@@ -4,7 +4,7 @@
 // Share can call navigator.share() while the tap still counts as a user gesture.
 // deps: doc() (a copy), update(mutator) (one collage undo step), photoById(id), photoSize(photo) → cropped
 //   { width, height }, renderEdit(photo, { edge, onProgress }) → { image }, download(file), canShareFiles, isPhone(),
-//   toast(text), paperColors.
+//   toast(text), paperColors, settingsKey(photoId) → the photo's edit settings as a string (null: no such photo).
 // Transparency (Task 4): PNG and WebP keep a transparent sheet's alpha; JPEG has none, so it is filled with the
 // collage's `flatten` colour (never left to the encoder, which would turn it black).
 import { templateById, slotCount } from './templates.js';
@@ -39,6 +39,12 @@ function canDraw(pixels) {
 }
 const cancelled = () => Object.assign(new Error('Cancelled'), { name: 'AbortError' });
 const freeImage = image => { if (!image) return; if (image.close) image.close(); else { image.width = 0; image.height = 0; } };
+/** What a prepared collage file depends on: the document, size, format, quality and each visible photo's edits (an
+ *  edit made in the editor changes the file even though the collage document didn't change). */
+export function collageExportKey(doc, size, format, quality, settingsKey) {
+  const ids = doc.slots.slice(0, slotCount(templateById(doc.templateId))).map(slot => slot.photoId);
+  return JSON.stringify([doc, size, format, quality, ids.map(id => (id == null ? null : settingsKey(id)))]);
+}
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 export function createCollageExport(deps) {
@@ -75,7 +81,7 @@ export function createCollageExport(deps) {
   // 63/255 in tools/collage-alpha.html); quality 1 makes the browser write lossless WebP, which keeps edges exact.
   const losslessAlpha = doc => transparent(doc) && options.format === 'image/webp';
   const qualityValue = (doc = deps.doc()) => (options.format === 'image/png' || losslessAlpha(doc) ? 1 : Number(ui.quality.value) / 100);
-  const exportKey = doc => JSON.stringify([doc, chosen(doc), options.format, qualityValue(doc)]);
+  const exportKey = doc => collageExportKey(doc, chosen(doc), options.format, qualityValue(doc), deps.settingsKey);
   function syncAlpha(doc) {
     ui.alpha.hidden = !transparent(doc); if (ui.alpha.hidden) return;
     const jpeg = options.format === 'image/jpeg';
@@ -132,9 +138,11 @@ export function createCollageExport(deps) {
     const flatten = flattenFor(doc, current.format);
     drawPaper(ctx, doc, layout, { shadow: !flatten }); // sticker shadows are for PNG/WebP
     if (layout.contact) drawContactBase(ctx, doc, layout);
-    const slots = drawOrder(layout).filter(slot => deps.photoById(doc.slots[slot.index].photoId));
-    for (const [n, slot] of slots.entries()) {
+    const order = drawOrder(layout), slots = order.filter(slot => deps.photoById(doc.slots[slot.index].photoId));
+    for (const slot of order) {
       if (current.cancelled) throw cancelled();
+      const n = slots.indexOf(slot);
+      if (n < 0) { if (slot.mount) drawCollageSlot(ctx, doc, layout, slot, null, 'transparent'); continue; } // empty: its card, as the preview shows
       const fill = doc.slots[slot.index], photo = deps.photoById(fill.photoId), natural = deps.photoSize(photo);
       const report = (part = 0) => { if (job === current) showProgress(true, `Rendering ${photo.name}`, n, slots.length, part); };
       report();

@@ -91,15 +91,15 @@ node tools/v3-check.mjs                              # added in Task 0, grows wi
 *Done 2026-11-26:* Revert also clears text and lens (Open decision 2, recommended option). Ctrl/Cmd+Z/Y skip text fields and open dialogs but still work on sliders. Headless repro (checks 2, 3, 5, 6, plus "Ctrl+Z on a focused slider still undoes"): 2, 3, 5, 6 failed before, all pass after. Check 5 reproduced: the nudge landed on photo 2 as its undo step. Check 6 as written can't happen, because `addFiles` drops undecodable files. Reproduced instead by making `HTMLImageElement.decode` reject after adding, which left photo 2 "in view" with photo 1's image released. Checks 1 and 4 fixed from reading, still to check by hand. Baseline: 7/7 byte-identical.
 
 #### Task 2: Collage correctness (`js/collage/`, `js/app.js` glue)
-- [ ] **[C]** Stale export: `exportKey` (`export.js:78`) omits the photos' edit settings. Add each visible photo's settings key (via a new `deps` callback) to the key
-- [ ] **[R]** Undo with a pending live edit corrupts history: slider baseline (`mode.js:131-135`, also `283`, `309`, `354`, `389`), wheel timer (`1069-1073`), text timer (`191-194`). Add one `flushPending()` called at the top of `change()` and `step()` (`76-86`); resync the textarea after undo (`224`)
-- [ ] **[R]** Duplicate saved collages: Collage → Back → Collage saves a new "Collage N" each time (`app.js:2402` with `mode.js:1187-1191`). Create a store entry only when `open()` created a new doc
-- [ ] **[R]** Arrow keys in the slot's photo radio group swap on every arrow (`mode.js:368`, `460-463`, `345-349`): arrows move focus, Enter/Space places, one undo step
-- [ ] **[R]** `pointercancel` commits half-finished pan/move/pinch/sticker/text drags (`mode.js:1044-1056`, `850-858`, `634-638`): restore the gesture's start state instead
-- [ ] **[R]** A second finger on another slot changes the selection mid-pinch (`mode.js:997` before `1009-1011`): skip `select()` while a gesture is active
-- [ ] **[C]** `entry.name` goes into `innerHTML` unescaped (`app.js:2415`), in text and in an attribute. Names are generated today, so this is latent, but Task 10 of `CollagePlan.md` will restore names from storage: build the menu with `textContent`/`setAttribute`
-- [ ] **[R]** Empty mounted slots: preview draws the frame/polaroid card, export skips the slot (`export.js:135` vs `render.js:155-158`): pick one behaviour (recommended: export draws what the preview shows)
-- [ ] **[C]** Remove dead locals (`mode.js:392` `item`, `399` `current`)
+- [x] **[C]** Stale export: `exportKey` (`export.js:78`) omits the photos' edit settings. Add each visible photo's settings key (via a new `deps` callback) to the key
+- [x] **[R]** Undo with a pending live edit corrupts history: slider baseline (`mode.js:131-135`, also `283`, `309`, `354`, `389`), wheel timer (`1069-1073`), text timer (`191-194`). Add one `flushPending()` called at the top of `change()` and `step()` (`76-86`); resync the textarea after undo (`224`)
+- [x] **[R]** Duplicate saved collages: Collage → Back → Collage saves a new "Collage N" each time (`app.js:2402` with `mode.js:1187-1191`). Create a store entry only when `open()` created a new doc
+- [x] **[R]** Arrow keys in the slot's photo radio group swap on every arrow (`mode.js:368`, `460-463`, `345-349`): arrows move focus, Enter/Space places, one undo step
+- [x] **[R]** `pointercancel` commits half-finished pan/move/pinch/sticker/text drags (`mode.js:1044-1056`, `850-858`, `634-638`): restore the gesture's start state instead
+- [x] **[R]** A second finger on another slot changes the selection mid-pinch (`mode.js:997` before `1009-1011`): skip `select()` while a gesture is active
+- [x] **[C]** `entry.name` goes into `innerHTML` unescaped (`app.js:2415`), in text and in an attribute. Names are generated today, so this is latent, but Task 10 of `CollagePlan.md` will restore names from storage: build the menu with `textContent`/`setAttribute`
+- [x] **[R]** Empty mounted slots: preview draws the frame/polaroid card, export skips the slot (`export.js:135` vs `render.js:155-158`): pick one behaviour (recommended: export draws what the preview shows)
+- [x] **[C]** Remove dead locals (`mode.js:392` `item`, `399` `current`)
 
 **Tests:** Node cases in `tools/v3-check.mjs`: (a) the export key differs when one photo's settings differ and is equal otherwise; (b) if `flushPending` logic is extracted as pure history helpers, a drag → undo → drag → undo sequence returns to the right snapshots. `node tools/collage-check.mjs` stays at 0 errors.
 **Check:**
@@ -113,6 +113,7 @@ node tools/v3-check.mjs                              # added in Task 0, grows wi
 
 **Done when:** all seven pass on desktop and a real phone; collage baseline export from Task 0 is byte-identical.
 **Output changes:** only collages with empty mounted slots.
+*Done 2026-11-26:* Headless repro of checks 1–6 (synthetic pointer events for 5 and 6): all six failed on the old code, all pass now. Old results: the export hash was unchanged after editing a photo; the gutter undo landed on the first drag; an undo right after a wheel zoom undid the step before it; 4 saved collages after 3× Back; 3 arrows made 3 swaps; cancel left the pan and added an undo step; the second finger moved the selection. Check 7: the export now draws the empty frame and mat like the preview, without the grey placeholder (side-by-side images checked). Node: export-key case (the old key ignored photo settings, so it fails there). `pointercancel` also restores divider drags (same bug). Baseline 7/7 byte-identical. Not done: (b) pure history helpers, because `flushPending` stayed inside `mode.js`.
 
 #### Task 3: Engine loading robustness
 - [ ] **[C]** Failed data loads are cached forever (`engines/kamo-film-engine/src/spectral/index.js:27-30`, `58-67`, `86-94` store rejected promises; reproduced in Node): delete the map entry on rejection. Engine edit → test + `credits.json` → `changes` + manifest regeneration

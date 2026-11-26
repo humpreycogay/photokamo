@@ -88,6 +88,7 @@ const collageExport = createCollageExport({
   photoSize: photo => { const { crop } = settingsOf(photo); if (isIdentityCrop(crop)) return { width: photo.width, height: photo.height }; const g = cropGeometry(photo.width, photo.height, crop); return { width: Math.round(g.width), height: Math.round(g.height) }; },
   renderEdit: (photo, { edge, onProgress }) => renderPhotoEdit(photo, { edge, quality: 'full', onEngine: module => collageEngines.add(module), onProgress }),
   ensureTextFonts: texts => ensureTextFonts(texts), textFont,
+  settingsKey: id => { const photo = photoById(id); return photo ? JSON.stringify(settingsOf(photo)) : null; },
   download: file => downloadBlob(file, file.name)
 });
 const openExport = () => (collage.active ? collageExport.open() : openSave());
@@ -2402,8 +2403,8 @@ function enterCollage({ resume = false } = {}) {
   setHolding(false); closeFullscreen();
   collageReturnFocus = document.activeElement;
   document.body.classList.add('collage-mode');
-  collage.open(ids);
-  if (!resume || !activeCollageId) activeCollageId = collageStore.save(collage.snapshot())?.id || null;
+  const created = collage.open(ids); // the same photos resume the collage in progress: no second saved copy
+  if (created || !activeCollageId) activeCollageId = collageStore.save(collage.snapshot())?.id || null;
   syncSavedCollages();
   updateButtons();
 }
@@ -2416,7 +2417,16 @@ function openSavedCollage(id) {
 function syncSavedCollages() {
   const saved = collageStore.list(), box = $('#collageMenuSaved'), list = $('#collageMenuList');
   box.hidden = !saved.length; $('#collageMenuHeading').textContent = `Collages (${saved.length})`;
-  list.innerHTML = saved.map(entry => `<div class="file-menu-collage"><button class="file-menu-item" role="menuitem" type="button" data-collage-open="${entry.id}"><span class="file-menu-collage-name">${entry.name}</span></button><button class="file-menu-delete" role="menuitem" type="button" data-collage-delete="${entry.id}" aria-label="Delete ${entry.name}" title="Delete collage">×</button></div>`).join('');
+  // Built with DOM calls: names will come back from storage (CollagePlan.md Task 10), so never as HTML.
+  list.replaceChildren(...saved.map(entry => {
+    const row = document.createElement('div'), open = document.createElement('button'), name = document.createElement('span'), remove = document.createElement('button');
+    row.className = 'file-menu-collage';
+    Object.assign(open, { className: 'file-menu-item', type: 'button' }); open.setAttribute('role', 'menuitem'); open.dataset.collageOpen = entry.id;
+    name.className = 'file-menu-collage-name'; name.textContent = entry.name; open.append(name);
+    Object.assign(remove, { className: 'file-menu-delete', type: 'button', title: 'Delete collage', textContent: '×' }); remove.setAttribute('role', 'menuitem');
+    remove.dataset.collageDelete = entry.id; remove.setAttribute('aria-label', `Delete ${entry.name}`);
+    row.append(open, remove); return row;
+  }));
 }
 function exitCollage({ keepCache = false } = {}) {
   if (!collage.active) return;

@@ -78,11 +78,20 @@ export function createCollageMode(deps) {
     undoStack.push(previous); if (undoStack.length > HISTORY_LIMIT) undoStack.shift(); redoStack = [];
     historyChanged(); deps.onDocument?.(cloneDoc(doc));
   }
-  function change(mutator) { const previous = cloneDoc(doc); mutator(doc); commit(previous); refresh(); }
+  /** Commits a live edit still in progress (slider, wheel zoom, typing, sticker slider) as its own step, so a new
+   *  change or an undo never folds it into another step; the next live edit starts from the current document. */
+  function flushPending() {
+    if (slider) { commit(slider); slider = null; }
+    if (wheel) { clearTimeout(wheel.timer); commit(wheel.start); wheel = null; }
+    finishLiveText(); finishLiveSticker();
+  }
+  function change(mutator) { flushPending(); const previous = cloneDoc(doc); mutator(doc); commit(previous); refresh(); }
   function step(from, to, word) {
+    flushPending();
     if (!from.length) return;
     to.push(cloneDoc(doc)); doc = from.pop();
     refresh(); historyChanged(); deps.onDocument?.(cloneDoc(doc)); say(word);
+    const text = selectedText(); if (text) textUi.content.value = text.content; // also while the field has focus
   }
 
   // ---------- Panel ----------
@@ -365,7 +374,7 @@ export function createCollageMode(deps) {
     slotUi.flip.addEventListener('click', () => editFill(slot => { slot.flip = !slot.flip; }, slot => (slot.flip ? 'Flipped' : 'Not flipped')));
     slotUi.reset.addEventListener('click', () => editFill(resetFraming, 'Framing reset'));
     slotUi.move.addEventListener('change', () => moveTo(Number(slotUi.move.value)));
-    radioGroup(slotUi.photos, '[data-photo]', button => placePhoto(Number(button.dataset.photo)));
+    radioGroup(slotUi.photos, '[data-photo]', button => placePhoto(Number(button.dataset.photo)), { followFocus: false }); // a pick swaps photos
     slotUi.empty.addEventListener('click', emptySelected);
     slotUi.edit.addEventListener('click', () => { const photo = slotPhoto(); if (photo) deps.editPhoto(photo.id); });
     slotUi.add.addEventListener('click', () => slotUi.file.click());
@@ -389,14 +398,14 @@ export function createCollageMode(deps) {
     const beginLayout = () => { slider ||= cloneDoc(doc); };
     slotUi.layoutRotate.addEventListener('pointerdown', beginLayout); slotUi.layoutRotate.addEventListener('focus', beginLayout);
     slotUi.layoutRotate.addEventListener('input', () => {
-      if (selected == null) return; beginLayout(); const item = template().slots[selected], fill = doc.slots[selected]; fill.layout ||= {};
+      if (selected == null) return; beginLayout(); const fill = doc.slots[selected]; fill.layout ||= {};
       let angle = Number(slotUi.layoutRotate.value); if (Math.abs(angle) <= 2) angle = 0; fill.layout.rotate = angle; syncFreeValues(); scheduleDraw();
     });
     slotUi.layoutRotate.addEventListener('change', () => { if (slider) commit(slider); slider = cloneDoc(doc); });
     slotUi.layoutRotate.addEventListener('blur', () => { slider = null; });
     const reorder = delta => {
       if (selected == null || template().kind !== 'free') return;
-      change(d => { const zs = view.layout.slots.map(s => s.z), current = view.layout.slots[selected].z, target = delta > 0 ? Math.max(...zs) + 1 : Math.min(...zs) - 1; (d.slots[selected].layout ||= {}).z = target; });
+      change(d => { const zs = view.layout.slots.map(s => s.z), target = delta > 0 ? Math.max(...zs) + 1 : Math.min(...zs) - 1; (d.slots[selected].layout ||= {}).z = target; });
       say(delta > 0 ? 'Brought forward' : 'Sent back');
     };
     slotUi.forward.addEventListener('click', () => reorder(1)); slotUi.back.addEventListener('click', () => reorder(-1));
@@ -455,12 +464,16 @@ export function createCollageMode(deps) {
     const ctx = canvas.getContext('2d'), scale = Math.max(canvas.width / source.width, canvas.height / source.height);
     ctx.drawImage(source, (canvas.width - source.width * scale) / 2, (canvas.height - source.height * scale) / 2, source.width * scale, source.height * scale);
   }
-  function radioGroup(group, selector, pick) {
+  /** Radio buttons: click picks; arrows move focus and pick (or only move focus with `followFocus: false`, where
+   *  Enter/Space, the buttons' own click, picks). */
+  function radioGroup(group, selector, pick, { followFocus = true } = {}) {
     group.addEventListener('click', event => { const button = event.target.closest(selector); if (button && button.getAttribute('aria-checked') !== 'true') pick(button); });
     group.addEventListener('keydown', event => {
       const delta = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key]; if (!delta) return;
       const buttons = [...group.querySelectorAll(selector)], next = buttons[(Math.max(0, buttons.indexOf(document.activeElement)) + delta + buttons.length) % buttons.length];
-      event.preventDefault(); next.focus(); pick(next);
+      event.preventDefault();
+      if (!followFocus) buttons.forEach(button => { button.tabIndex = button === next ? 0 : -1; });
+      next.focus(); if (followFocus) pick(next);
     });
   }
   function syncRadios(group, attribute, value) {
@@ -568,6 +581,8 @@ export function createCollageMode(deps) {
   }
 
   // ---------- Stage ----------
+  /** A cancelled pointer gesture (the browser or system took the pointer): back to where it started, no undo step. */
+  function cancelGesture(start) { doc = start; refresh(); say('Cancelled'); }
   function scheduleDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
   /** Sizes the canvas to the stage (device pixels) and composites the collage. */
   function draw() {
@@ -633,7 +648,9 @@ export function createCollageMode(deps) {
   });
   const endTextDrag = event => {
     if (!textGesture || event.pointerId !== textGesture.id) return;
-    const { start } = textGesture; textGesture = null; commit(start); refresh(); say('Text moved');
+    const { start } = textGesture; textGesture = null;
+    if (event.type === 'pointercancel') { cancelGesture(start); return; }
+    commit(start); refresh(); say('Text moved');
   };
   textHandlesEl.addEventListener('pointerup', endTextDrag); textHandlesEl.addEventListener('pointercancel', endTextDrag);
 
@@ -849,6 +866,7 @@ export function createCollageMode(deps) {
   });
   const endStickerGesture = event => {
     if (!stickerPointers.delete(event.pointerId) || !stickerGesture) return;
+    if (event.type === 'pointercancel') { const { start } = stickerGesture; stickerGesture = null; stickerPointers.clear(); cancelGesture(start); return; }
     const item = placed().find(s => s.id === stickerGesture.itemId);
     if (stickerPointers.size && item) { beginStickerGesture(item, stickerHandle(item.id), 'move', stickerGesture.start); return; } // one finger left: keep dragging
     const { start, moved, mode } = stickerGesture; stickerGesture = null; stickerPointers.clear();
@@ -929,6 +947,7 @@ export function createCollageMode(deps) {
   const endDrag = event => {
     if (!drag || event.pointerId !== drag.id) return;
     const { i, start, handle } = drag; drag = null; handle.classList.remove('is-dragging');
+    if (event.type === 'pointercancel') { cancelGesture(start); return; }
     commit(start); refresh(); const [a, b] = shares(currentSplits(), i); say(`Photo ${i + 1} ${a}%, photo ${i + 2} ${b}%`);
   };
   dividersEl.addEventListener('pointerup', endDrag); dividersEl.addEventListener('pointercancel', endDrag);
@@ -994,7 +1013,7 @@ export function createCollageMode(deps) {
     if (event.button > 0) return;
     if (!option) { select(null); return; } // gutters, margins and transparent areas hold nothing
     const index = Number(option.dataset.slot);
-    select(index);
+    if (!gesture) select(index); // a second finger on another slot joins the gesture, it doesn't select
     if (event.target.closest('.collage-rotate-handle')) {
       event.preventDefault(); pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); try { slotsEl.setPointerCapture(event.pointerId); } catch { /* gone */ }
       const box = canvas.getBoundingClientRect(), slot = view.layout.slots[index], cx = box.left + (slot.x + slot.w / 2) / view.k, cy = box.top + (slot.y + slot.h / 2) / view.k;
@@ -1043,6 +1062,7 @@ export function createCollageMode(deps) {
   });
   const endPointer = event => {
     if (!pointers.delete(event.pointerId) || !gesture) return;
+    if (event.type === 'pointercancel') { const { start } = gesture; gesture = null; pointers.clear(); cancelGesture(start); return; }
     if (gesture.mode === 'pinch' && pointers.size) { gesture.mode = 'ended'; return; } // wait for the last finger
     if (pointers.size) return;
     const { start, mode, target, index } = gesture;
@@ -1183,10 +1203,11 @@ export function createCollageMode(deps) {
     get canRedo() { return active && redoStack.length > 0; },
     get hasDocument() { return Boolean(doc); },
     /** Opens collage mode with `photoIds` (in order); null resumes the last collage. The same photos also resume it,
-     *  with its history. */
+     *  with its history. True when it started a new document. */
     open(photoIds) {
       const key = photoIds && [...photoIds].sort((a, b) => a - b).join();
-      if (!doc || (photoIds && docPhotos !== key)) {
+      const created = !doc || Boolean(photoIds && docPhotos !== key);
+      if (created) {
         const t = templateFor(photoIds.length);
         doc = createDoc(photoIds, t, deps.paperColors[0].hex); applyTemplate(doc, t); docPhotos = key;
         undoStack = []; redoStack = []; selected = null;
@@ -1199,6 +1220,7 @@ export function createCollageMode(deps) {
         const target = selected != null ? slotsEl.children[selected] : panel.querySelector('[data-template][aria-selected="true"]');
         target?.focus({ preventScroll: true }); if (selected == null) target?.scrollIntoView({ block: 'nearest' });
       });
+      return created;
     },
     /** Reopens a saved document. Missing photos are already emptied by the session repository. */
     load(value) {
