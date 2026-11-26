@@ -219,18 +219,19 @@ Do this with, or right after, workflow Task 0 (pure `adjustPixels(data, width, h
 ### Release D: accessibility and structure
 
 #### Task 10: Accessibility gaps
-- [ ] **[R]** Collage text layers can't be moved by keyboard (`js/collage/mode.js:608-638`): arrow keys as for stickers, Shift for larger steps, one undo step per burst
-- [ ] **[R]** Collage text handles can be 20 px (`mode.js:613`, `css/styles.css:1459`): 44 px hit area
-- [ ] **[R]** Print rotate handle is a `<button>` inside `role="option"` with no key action (`mode.js:970`): `tabindex="-1"` (the slider covers it)
-- [ ] **[R]** `aria-label` on role-less divs (`index.html:215-216`): `role="group"`
-- [ ] **[R]** Export progress writes every percent into `role="status"` (`js/app.js:2741`): announce at 0/25/50/75/100 or on completion only; keep the visual bar
-- [ ] **[R]** Per-slider reset in Adjust and Lens is double-click only (`js/app.js:667`, `776`): add a keyboard path (e.g. Delete/Backspace on the slider, documented in the hint)
-- [ ] **[R]** The crop box can be moved and zoomed by keyboard but not resized (`js/app.js:1197-1206`)
+- [x] **[R]** Collage text layers can't be moved by keyboard (`js/collage/mode.js:608-638`): arrow keys as for stickers, Shift for larger steps, one undo step per burst
+- [x] **[R]** Collage text handles can be 20 px (`mode.js:613`, `css/styles.css:1459`): 44 px hit area
+- [x] **[R]** Print rotate handle is a `<button>` inside `role="option"` with no key action (`mode.js:970`): `tabindex="-1"` (the slider covers it)
+- [x] **[R]** `aria-label` on role-less divs (`index.html:215-216`): `role="group"`
+- [x] **[R]** Export progress writes every percent into `role="status"` (`js/app.js:2741`): announce at 0/25/50/75/100 or on completion only; keep the visual bar
+- [x] **[R]** Per-slider reset in Adjust and Lens is double-click only (`js/app.js:667`, `776`): add a keyboard path (e.g. Delete/Backspace on the slider, documented in the hint)
+- [x] **[R]** The crop box can be moved and zoomed by keyboard but not resized (`js/app.js:1197-1206`)
 
 **Tests:** manual, keyboard only and with VoiceOver (macOS and iOS).
 **Check:** complete this flow without a pointer: add text to a collage and move it; reset one Adjust slider; resize the crop box; export and hear at most five progress announcements.
 **Done when:** the flow passes with keyboard alone and with VoiceOver; every new target ≥ 44 px.
 **Output changes:** no.
+*Done 2026-11-27:* Collage text handles: arrows move the focused text by 1 % (Shift: 5 %); a burst is one undo step (via the live-text timer, which `flushPending` covers), with a keys hint in `#collageTextKeys`. Handles are at least 44 px in JS and CSS. Rotate-print button: `tabindex="-1"`. Sticker and text handle containers: `role="group"`. Status text for progress moves in 25 % steps (`quarterOf`), in the export dialog and in the render pill; the bar still moves per percent. Measured: 3 and 4 announcements. Adjust and Lens sliders: Delete or Backspace resets, as one undo step. The slider baseline is refreshed afterwards, so the next drag is its own step. A visible hint is linked with `aria-describedby`; the Adjust hint is hidden on phones, where the panel has its own Reset. Crop: Alt+arrows resize from the right or bottom edge (1 % of the photo, Shift 5 %), keep the ratio, one undo step per burst, and are added to the crop hint. Headless keyboard run: all 10 checks pass. On the old code the run crashed partway: the arrow keys didn't move the text, so the undo removed the whole text layer. Baseline 9/9; Task 1 and 2 repros pass. Not done here: VoiceOver on macOS and iOS (manual).
 
 #### Task 11: Split `js/collage/mode.js` (1240 lines, pure move)
 - [ ] One context object (`doc`, `view`, `change`, `commit`, `say`, `scheduleDraw`, `refresh`) passed to each part

@@ -701,10 +701,12 @@ function formatValue(key, value) {
   return `${value > 0 ? '+' : ''}${text}${suffix}`;
 }
 function buildAdjustments() {
-  elements.adjustmentControls.innerHTML = adjustmentSections.map(section => `<section class="adjustment-section"><h3>${section.name}</h3>${section.controls.map(([id, label, min, max, step]) => `<div class="slider-row" data-row="${id}"><label class="slider-label" for="adjust-${id}"><span>${label}</span><output id="output-${id}" for="adjust-${id}">0</output></label><input id="adjust-${id}" data-adjustment="${id}" type="range" min="${min}" max="${max}" step="${step}" value="0"></div>`).join('')}</section>`).join('');
+  elements.adjustmentControls.innerHTML = adjustmentSections.map(section => `<section class="adjustment-section"><h3>${section.name}</h3>${section.controls.map(([id, label, min, max, step]) => `<div class="slider-row" data-row="${id}"><label class="slider-label" for="adjust-${id}"><span>${label}</span><output id="output-${id}" for="adjust-${id}">0</output></label><input id="adjust-${id}" data-adjustment="${id}" type="range" min="${min}" max="${max}" step="${step}" value="0" aria-describedby="adjustResetHint"></div>`).join('')}</section>`).join('');
   const panel = elements.adjustmentControls;
   bindHistorySlider(panel, '[data-adjustment]', input => setAdjustment(input.dataset.adjustment, Number(input.value)));
   panel.addEventListener('dblclick', event => { const input = event.target.closest('[data-adjustment]'); if (input) resetAdjustment(input.dataset.adjustment); });
+  // Keyboard reset (one undo step), as double-click: Delete or Backspace on the focused slider.
+  panel.addEventListener('keydown', event => { const input = event.target.closest('[data-adjustment]'); if (input && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); resetAdjustment(input.dataset.adjustment); sliderStart = snapshot(); } });
 }
 
 // One history entry per drag / keyboard session on any adjustment slider.
@@ -801,7 +803,7 @@ const lensEdits = () => opticsControls.filter(control => state.optics[control.pa
 function buildLens() {
   const panel = $('#lensControls');
   const hintOf = ({ path, hint }) => (hint ? `<p class="slider-hint" id="lensHint-${path}">${hint}</p>` : '');
-  const described = ({ path, hint }) => (hint ? ` aria-describedby="lensHint-${path}"` : '');
+  const described = ({ path, hint, kind }) => (kind === 'select' ? (hint ? ` aria-describedby="lensHint-${path}"` : '') : ` aria-describedby="${hint ? `lensHint-${path} ` : ''}lensResetHint"`);
   const row = control => control.kind === 'select'
     ? `<div class="crop-platform lens-select" data-lens-row="${control.path}"><label for="lens-${control.path}">${control.label}</label><select id="lens-${control.path}" data-lens-select="${control.path}"${described(control)}>${control.options.map(option => `<option value="${option}">${control.labels?.[option] ?? control.format?.(option) ?? option}</option>`).join('')}</select>${hintOf(control)}</div>`
     : `<div class="slider-row" data-lens-row="${control.path}"><label class="slider-label" for="lens-${control.path}"><span>${control.label}</span><output id="lensOut-${control.path}" for="lens-${control.path}">0</output></label><input id="lens-${control.path}" data-lens="${control.path}" type="range" min="${control.min}" max="${control.max}" step="${control.step}"${described(control)}>${hintOf(control)}</div>`;
@@ -812,11 +814,15 @@ function buildLens() {
     const value = opticsControls.find(control => control.path === path).options.find(option => String(option) === event.target.value);
     change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
   });
-  // Double-click resets a slider to the active profile's value (or neutral without one).
-  panel.addEventListener('dblclick', event => {
-    const path = event.target.closest('[data-lens]')?.dataset.lens; if (!path) return;
+  // Double-click, or Delete/Backspace on the focused slider, resets it to the active profile's value (or neutral without one).
+  const resetLensSlider = path => {
     const profile = lensProfileById(state.optics.profile), value = (profile ? expandProfile(profile) : defaultOptics())[path];
     if (state.optics[path] !== value) change(() => { state.optics = normalizeOptics({ ...state.optics, [path]: value }); });
+  };
+  panel.addEventListener('dblclick', event => { const path = event.target.closest('[data-lens]')?.dataset.lens; if (path) resetLensSlider(path); });
+  panel.addEventListener('keydown', event => {
+    const path = event.target.closest('input[type=range][data-lens]')?.dataset.lens;
+    if (path && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); resetLensSlider(path); sliderStart = snapshot(); } // the next drag starts here
   });
   $('#resetLens').addEventListener('click', () => change(() => { state.optics = { ...defaultOptics(), ...cameraOf(state.optics) }; }));
   bindFocusDrag();
@@ -1253,6 +1259,12 @@ function buildCrop() {
     const zoom = { '+': 1.1, '=': 1.1, '-': 1 / 1.1, _: 1 / 1.1 }[event.key];
     if (!move && !zoom) return;
     event.preventDefault(); beginCropGesture();
+    if (move && event.altKey) { // Alt+arrows resize from the right / bottom edge (1 % of the photo, Shift 5 %); the ratio stays
+      const g = cropGeo(state.crop), px = Math.min(g.W, g.H) * (event.shiftKey ? .05 : .01) * cropUi.k, [sx, sy] = [Math.sign(move[0]), Math.sign(move[1])];
+      const next = resizeCrop(cloneCrop(state.crop), sx ? 'e' : 's', sx * px, sy * px);
+      if (next) updateCrop(next);
+      endCropGesture(500); return;
+    }
     const crop = cloneCrop(state.crop);
     if (move) { crop.x += move[0]; crop.y += move[1]; clampCrop(crop); } else setCropZoom(crop, crop.zoom * zoom);
     updateCrop(crop); endCropGesture(500);
@@ -1977,11 +1989,13 @@ function presentAdvanced(bitmap, frame) {
   applyZoom();
   drawPreview(); scheduleActiveThumb();
 }
+/** Progress for status text (read aloud): 0, 25, 50, 75 or 100 %, so a screen reader hears at most five updates. */
+const quarterOf = value => Math.min(100, Math.floor(value * 4) * 25);
 function setRenderProgress(value) {
   const percent = Math.round(value * 100);
   elements.renderProgressBar.style.width = `${percent}%`;
   if (state.renderQuality === 'rendering') {
-    elements.renderText.textContent = `Developing full-quality scan… ${percent}%`;
+    elements.renderText.textContent = `Developing full-quality scan… ${quarterOf(value)}%`; // a status region: 25 % steps, the bar moves smoothly
     elements.sheetRender.style.setProperty('--progress', percent);
     elements.sheetRender.setAttribute('aria-label', `Rendering full quality, ${percent}%. Cancel`);
   }
@@ -2848,7 +2862,7 @@ async function renderAdvancedExport(edge) {
   const key = fullRenderKey(); const edits = engineEdits();
   let full = state.fullRender?.key === key ? state.fullRender.bitmap : null;
   if (!full) {
-    const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { elements.exportStatus.textContent = `Developing full-quality scan… ${Math.round(value * 100)}%`; } });
+    const raw = await module.render(await ensureBitmap(), cloneParams(advParams()), { quality: 'full', onProgress: value => { const text = `Developing full-quality scan… ${quarterOf(value)}%`; if (elements.exportStatus.textContent !== text) elements.exportStatus.textContent = text; } });
     full = await adjustFull(raw, edits);
     setFullRender(key, full);
   }

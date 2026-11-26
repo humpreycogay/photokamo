@@ -438,6 +438,7 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .slider-label output.is-edited { color:var(--accent); font-weight:600; }
 .slider-row input { width:100%; accent-color:var(--accent); cursor:pointer; }
 .slider-hint { margin:4px 0 0; font-size:var(--fs-sm); line-height:1.4; color:var(--text-muted); }
+#adjustResetHint,#lensResetHint { margin:0 0 14px; }
 .lens-profile-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
 .lens-profile-head h3 { margin:0; font-size:var(--fs-sm); font-weight:600; color:var(--text-2); }
 .lens-current { margin:0; font-size:var(--fs-sm); color:var(--accent); text-align:right; }
@@ -909,7 +910,7 @@ body.is-film .render-divider { display:block; }
 
   /* Adjust: one slider at a time */
   .scroll-panel { overflow:visible; padding:0; }
-  #adjustPanel .panel-heading,#adjustmentControls { display:none; }
+  #adjustPanel .panel-heading,#adjustmentControls,#adjustResetHint { display:none; }
   .mobile-adjust { display:block; padding:16px 0 0; }
   .ma-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 16px; }
   .ma-name { font-size:var(--fs-lg); font-weight:700; }
@@ -1456,7 +1457,7 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .sticker-knob-resize { right:-12px; bottom:-12px; cursor:nwse-resize; }
 .sticker-knob-rotate { left:50%; top:-36px; margin-left:-11px; cursor:grab; }
 .collage-text-handles { position:absolute; inset:0; pointer-events:none; touch-action:none; user-select:none; -webkit-user-select:none; }
-.collage-text-handle { position:absolute; box-sizing:border-box; min-width:20px; min-height:20px; padding:0; border:1px dashed transparent; border-radius:3px; background:transparent; pointer-events:auto; cursor:grab; }
+.collage-text-handle { position:absolute; box-sizing:border-box; min-width:44px; min-height:44px; padding:0; border:1px dashed transparent; border-radius:3px; background:transparent; pointer-events:auto; cursor:grab; }
 .collage-text-handle:hover,
 .collage-text-handle[aria-pressed=true] { border-color:var(--accent); }
 .collage-text-handle:active { cursor:grabbing; }

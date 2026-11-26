@@ -625,7 +625,7 @@ export function createCollageMode(deps) {
     }
     [...boxes].forEach(([id, box], i) => {
       const handle = textHandlesEl.children[i], text = doc.text.find(layer => layer.id === id);
-      const pad = 6 * view.k, w = Math.max(20 * view.k, box.w + 2 * pad), h = Math.max(20 * view.k, box.h + 2 * pad);
+      const pad = 6 * view.k, w = Math.max(44 * view.k, box.w + 2 * pad), h = Math.max(44 * view.k, box.h + 2 * pad); // 44 px targets
       handle.dataset.text = id; handle.setAttribute('aria-label', `Move text: ${String(text.content).split('\n')[0] || 'Untitled'}`);
       handle.setAttribute('aria-pressed', id === textUi.selected);
       Object.assign(handle.style, { left: `${(box.x + box.w / 2 - w / 2) / view.k}px`, top: `${(box.y + box.h / 2 - h / 2) / view.k}px`, width: `${w / view.k}px`, height: `${h / view.k}px`, rotate: text.rotate ? `${text.rotate}deg` : '' });
@@ -653,6 +653,16 @@ export function createCollageMode(deps) {
     commit(start); refresh(); say('Text moved');
   };
   textHandlesEl.addEventListener('pointerup', endTextDrag); textHandlesEl.addEventListener('pointercancel', endTextDrag);
+  // Keys on a focused text: arrows move it 1 % of its area (Shift: 5 %); a burst of presses is one undo step.
+  textHandlesEl.addEventListener('keydown', event => {
+    const handle = event.target.closest('[data-text]'), arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+    if (!handle || !arrow || event.altKey || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    if (textUi.selected !== handle.dataset.text) { finishLiveText(); textUi.selected = handle.dataset.text; }
+    const step = event.shiftKey ? .05 : .01;
+    liveText(text => { text.x = clamp(text.x + arrow[0] * step, 0, 1); text.y = clamp(text.y + arrow[1] * step, 0, 1); });
+    say(`Text at ${Math.round(selectedText().x * 100)}%, ${Math.round(selectedText().y * 100)}%`);
+  });
 
   // ---------- Stickers (js/collage/stickers.js): on the sheet above the photos; drag, resize, rotate, pinch ----------
   const STICKER_MIN = .04, STICKER_MAX = .9;
@@ -986,7 +996,7 @@ export function createCollageMode(deps) {
       option.classList.toggle('is-drop-target', gesture?.mode === 'swap' && gesture.target === i);
       option.classList.toggle('is-dragged', gesture?.mode === 'swap' && gesture.index === i);
       option.classList.toggle('is-free', template().kind === 'free');
-      if (template().kind === 'free' && i === selected && !option.querySelector('.collage-rotate-handle')) option.insertAdjacentHTML('beforeend', '<button class="collage-rotate-handle" type="button" aria-label="Rotate print" title="Drag to rotate"></button>');
+      if (template().kind === 'free' && i === selected && !option.querySelector('.collage-rotate-handle')) option.insertAdjacentHTML('beforeend', '<button class="collage-rotate-handle" type="button" tabindex="-1" aria-label="Rotate print" title="Drag to rotate"></button>');
       else if (!(template().kind === 'free' && i === selected)) option.querySelector('.collage-rotate-handle')?.remove();
       option.setAttribute('aria-label', `Slot ${i + 1} of ${count}: ${photo ? photo.name : 'empty'}`);
     });

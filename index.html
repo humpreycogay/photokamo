@@ -178,7 +178,7 @@
             <span class="crop-handle" data-handle="sw" aria-hidden="true"></span><span class="crop-handle" data-handle="w" aria-hidden="true"></span>
           </div>
         </div>
-        <p class="crop-hint" id="cropHint">Drag to move · scroll or pinch to zoom · drag corners to resize<span class="visually-hidden">. Arrow keys move the crop, plus and minus zoom.</span></p>
+        <p class="crop-hint" id="cropHint">Drag to move · scroll or pinch to zoom · drag corners to resize<span class="visually-hidden">. Arrow keys move the crop, Alt with arrow keys resizes it, plus and minus zoom. Shift for larger steps.</span></p>
       </div>
 
       <div class="view-pill" id="viewPill" hidden>
@@ -212,8 +212,8 @@
           <canvas id="collageCanvas" role="img" aria-label="Collage preview"></canvas>
           <div class="collage-slots" id="collageSlots" role="listbox" aria-label="Photos in the collage" aria-describedby="collageSlotKeys"></div>
           <div class="collage-dividers" id="collageDividers"></div>
-          <div class="collage-sticker-handles" id="collageStickerHandles" aria-label="Stickers in the collage" aria-describedby="collageStickerKeys"></div>
-          <div class="collage-text-handles" id="collageTextHandles" aria-label="Text in the collage"></div>
+          <div class="collage-sticker-handles" id="collageStickerHandles" role="group" aria-label="Stickers in the collage" aria-describedby="collageStickerKeys"></div>
+          <div class="collage-text-handles" id="collageTextHandles" role="group" aria-label="Text in the collage" aria-describedby="collageTextKeys"></div>
         </div>
         <div class="collage-stage-tools" id="collageStageTools" hidden>
           <span id="collageDragModeLabel">Drag</span>
@@ -222,6 +222,7 @@
             <button type="button" role="radio" data-drag-mode="move" aria-checked="false">Print</button>
           </div>
         </div>
+        <p class="visually-hidden" id="collageTextKeys">Drag a text to move it. Keys: arrows move it, Shift with arrows in larger steps.</p>
         <p class="visually-hidden" id="collageSlotKeys">Arrow keys choose a photo. Alt with arrow keys moves it in its slot, plus and minus zoom, R rotates, F flips, 0 resets, Delete empties the slot, Enter on an empty slot adds a photo. In a free layout, Shift with arrow keys moves the print, and brackets send it back or bring it forward. Drag a photo onto another to swap them; drag a free-layout print to move it.</p>
       </div>
 
@@ -367,6 +368,7 @@
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
           <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
           <p class="engine-wait-note" data-engine-wait hidden></p>
+          <p class="slider-hint" id="adjustResetHint">Double-click a slider, or press Delete while it has focus, to reset it.</p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">
             <div class="ma-head">
@@ -389,6 +391,7 @@
           <p class="panel-intro">How the camera lens draws the light. Applied before your look, so film looks respond to it.</p>
           <div class="lens-profile-head"><h3 id="lensProfilesTitle">Lens profile</h3><p class="lens-current" id="lensCurrent" aria-live="polite"></p></div>
           <div class="lens-profiles" id="lensProfiles" role="group" aria-labelledby="lensProfilesTitle"></div>
+          <p class="slider-hint" id="lensResetHint">Double-click (or double-tap) a slider, or press Delete while it has focus, to reset it.</p>
           <div id="lensControls"></div>
           <section class="adjustment-section lens-camera" aria-labelledby="lensCameraTitle">
             <h3 id="lensCameraTitle">Camera</h3>
