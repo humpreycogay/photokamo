@@ -1,0 +1,32 @@
+# Publishes the site to GitHub Pages without Archive/ (retired engines and handoff material stay in git, unpublished;
+# v3plan.md Open decision 5). Needs Settings → Pages → Build and deployment → Source: "GitHub Actions".
+name: Deploy site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Site files (everything except Archive/ and repository tooling)
+        run: |
+          mkdir _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'Archive/' ./ _site/
+          test -f _site/index.html && test ! -e _site/Archive
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

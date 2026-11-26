@@ -11,7 +11,7 @@ export const engines = [
     id: 'kamo-film-engine',
     label: 'Kamo',
     description: 'PhotoKamo’s calibrated spectral model · 20 colour stocks, scan, paper and cinema print, plus B&W, instant and creative looks',
-    licence: 'Proprietary',
+    licence: 'Proprietary (all rights reserved; not covered by the GPL)',
     approxDownload: '≈ 1.5 MB',
     credit: [
       'Film modelling by PhotoKamo with ', { text: 'Film Scan Calibration', href: 'https://github.com/OwlMightyCh/film-scan-calibration' },

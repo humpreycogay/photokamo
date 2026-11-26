@@ -38,11 +38,11 @@ Among the Basic looks, the **Spektrafilm-inspired** ones are approximations made
 
 | Engine | What it is | Version (our copy) | Licence | Folder |
 |---|---|---|---|---|
-| Kamo | PhotoKamo’s dependency-free spectral engine: 20 datasheet-derived colour stocks with negative scans, photographic paper, cinema print and reversal viewing, plus an uncalibrated RGB look model for B&W, instant and creative looks. | 0.1.0 | Engine code proprietary; calibration data CC BY 4.0; standards tables retain third-party rights | [`engines/kamo-film-engine/`](engines/kamo-film-engine/README.md) |
+| Kamo | PhotoKamo’s dependency-free spectral engine: 20 datasheet-derived colour stocks with negative scans, photographic paper, cinema print and reversal viewing, plus an uncalibrated RGB look model for B&W, instant and creative looks. | 0.1.0 | Engine code proprietary: all rights reserved, not covered by the GPL ([`LICENSE.md`](engines/kamo-film-engine/LICENSE.md)); calibration data CC BY 4.0; standards tables retain third-party rights | [`engines/kamo-film-engine/`](engines/kamo-film-engine/README.md) |
 
 ## Licence
 
-PhotoKamo is free software under the [GNU General Public License v3](LICENSE). Kamo’s engine code has separate proprietary terms. Credits: Film Scan Calibration by OwlMightyCh (CC BY 4.0); Inter, Playfair Display and Caveat fonts (SIL Open Font License). Retired third-party engine copies retain the licences and credits recorded in their source directories.
+PhotoKamo is free software under the [GNU General Public License v3](LICENSE), except the Kamo engine code in `engines/kamo-film-engine/`, which is proprietary: © the PhotoKamo author, all rights reserved, not covered by the GPL, and included only so PhotoKamo can run ([`LICENSE.md`](engines/kamo-film-engine/LICENSE.md)). Credits: Film Scan Calibration by OwlMightyCh (CC BY 4.0); Inter, Playfair Display and Caveat fonts (SIL Open Font License). Retired third-party engine copies retain the licences and credits recorded in their source directories.
 
 ## Browser support
 
