@@ -31,10 +31,14 @@ export function moveCollageText(text, rect, dx, dy, pixelsPerCssPixel = 1) {
   return text;
 }
 
-/** The template that fits `count` photos best: grids through 9, then the 36-frame 35 mm contact sheet. */
+/** Template categories the Layout picker lists; a new collage only ever starts on one of these. */
+const PICKER = ['diptych', 'layout', 'collage'];
+/** Most photos a picker template holds: a collage opens with at most this many. */
+export const COLLAGE_MAX = Math.max(...templates.filter(t => PICKER.includes(t.category)).map(slotCount));
+
+/** The listed grid that fits `count` photos best, else the largest one. */
 export function templateFor(count) {
-  if (count > 9) return templateById('contact-35');
-  const sorted = templates.filter(t => t.kind === 'grid').sort((a, b) => slotCount(a) - slotCount(b));
+  const sorted = templates.filter(t => t.kind === 'grid' && PICKER.includes(t.category)).sort((a, b) => slotCount(a) - slotCount(b));
   return sorted.find(t => slotCount(t) === count) || sorted.find(t => slotCount(t) >= count) || sorted[sorted.length - 1];
 }
 
@@ -83,10 +87,11 @@ export function createCollageMode(deps) {
 
   // ---------- Panel ----------
   const template = () => templateById(doc.templateId) || templates[0];
+  let showLayoutTab = () => {};
   function buildPanel() {
     const optionHtml = t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`;
     const byCount = category => templates.filter(t => t.category === category).sort((a, b) => slotCount(a) - slotCount(b));
-    ['diptych', 'layout', 'collage'].forEach((category, i) => { lists[i].innerHTML = byCount(category).map(optionHtml).join(''); });
+    PICKER.forEach((category, i) => { lists[i].innerHTML = byCount(category).map(optionHtml).join(''); });
     aspects.innerHTML = ASPECTS.map(([label]) => `<button type="button" role="radio" data-aspect="${label}" aria-checked="false">${label}</button>`).join('');
     paper.innerHTML = papers.map(color => `<button type="button" role="radio" class="paper-swatch" data-paper="${color.hex}" aria-checked="false" aria-label="${color.name}" title="${color.name}" style="--swatch:${color.hex}"></button>`).join('')
       + '<button type="button" role="radio" class="paper-swatch paper-none" data-paper="none" aria-checked="false" aria-label="None (transparent)" title="None (transparent)"></button>';
@@ -137,6 +142,27 @@ export function createCollageMode(deps) {
     buildTextPanel();
     buildStickerPanel();
     buildFilmPanel();
+    showLayoutTab = buildTabs();
+  }
+
+  function buildTabs() {
+    const tablist = panel.querySelector('.collage-tabs'), tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const selectTab = (tab, focus = false) => {
+      for (const item of tabs) {
+        const selected = item === tab;
+        item.setAttribute('aria-selected', selected); item.tabIndex = selected ? 0 : -1;
+        byId(item.getAttribute('aria-controls')).hidden = !selected;
+      }
+      if (focus) tab.focus();
+    };
+    tablist.addEventListener('click', event => { const tab = event.target.closest('[role="tab"]'); if (tab) selectTab(tab); });
+    tablist.addEventListener('keydown', event => {
+      const current = tabs.indexOf(document.activeElement);
+      const index = { ArrowRight: (current + 1) % tabs.length, ArrowLeft: (current - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      if (index === undefined) return;
+      event.preventDefault(); selectTab(tabs[index], true);
+    });
+    return () => selectTab(tabs[0]);
   }
 
   function buildFilmPanel() {
@@ -1131,14 +1157,19 @@ export function createCollageMode(deps) {
       }
       active = true; failed.clear(); generation++;
       historyChanged(); refresh();
-      // After the first draw, which creates the slot boxes.
-      requestAnimationFrame(() => (selected != null ? slotsEl.children[selected] : panel.querySelector('[data-template][aria-selected="true"]'))?.focus({ preventScroll: true }));
+      if (selected == null) showLayoutTab();
+      // After the first draw, which creates the slot boxes. A new collage lands on its layout in the picker.
+      requestAnimationFrame(() => {
+        const target = selected != null ? slotsEl.children[selected] : panel.querySelector('[data-template][aria-selected="true"]');
+        target?.focus({ preventScroll: true }); if (selected == null) target?.scrollIntoView({ block: 'nearest' });
+      });
     },
     /** Reopens a saved document. Missing photos are already emptied by the session repository. */
     load(value) {
       doc = cloneDoc(value); docPhotos = ''; undoStack = []; redoStack = []; selected = null;
       active = true; failed.clear(); generation++; historyChanged(); refresh();
-      requestAnimationFrame(() => panel.querySelector('[data-template][aria-selected="true"]')?.focus({ preventScroll: true }));
+      showLayoutTab();
+      requestAnimationFrame(() => { const target = panel.querySelector('[data-template][aria-selected="true"]'); target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: 'nearest' }); });
     },
     /** Leaves collage mode: drops pending renders (the document and history stay). The slot images are freed unless
      *  `keepCache` (leaving to edit one photo: the others need no new render on return). */

@@ -102,10 +102,25 @@
         <div class="start-hero">
           <div class="start-copy">
             <a class="brand start-brand" href="#" aria-label="PhotoKamo home"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></a>
-            <h1>Every photo has a better version.</h1>
-            <div class="start-actions">
-              <button class="button button-primary button-xl" id="chooseButton" type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg> Choose photos</button>
-              <button class="button button-secondary button-xl" id="cameraButton" type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> Take a photo</button>
+            <h1>Give your photos some character.</h1>
+            <p class="start-lede">A little darkroom magic, right in your browser.</p>
+            <div class="start-modes" id="startModes">
+              <section class="start-mode is-selected" data-mode="edit" aria-labelledby="startEditTitle">
+                <button class="start-mode-pick" type="button" aria-pressed="true" aria-controls="startCompare" aria-describedby="startEditText"><span class="start-mode-title" id="startEditTitle">Photo Editor</span></button>
+                <p class="start-mode-text" id="startEditText">Edit, enhance and give your photos a film look.</p>
+                <div class="start-actions">
+                  <button class="button button-primary button-xl" id="chooseButton" type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg> Choose photos</button>
+                  <button class="button button-secondary button-xl" id="cameraButton" type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> Take a photo</button>
+                </div>
+              </section>
+              <section class="start-mode" data-mode="collage" aria-labelledby="startCollageTitle">
+                <button class="start-mode-pick" type="button" aria-pressed="false" aria-controls="startCollage" aria-describedby="startCollageText"><span class="start-mode-title" id="startCollageTitle">Collage Studio</span></button>
+                <p class="start-mode-text" id="startCollageText">Combine photos into creative layouts and prints.</p>
+                <div class="start-actions">
+                  <button class="button button-primary button-xl" id="startCollageButton" type="button" aria-describedby="startCollageNote"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg> Select photos</button>
+                </div>
+                <p class="start-mode-note" id="startCollageNote">Layouts hold up to 9 photos. Pick more and they’re all added to your photos; the first 9 fill the layout.</p>
+              </section>
             </div>
             <p class="start-small">JPEG, PNG, WebP or GIF up to 40 MB, or drop one anywhere on this page. No photo handy? <button class="text-button start-sample" id="sampleButton" type="button">Use ours</button></p>
           </div>
@@ -119,6 +134,19 @@
                 <div class="start-divider" id="startDivider" role="slider" tabindex="0" aria-label="Compare: original on the left, edited on the right" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="50% original"></div>
               </div>
               <p class="start-print-text" aria-hidden="true"><span class="start-print-title">Summer</span><span class="start-print-date" id="startDate"></span></p>
+            </div>
+          </figure>
+          <figure class="start-collage" id="startCollage" hidden>
+            <div class="start-collage-sheet" id="startCollageSheet" role="img" aria-label="Sample collage: a scrapbook page of polaroids and prints of the sample portrait in five PhotoKamo looks, with tape and stickers">
+              <span class="start-scrap is-polaroid" style="--x:7;--y:10;--w:54;--a:4/5;--r:-3deg;--z:3;--fx:50%;--fy:45%;--zoom:1" data-look="golden-hour"><span class="start-scrap-photo"><img src="images/model.jpg" alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas></span><span class="start-scrap-caption">summer days</span><i class="start-tape" aria-hidden="true"></i></span>
+              <span class="start-scrap is-print" style="--x:54;--y:5;--w:42;--a:3/2;--r:4deg;--z:2;--fx:58%;--fy:38%;--zoom:2.1" data-look="silver-mono"><span class="start-scrap-photo"><img src="images/model.jpg" alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas></span><i class="start-tape" aria-hidden="true"></i></span>
+              <span class="start-scrap is-polaroid" style="--x:60;--y:37;--w:34;--a:1/1;--r:5deg;--z:2;--fx:56%;--fy:30%;--zoom:1.35" data-look="neon-rain"><span class="start-scrap-photo"><img src="images/model.jpg" alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas></span></span>
+              <span class="start-scrap is-print" style="--x:4;--y:88;--w:40;--a:4/3;--r:6deg;--z:1;--fx:57%;--fy:36%;--zoom:2.9" data-look="cool-document"><span class="start-scrap-photo"><img src="images/model.jpg" alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas></span><i class="start-tape" aria-hidden="true"></i></span>
+              <span class="start-scrap is-polaroid" style="--x:52;--y:80;--w:40;--a:1/1;--r:-5deg;--z:4;--fx:60%;--fy:52%;--zoom:2" data-look="rose-memory"><span class="start-scrap-photo"><img src="images/model.jpg" alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas></span><span class="start-scrap-caption">♡</span><i class="start-tape" aria-hidden="true"></i></span>
+              <img class="start-sticker" src="vendor/twemoji/svg/2600.svg" alt="" style="--x:1;--y:2;--w:14;--r:-12deg" draggable="false">
+              <img class="start-sticker" src="vendor/twemoji/svg/2728.svg" alt="" style="--x:88;--y:66;--w:9;--r:10deg" draggable="false">
+              <img class="start-sticker" src="vendor/twemoji/svg/1f33c.svg" alt="" style="--x:84;--y:113;--w:12;--r:14deg" draggable="false">
+              <span class="start-scrap-note" aria-hidden="true">little moments</span>
             </div>
           </figure>
         </div>
@@ -500,6 +528,25 @@
             </div>
             <input id="collageFileInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple aria-label="Choose photos for the collage" tabindex="-1">
           </section>
+          <div class="collage-tabs" role="tablist" aria-label="Collage settings">
+            <button class="collage-tab" id="collageLayoutTab" type="button" role="tab" aria-selected="true" aria-controls="collageLayoutPanel" tabindex="0" title="Layout">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>
+              <span>Layout</span>
+            </button>
+            <button class="collage-tab" id="collagePaperTab" type="button" role="tab" aria-selected="false" aria-controls="collagePaperPanel" tabindex="-1" title="Paper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h4"/></svg>
+              <span>Paper</span>
+            </button>
+            <button class="collage-tab" id="collageBorderTab" type="button" role="tab" aria-selected="false" aria-controls="collageBorderPanel" tabindex="-1" title="Border settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+              <span>Border Settings</span>
+            </button>
+            <button class="collage-tab" id="collageStickersTab" type="button" role="tab" aria-selected="false" aria-controls="collageStickersPanel" tabindex="-1" title="Stickers">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 13V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7"/><path d="M21 13l-8 8v-5a3 3 0 0 1 3-3z"/></svg>
+              <span>Stickers</span>
+            </button>
+          </div>
+          <section class="collage-tab-panel" id="collageLayoutPanel" role="tabpanel" aria-labelledby="collageLayoutTab">
           <div class="panel-heading"><h3 class="collage-label" id="collageLayoutTitle">Layout</h3><button class="button button-ghost" id="collageResetTransforms" type="button">Reset transformations</button></div>
           <p class="collage-sublabel" id="collageDiptychsTitle">Diptychs <span>· framed prints on a wall</span></p>
           <div class="collage-templates" id="collageDiptychs" role="listbox" aria-labelledby="collageLayoutTitle collageDiptychsTitle" aria-orientation="horizontal"></div>
@@ -510,6 +557,8 @@
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
           <div class="segmented collage-aspects" id="collageAspects" role="radiogroup" aria-labelledby="collageAspectTitle" aria-describedby="collageAspectHint"></div>
           <p class="collage-hint collage-aspect-hint" id="collageAspectHint" hidden>This shape keeps its own proportions.</p>
+          </section>
+          <section class="collage-tab-panel" id="collagePaperPanel" role="tabpanel" aria-labelledby="collagePaperTab" hidden>
           <h3 class="collage-label" id="collagePaperTitle">Paper</h3>
           <div class="paper-swatches" id="collagePaper" role="radiogroup" aria-labelledby="collagePaperTitle"></div>
           <div class="collage-backdrop" id="collageBackdropRow" hidden>
@@ -521,9 +570,6 @@
             </div>
             <p class="collage-hint" id="collageBackdropHint">Only for viewing here; the file stays transparent.</p>
           </div>
-          <div class="slider-row" id="collageGutterRow"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
-          <div class="slider-row" id="collageMarginRow"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
-          <div class="slider-row" id="collageRadiusRow"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
           <section class="collage-film" id="collageFilm" aria-labelledby="collageFilmTitle" hidden>
             <h3 class="collage-label" id="collageFilmTitle">Film</h3>
             <div class="segmented" id="collageFilmBase" role="radiogroup" aria-label="Film base"><button type="button" role="radio" data-film-base="color">Colour negative</button><button type="button" role="radio" data-film-base="bw">Black &amp; white</button></div>
@@ -536,6 +582,11 @@
             </div>
             <p class="collage-hint">Generic markings only. Half numbers use “A”, such as 1A.</p>
           </section>
+          </section>
+          <section class="collage-tab-panel" id="collageBorderPanel" role="tabpanel" aria-labelledby="collageBorderTab" hidden>
+          <div class="slider-row" id="collageGutterRow"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
+          <div class="slider-row" id="collageMarginRow"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
+          <div class="slider-row" id="collageRadiusRow"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
           <div class="collage-sticker" id="collagePrints" hidden>
             <h3 class="collage-label" id="collagePrintsTitle">Prints</h3>
             <div class="slider-row"><label class="slider-label" for="collageBorder"><span>Border</span><output id="collageBorderOutput" for="collageBorder">0.5%</output></label><input id="collageBorder" type="range" min="0" max="2" step="0.1"></div>
@@ -543,6 +594,16 @@
             <label class="check-row" id="collageCaptionRow"><input type="checkbox" id="collageCaptionSpace" aria-describedby="collageCaptionHint"> Space for captions under each photo</label>
             <p class="collage-hint" id="collageCaptionHint">Leaves paper under every photo for its caption.</p>
           </div>
+          <div class="collage-sticker" id="collageSticker" hidden>
+            <h3 class="collage-label" id="collageStickerTitle">Sticker</h3>
+            <div class="slider-row"><label class="slider-label" for="collageOutline"><span>Outline</span><output id="collageOutlineOutput" for="collageOutline">Off</output></label><input id="collageOutline" type="range" min="0" max="4" step="0.25" aria-describedby="collageOutlineHint"></div>
+            <div class="paper-swatches" id="collageOutlineColor" role="radiogroup" aria-label="Outline colour"></div>
+            <p class="collage-hint" id="collageOutlineHint">A die-cut edge around the shape, like a sticker.</p>
+            <label class="check-row"><input type="checkbox" id="collageShadow" aria-describedby="collageShadowHint"> Soft shadow</label>
+            <p class="collage-hint" id="collageShadowHint">Outside the shape, in PNG and WebP.</p>
+          </div>
+          </section>
+          <section class="collage-tab-panel" id="collageStickersPanel" role="tabpanel" aria-labelledby="collageStickersTab" hidden>
           <section class="collage-text" aria-labelledby="collageTextTitle">
             <div class="panel-heading"><h3 class="collage-label" id="collageTextTitle">Text &amp; captions</h3><button class="button button-ghost" id="collageAddText" type="button">Add text</button></div>
             <div class="collage-text-presets" role="group" aria-label="Text presets">
@@ -582,14 +643,7 @@
               </div>
             </div>
           </section>
-          <div class="collage-sticker" id="collageSticker" hidden>
-            <h3 class="collage-label" id="collageStickerTitle">Sticker</h3>
-            <div class="slider-row"><label class="slider-label" for="collageOutline"><span>Outline</span><output id="collageOutlineOutput" for="collageOutline">Off</output></label><input id="collageOutline" type="range" min="0" max="4" step="0.25" aria-describedby="collageOutlineHint"></div>
-            <div class="paper-swatches" id="collageOutlineColor" role="radiogroup" aria-label="Outline colour"></div>
-            <p class="collage-hint" id="collageOutlineHint">A die-cut edge around the shape, like a sticker.</p>
-            <label class="check-row"><input type="checkbox" id="collageShadow" aria-describedby="collageShadowHint"> Soft shadow</label>
-            <p class="collage-hint" id="collageShadowHint">Outside the shape, in PNG and WebP.</p>
-          </div>
+          </section>
         </section>
       </div>
 

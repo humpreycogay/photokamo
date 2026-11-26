@@ -13,7 +13,8 @@ import { buildAdvanced, syncAdvanced, engineAboutHtml, creditHtml, activeHqEffec
 import { createOptionPicker } from './option-picker.js';
 import { createRenderQueue } from './render-queue.js';
 import { createZip } from './zip.js';
-import { createCollageMode } from './collage/mode.js';
+import { createCollageMode, COLLAGE_MAX } from './collage/mode.js';
+import { COLLAGE_PAPERS } from './collage/model.js';
 import { createCollageExport } from './collage/export.js';
 import { createCollageStore } from './collage/store.js';
 
@@ -70,7 +71,7 @@ const state = {
 let toastTimer;
 // Collage mode (js/collage/mode.js): slots show each photo's own edit without frame or text. A fast pass from the
 // queue thumb, then a sharp one from the full-size photo (film engines need full-size input, CollagePlan V1).
-const collageEngines = new Set(), CONTACT_MAX = 36;
+const collageEngines = new Set();
 let activeCollageId = null;
 const collageStore = createCollageStore({ photoExists: id => Boolean(photoById(id)) });
 const collage = createCollageMode({
@@ -572,7 +573,28 @@ initStartCompare();
 /** Called once the sample has loaded: the original shows at once, the After side fades in after a frame. */
 function renderStartPreview(image) {
   startUi.image = image;
-  requestAnimationFrame(() => setTimeout(() => showStartLook(startUi.look)));
+  requestAnimationFrame(() => setTimeout(() => { showStartLook(startUi.look); if (!$('#startCollage').hidden) renderStartCollage(); }));
+}
+// Collage Studio sample: each print shows the plain sample at once, then its look fades in. Rendered only once the
+// sample is chosen, one look per task so the page stays responsive; renders share the before/after cache.
+$('#startCollageSheet').style.setProperty('--collage-paper', COLLAGE_PAPERS[0].hex);
+let startCollageQueued = false;
+function renderStartCollage() {
+  if (startCollageQueued || !startUi.image) return;
+  startCollageQueued = true;
+  const pending = [...document.querySelectorAll('#startCollageSheet [data-look]')];
+  const next = () => {
+    const scrap = pending.shift(); if (!scrap) return;
+    const preset = presets.find(item => item.id === scrap.dataset.look), canvas = scrap.querySelector('canvas');
+    if (preset) try {
+      if (!startUi.renders.has(preset.id)) startUi.renders.set(preset.id, renderImage(startUi.image, preset.values, 'none', 900));
+      const render = startUi.renders.get(preset.id);
+      canvas.width = render.width; canvas.height = render.height; canvas.getContext('2d').drawImage(render, 0, 0);
+      canvas.classList.add('is-ready');
+    } catch (error) { console.warn(`Could not render the ${preset.name} collage sample.`, error); }
+    setTimeout(next, 30);
+  };
+  next();
 }
 
 async function loadSample() {
@@ -2276,7 +2298,7 @@ function syncStrip() {
   // Keep collage creation discoverable; with one photo, the button explains that another is needed.
   // Ordinary layouts hold 2–9; larger selections open on a contact sheet (up to 36).
   const collageButton = $('#collageButton');
-  const collageCount = selected >= 2 ? Math.min(selected, CONTACT_MAX) : Math.min(count, CONTACT_MAX);
+  const collageCount = selected >= 2 ? Math.min(selected, COLLAGE_MAX) : Math.min(count, COLLAGE_MAX);
   collageButton.hidden = !count;
   collageButton.setAttribute('aria-label', count < 2 ? 'Create collage; add at least one more photo' : `Create collage with ${collageCount} ${selected >= 2 ? 'selected ' : ''}photos`);
   $('#collageMenuItem').hidden = false;
@@ -2362,14 +2384,14 @@ const popoverOpen = () => { try { return Boolean(document.querySelector(':popove
 /** Photos for a new collage: the selected ones (2+), else every open photo; strip order, at most 36. */
 function collageCandidates() {
   const selected = selectedPhotos();
-  return (selected.length >= 2 ? selected : app.photos).slice(0, CONTACT_MAX).map(photo => photo.id);
+  return (selected.length >= 2 ? selected : app.photos).slice(0, COLLAGE_MAX).map(photo => photo.id);
 }
 /** Opens collage mode with the candidates, or (`resume`) the last collage as it was. */
 function enterCollage({ resume = false } = {}) {
   if (collage.active || !state.image) return;
   const ids = resume && collage.hasDocument ? null : collageCandidates(), selected = selectedPhotos().length;
   if (ids && ids.length < 2) { toast('Add at least one more photo to create a collage.'); elements.fileInput.click(); return; }
-  if (ids && selected > CONTACT_MAX) toast(`A contact sheet holds up to ${CONTACT_MAX} photos: using the first ${CONTACT_MAX} selected.`);
+  if (ids && (selected >= 2 ? selected : app.photos.length) > COLLAGE_MAX) toast(`The first ${COLLAGE_MAX} photos are in the layout. Swap in the others from any slot.`);
   setCollageReturn(false);
   const current = activePhoto(); if (current) current.settings = snapshot(); // slots read each photo's settings
   if (cropUi.start) { clearTimeout(cropUi.timer); commit(cropUi.start); cropUi.start = null; }
@@ -3207,7 +3229,28 @@ elements.dialRuler.addEventListener('pointerup', endDialDrag);
 elements.dialRuler.addEventListener('pointercancel', endDialDrag);
 addEventListener('resize', () => { if (dial.view === 'dial') syncDial(); });
 
-elements.fileInput.addEventListener('change', event => addFiles(event.target.files));
+// Home screen modes: Photo Editor (before/after sample) or Collage Studio (sample collage). "Select photos" opens
+// the picked photos straight into a collage.
+let startCollagePending = false;
+function setStartMode(mode) {
+  document.querySelectorAll('.start-mode').forEach(card => {
+    const on = card.dataset.mode === mode;
+    card.classList.toggle('is-selected', on); card.querySelector('.start-mode-pick').setAttribute('aria-pressed', on);
+  });
+  $('#startCompare').hidden = mode !== 'edit'; $('#startCollage').hidden = mode !== 'collage';
+  if (mode === 'collage') renderStartCollage();
+}
+$('#startModes').addEventListener('click', event => { const card = event.target.closest('.start-mode'); if (card) setStartMode(card.dataset.mode); });
+$('#startCollageButton').addEventListener('click', () => { startCollagePending = true; elements.fileInput.click(); });
+elements.fileInput.addEventListener('cancel', () => { startCollagePending = false; });
+elements.fileInput.addEventListener('change', async event => {
+  const forCollage = startCollagePending; startCollagePending = false;
+  const opened = await addFiles(event.target.files);
+  if (!forCollage || !opened.length || collage.active) return;
+  if (opened.length >= 2) { app.selected = new Set(opened.map(photo => photo.id)); syncStrip(); }
+  if (app.photos.length < 2) startCollagePending = true; // enterCollage asks for one more photo
+  enterCollage();
+});
 $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
 $('#sampleButton').addEventListener('click', loadSample);
 $('#cameraButton').addEventListener('click', openCamera);
