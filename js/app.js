@@ -10,14 +10,15 @@ import { buildBatch, canShareFiles, downloadBlob, downloadPhoto, freeExport, ope
 import { filmLooks } from './film-looks.js';
 import { applySettings, change, cloneParams, commit, restore, sameSnapshot, setHistoryHooks, snapshot } from './history.js';
 import { APERTURES, FOCAL_LENGTHS } from './optics/formats.js';
-import { cameraControls, cameraOf, controls as opticsControls, defaultOptics, expandProfile, fieldOfView, formatById, formats as cameraFormats, isNeutral as opticsNeutral, matchesProfile, normalizeOptics, opticsRenderKey, profileById as lensProfileById, profiles as lensProfiles, renderOptics, sceneOf, sections as opticsSections } from './optics/index.js';
+import { cameraControls, cameraOf, controls as opticsControls, defaultOptics, expandProfile, fieldOfView, formatById, formats as cameraFormats, isNeutral as opticsNeutral, matchesProfile, normalizeOptics, opticsRenderKey, profileById as lensProfileById, profiles as lensProfiles, sceneOf, sections as opticsSections } from './optics/index.js';
 import { WAVELENGTH_MM, focusBlurRadius } from './optics/pipeline.js';
 import { createOptionPicker } from './option-picker.js';
 import { QUEUE_EDGE, activePhoto, addFiles, applyParts, applyToPhotos, buildApply, buildStrip, closePhoto, otherSelected, photoById, pickPhoto, plural, renderPhotoEdit, renderQueue, scheduleActiveThumb, settingsOf, syncStrip } from './photos.js';
 import { adjustmentSections, borderSizes, defaultAdjustments, defaultBorder, frames, lookStyles, paperColors, platformSizes, presets } from './presets.js';
+import { HOLD_DELAY, adjustFull, applyZoom, croppedSize, croppedSource, drawPreview, opticsSource, scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './preview.js';
 import { fullRenderKeyOf } from './render-keys.js';
-import { FRAME_COLORS, applyAdjustments, cropExtents, cropGeometry, cropSource, defaultCrop, drawOriented, drawTexts, frameCanvas, isIdentityCrop, renderImage, scaledCanvas, textFont, textFonts } from './renderer.js';
-import { $, ADVANCED_DEBOUNCE, FAVORITES_KEY, MY_LOOKS_KEY, PRESETS, PREVIEW_EDGE, SHARE_WIDTH, ZOOM_MAX_EDGE, app, baseValue, controlSpec, currentPreset, editCount, effectiveAdjustments, effectiveValue, elements, filmLookById, isFilm, mobileQuery, presetPreviewSource, roundToStep, sheetQuery, state, toast } from './state.js';
+import { FRAME_COLORS, applyAdjustments, cropExtents, cropGeometry, cropSource, defaultCrop, drawOriented, drawTexts, frameCanvas, isIdentityCrop, renderImage, textFont, textFonts } from './renderer.js';
+import { $, ADVANCED_DEBOUNCE, FAVORITES_KEY, MY_LOOKS_KEY, PRESETS, PREVIEW_EDGE, SHARE_WIDTH, app, baseValue, controlSpec, currentPreset, editCount, effectiveAdjustments, effectiveValue, elements, filmLookById, isFilm, mobileQuery, presetPreviewSource, roundToStep, sheetQuery, state, toast } from './state.js';
 // ↑ imports
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
 // worker and data load only when it is chosen as the engine (activateEngine).
@@ -1026,45 +1027,6 @@ function fitRatio(crop, size = state.image) {
 }
 const setCropZoom = (crop, zoom) => { crop.zoom = Math.min(CROP_ZOOM_MAX, Math.max(1, zoom)); return clampCrop(crop); };
 
-// Cropped source at a given long edge; preview sizes are cached until the crop or photo changes.
-const croppedCache = { key: '', sizes: new Map() };
-function croppedSource(maxEdge = Infinity) {
-  if (isIdentityCrop(state.crop)) return state.image;
-  const key = cropKey();
-  if (croppedCache.key !== key) { croppedCache.key = key; croppedCache.sizes.clear(); }
-  if (maxEdge > ZOOM_MAX_EDGE) return cropSource(state.image, state.crop, maxEdge);
-  if (!croppedCache.sizes.has(maxEdge)) croppedCache.sizes.set(maxEdge, cropSource(state.image, state.crop, maxEdge));
-  return croppedCache.sizes.get(maxEdge);
-}
-// The cropped source with the Lens optics applied (js/optics, in a Worker): the start of every look.
-// Preview sizes are cached until the photo, crop or optics change, so Adjust and Frames don't re-run it.
-const opticsCache = { key: '', sizes: new Map() };
-/** Frees the cached optics bitmaps. Each is closed a task after it settles: whoever awaited it has drawn or copied
- *  it by then (every caller uses it straight after the await). */
-function dropOpticsCache(key = '') {
-  for (const promise of opticsCache.sizes.values()) promise.then(bitmap => setTimeout(() => bitmap?.close?.(), 0), () => {});
-  opticsCache.sizes.clear(); opticsCache.key = key;
-}
-async function opticsSource(maxEdge = Infinity) {
-  if (opticsNeutral(state.optics)) return croppedSource(maxEdge);
-  const key = JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
-  if (opticsCache.key !== key) dropOpticsCache(key);
-  if (maxEdge > ZOOM_MAX_EDGE) return renderOptics(croppedSource(maxEdge), state.optics, maxEdge);
-  if (!opticsCache.sizes.has(maxEdge)) {
-    const source = croppedSource(maxEdge), edge = Math.min(maxEdge, Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height));
-    // A waiting preview can be taken over by a newer one at another size (js/optics/index.js): its bitmap is the
-    // wrong size for this entry, so it isn't kept, and this size renders again.
-    const promise = renderOptics(source, state.optics, maxEdge, { replaceable: true }).then(bitmap => {
-      if (Math.abs(Math.max(bitmap.width, bitmap.height) - edge) <= 1 || opticsCache.sizes.get(maxEdge) !== promise) return bitmap;
-      opticsCache.sizes.delete(maxEdge);
-      return opticsSource(maxEdge);
-    });
-    promise.catch(() => { if (opticsCache.sizes.get(maxEdge) === promise) opticsCache.sizes.delete(maxEdge); });
-    opticsCache.sizes.set(maxEdge, promise);
-  }
-  return opticsCache.sizes.get(maxEdge);
-}
-const croppedSize = () => { const g = cropGeo(); return { width: Math.max(1, Math.round(g.width)), height: Math.max(1, Math.round(g.height)) }; };
 
 // One history entry per gesture: the first change takes the snapshot, the end commits it.
 function beginCropGesture() { clearTimeout(cropUi.timer); if (!cropUi.start) cropUi.start = snapshot(); }
@@ -1674,64 +1636,6 @@ function syncControls() {
   syncDeleteMyLook();
 }
 
-// ---------- Rendering ----------
-function renderEdge() {
-  if (state.zoom === 'fit' || !state.image) return PREVIEW_EDGE;
-  const { width, height } = croppedSize();
-  return Math.min(ZOOM_MAX_EDGE, Math.max(width, height));
-}
-function scheduleRender() {
-  if (!state.image) return;
-  if (isFilm()) { scheduleAdvancedRender(); return; }
-  if (state.renderAbort) cancelFullRender();
-  clearTimeout(advancedTimer);
-  const token = ++state.renderToken;
-  requestAnimationFrame(() => { if (token !== state.renderToken) return; renderPreview(token); });
-}
-function renderPreview(token) {
-  showDeveloping(false); elements.processing.hidden = false;
-  setTimeout(async () => {
-    if (token !== state.renderToken || !state.image) { elements.processing.hidden = true; return; }
-    try {
-      const edge = renderEdge();
-      const frame = renderFrame();
-      const lensed = await opticsSource(edge);
-      if (token !== state.renderToken || !state.image) return; // a newer render replaced this one
-      const source = croppedSource(edge);
-      // Zoomed in: the full-size pixel work runs in the Worker (latest wins), not on the main thread.
-      const edited = edge > PREVIEW_EDGE ? frameBitmap(await renderEditOff(lensed, effectiveAdjustments(), edge, { replaceable: true }), frame) : renderImage(lensed, effectiveAdjustments(), frame, edge);
-      if (token !== state.renderToken || !state.image) return;
-      state.editedCanvas = edited;
-      const originalKey = JSON.stringify([frame, edge, cropKey()]);
-      if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(source, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
-      elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
-      applyZoom();
-      drawPreview(); scheduleActiveThumb();
-    } catch (error) {
-      if (error?.name === 'AbortError') return; // a newer zoomed preview took its place
-      console.error(error);
-      toast('This photo could not be rendered.');
-    } finally {
-      elements.processing.hidden = true;
-      renderQueue.pump();
-    }
-  }, 0);
-}
-function drawPreview() {
-  const source = state.holding ? state.originalCanvas : state.editedCanvas;
-  if (!source) return;
-  const ctx = elements.canvas.getContext('2d');
-  ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-  ctx.drawImage(source, 0, 0, elements.canvas.width, elements.canvas.height);
-  // Split view (desktop): the original left of the divider, the edit right of it.
-  if (!state.holding && state.split !== null && state.originalCanvas) {
-    const { width, height } = elements.canvas;
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, Math.round(width * state.split), height); ctx.clip();
-    ctx.drawImage(state.originalCanvas, 0, 0, width, height); ctx.restore();
-  }
-  drawTextOverlay();
-}
-
 // ---------- Film engine rendering (the active engine's render(), in its own Web Worker) ----------
 // Then Adjust edits on top: on the main thread for the preview (like Presets), in
 // js/adjust-worker.js for full-size renders.
@@ -1744,52 +1648,6 @@ let enginePreview = { key: '', bitmap: null };
 function dropEnginePreview() { enginePreview.bitmap?.close?.(); enginePreview = { key: '', bitmap: null }; }
 const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams()]);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
-// js/adjust-worker.js: one job at a time. A newer *replaceable* job (a zoomed preview) takes the place of one still
-// waiting, which rejects with AbortError: dragging a slider at 400 % never builds a backlog. Exports and batch
-// photos are never replaced.
-let adjustWorker = null, adjustRunning = null, adjustJobId = 0;
-const adjustQueue = [];
-function pumpAdjust() {
-  if (adjustRunning || !adjustQueue.length) return;
-  if (!adjustWorker) {
-    adjustWorker = new Worker(new URL('./adjust-worker.js', import.meta.url), { type: 'module' });
-    adjustWorker.onmessage = ({ data }) => {
-      const job = adjustRunning; adjustRunning = null;
-      if (job?.id === data.id) { if (data.error) job.reject(new Error(data.error)); else job.resolve(data.bitmap); }
-      pumpAdjust();
-    };
-    adjustWorker.onerror = event => {
-      const error = new Error(event.message || 'Adjust worker failed');
-      for (const job of [adjustRunning, ...adjustQueue.splice(0)]) if (job) { job.message.bitmap.close?.(); job.reject(error); }
-      adjustRunning = null; adjustWorker.terminate(); adjustWorker = null;
-    };
-  }
-  const job = adjustRunning = adjustQueue.shift();
-  adjustWorker.postMessage({ id: job.id, ...job.message }, [job.message.bitmap]);
-}
-function postAdjust(message, { replaceable = false } = {}) {
-  return new Promise((resolve, reject) => {
-    if (replaceable) {
-      const waiting = adjustQueue.findIndex(job => job.replaceable);
-      if (waiting >= 0) { const [old] = adjustQueue.splice(waiting, 1); old.message.bitmap.close(); old.reject(new DOMException('Replaced by a newer preview', 'AbortError')); }
-    }
-    adjustQueue.push({ id: ++adjustJobId, message, replaceable, resolve, reject }); pumpAdjust();
-  });
-}
-/** Applies `adjustments` to a full-size bitmap off the main thread (the bitmap is transferred). */
-function adjustFull(bitmap, adjustments) {
-  return adjustments ? postAdjust({ bitmap, adjustments }) : Promise.resolve(bitmap);
-}
-/** The Basic edit of `source` (scaled to `edge`, adjusted) as an ImageBitmap: the same pixels as renderEdit. The
- *  scaling draw stays here (an <img> may decode at the smaller size); the pixel work runs in the Worker. For anything
- *  larger than the preview (zoom, export, batch, collage). */
-async function renderEditOff(source, adjustments, edge, options) {
-  const scaled = scaledCanvas(source, edge), bitmap = await createImageBitmap(scaled);
-  scaled.width = 0; scaled.height = 0;
-  return Object.values(adjustments).some(Boolean) ? postAdjust({ bitmap, adjustments }, options) : bitmap;
-}
-/** frameCanvas over an off-thread edit; the edit's bitmap is freed once it is drawn into the frame. */
-function frameBitmap(bitmap, frame, texts) { const output = frameCanvas(bitmap, frame, texts); bitmap.close(); return output; }
 // The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
 const bitmapKey = () => JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
 /** Input for an engine *preview*: with Lens optics on, they run at preview size (fast, like Basic), and that bitmap
@@ -1946,121 +1804,6 @@ function syncSheetRender(info) {
   if (sheetQuery.matches && isFilm() && next !== sheetRenderState) elements.sheetRenderLive.textContent = next === 'done' ? 'Full quality ready' : '';
   sheetRenderState = next;
 }
-// Zoom: 'fit' or a percentage of the full-size photo ('100' = one full-size pixel per CSS pixel, long side capped
-// at ZOOM_MAX_EDGE). Basic looks render at full size when zoomed (renderEdge); film previews are smaller and are
-// scaled up until Render full quality replaces them. The view keeps the same spot centred.
-const ZOOM_STEPS = [10, 25, 33, 50, 67, 100, 150, 200, 300, 400];
-/** Full-size pixels per rendered pixel of the preview on screen (1 for a full-size render). */
-function renderScale() {
-  const rect = state.editedCanvas?.photoRect; if (!rect) return 1;
-  const { width, height } = croppedSize();
-  return Math.min(ZOOM_MAX_EDGE, Math.max(width, height)) / Math.max(1, rect.width, rect.height);
-}
-/** The size Fit shows, as a zoom percentage of the full-size photo. */
-function fitPercent() {
-  if (!state.image) return 100;
-  const shown = elements.canvas.getBoundingClientRect().width / Math.max(1, elements.canvas.width); // CSS px per rendered px
-  return shown / renderScale() * 100;
-}
-let lastFitPercent = 100;
-function applyZoom() {
-  const actual = state.zoom !== 'fit', view = elements.viewport;
-  const center = view.classList.contains('is-actual') && view.scrollWidth
-    ? [(view.scrollLeft + view.clientWidth / 2) / view.scrollWidth, (view.scrollTop + view.clientHeight / 2) / view.scrollHeight] : [.5, .5];
-  view.classList.toggle('is-actual', actual);
-  elements.canvas.style.width = actual ? `${Math.round(elements.canvas.width * renderScale() * Number(state.zoom) / 100)}px` : '';
-  if (actual) { view.scrollLeft = center[0] * view.scrollWidth - view.clientWidth / 2; view.scrollTop = center[1] * view.scrollHeight - view.clientHeight / 2; }
-  else if (state.image && elements.canvas.width) lastFitPercent = fitPercent();
-  document.querySelectorAll('[data-zoom]').forEach(button => button.setAttribute('aria-pressed', button.dataset.zoom === state.zoom));
-  const percent = actual ? Number(state.zoom) : Math.round(lastFitPercent);
-  $('#zoomValue').textContent = `${percent}%`;
-  $('#zoomOut').disabled = !actual;
-  $('#zoomIn').disabled = actual && Number(state.zoom) >= ZOOM_STEPS.at(-1);
-}
-/** One step in or out; out of the smallest step that's still bigger than Fit returns to Fit. */
-function stepZoom(direction) {
-  const fit = lastFitPercent, current = state.zoom === 'fit' ? fit : Number(state.zoom);
-  if (direction > 0) { const next = ZOOM_STEPS.find(step => step > current + .5); if (next) setZoom(String(next)); return; }
-  const next = [...ZOOM_STEPS].reverse().find(step => step < current - .5);
-  setZoom(next && next > fit + .5 ? String(next) : 'fit');
-}
-// Zoomed in: drag the photo to look around (mouse or pen; fingers already scroll it). Dragging text in the Text tab wins.
-let pan = null;
-elements.viewport.addEventListener('pointerdown', event => {
-  if (state.zoom === 'fit' || event.pointerType === 'touch' || event.button !== 0 || event.defaultPrevented) return;
-  event.preventDefault(); // no text selection while dragging
-  const view = elements.viewport;
-  pan = { id: event.pointerId, x: event.clientX, y: event.clientY, left: view.scrollLeft, top: view.scrollTop };
-  view.setPointerCapture(event.pointerId); view.classList.add('is-panning');
-});
-elements.viewport.addEventListener('pointermove', event => {
-  if (!pan || pan.id !== event.pointerId) return;
-  elements.viewport.scrollLeft = pan.left - (event.clientX - pan.x);
-  elements.viewport.scrollTop = pan.top - (event.clientY - pan.y);
-});
-const endPan = event => { if (pan?.id === event.pointerId) { pan = null; elements.viewport.classList.remove('is-panning'); } };
-elements.viewport.addEventListener('pointerup', endPan);
-elements.viewport.addEventListener('pointercancel', endPan);
-function setZoom(zoom) {
-  if (zoom === state.zoom) return;
-  state.zoom = zoom; applyZoom(); scheduleRender();
-}
-
-// ---------- Hold to compare ----------
-function setHolding(holding) {
-  if (!state.image || state.holding === holding) return;
-  state.holding = holding;
-  elements.originalBadge.hidden = !holding;
-  elements.holdButton.classList.toggle('is-holding', holding);
-  drawPreview(); drawFullscreen();
-}
-// Press and hold anywhere on the photo: a short delay so taps don't flash the original. Zoomed in, moving
-// first pans instead; a second finger (pinch) cancels. Dragging text in the Text tab wins (it stops the event).
-const HOLD_DELAY = 120;
-let photoHold = null;
-function endPhotoHold() { if (!photoHold) return; clearTimeout(photoHold.timer); photoHold = null; setHolding(false); }
-elements.canvasWrap.addEventListener('pointerdown', event => {
-  if (!state.image || event.button !== 0) return;
-  if (photoHold) { endPhotoHold(); return; }
-  if (state.split !== null) { startSplitDrag(event); return; }
-  photoHold = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: setTimeout(() => setHolding(true), HOLD_DELAY) };
-});
-window.addEventListener('pointermove', event => {
-  if (photoHold?.id === event.pointerId && state.zoom !== 'fit' && !state.holding
-    && Math.hypot(event.clientX - photoHold.x, event.clientY - photoHold.y) > 6) endPhotoHold();
-});
-['pointerup', 'pointercancel'].forEach(type => window.addEventListener(type, event => { if (photoHold?.id === event.pointerId) endPhotoHold(); }));
-elements.canvasWrap.addEventListener('contextmenu', event => { if (photoHold || state.holding) event.preventDefault(); }); // long-press on phones
-
-// ---------- Slide to compare (desktop): a divider over the photo, original on the left ----------
-const splitUi = { box: $('#compareSplit'), handle: $('#compareHandle'), button: $('#splitButton'), drag: null };
-function setSplit(split) {
-  state.split = split === null ? null : Math.min(1, Math.max(0, split));
-  const on = state.split !== null, percent = on ? Math.round(state.split * 100) : 50;
-  splitUi.box.hidden = !on; splitUi.button.setAttribute('aria-pressed', on);
-  splitUi.box.style.setProperty('--split', `${on ? state.split * 100 : 50}%`);
-  splitUi.handle.setAttribute('aria-valuenow', percent); splitUi.handle.setAttribute('aria-valuetext', `${percent}% original`);
-  drawPreview();
-}
-const splitAt = event => { const rect = elements.canvas.getBoundingClientRect(); return (event.clientX - rect.left) / Math.max(1, rect.width); };
-/** Drag on the photo moves the divider; zoomed in, only the handle does (the photo pans). */
-function startSplitDrag(event) {
-  if (state.zoom !== 'fit' && event.target !== splitUi.handle) return;
-  event.preventDefault();
-  splitUi.drag = event.pointerId; elements.canvasWrap.setPointerCapture(event.pointerId); elements.canvasWrap.classList.add('is-splitting');
-  setSplit(splitAt(event));
-}
-elements.canvasWrap.addEventListener('pointermove', event => { if (splitUi.drag === event.pointerId) setSplit(splitAt(event)); });
-const endSplitDrag = event => { if (splitUi.drag === event.pointerId) { splitUi.drag = null; elements.canvasWrap.classList.remove('is-splitting'); } };
-['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => elements.canvasWrap.addEventListener(type, endSplitDrag));
-splitUi.button.addEventListener('click', () => { setSplit(state.split === null ? .5 : null); if (state.split !== null) splitUi.handle.focus({ preventScroll: true }); });
-splitUi.handle.addEventListener('keydown', event => {
-  const step = event.shiftKey ? .1 : .02;
-  const next = { ArrowLeft: state.split - step, ArrowDown: state.split - step, ArrowRight: state.split + step, ArrowUp: state.split + step, Home: 0, End: 1 }[event.key];
-  if (next !== undefined) { event.preventDefault(); setSplit(next); }
-  else if (event.key === 'Escape') { event.preventDefault(); setSplit(null); splitUi.button.focus(); }
-});
-
 // ---------- Collage mode (CollagePlan.md Task 1) ----------
 // The editor stays as it is underneath (photo, history, selection, tab); collage mode only covers it.
 let collageReturnFocus = null;
@@ -2595,4 +2338,4 @@ document.addEventListener('keyup', event => { if (event.key === '\\') setHolding
 }
 
 // ↓ shared with other editor modules (generated by the v3 split)
-export { PLATFORMS, activateEngine, activeModule, adjustFull, advParams, advancedBusy, advancedTimer, cancelFullRender, collage, collageStore, cropUi, croppedCache, croppedSize, currentMyLook, drawCover, dropEnginePreview, dropOpticsCache, engine, engineEdits, ensureBitmap, ensureTextFonts, fitRatio, formatLens, formatValue, frameBitmap, frameFor, fullRenderKey, lensEdits, lensProfileState, lensSummary, opticsSource, quarterOf, ratioLabel, releaseEngines, renderEditOff, renderFrame, scheduleRender, setHolding, shareWidth, syncApplyButtons, syncControls, syncFramePreview, syncSavedCollages, textUi, updateButtons, useEngine };
+export { PLATFORMS, activateEngine, activeModule, advParams, advancedBusy, advancedTimer, cancelFullRender, collage, collageStore, cropGeo, cropKey, cropUi, currentMyLook, drawCover, drawFullscreen, drawTextOverlay, dropEnginePreview, engine, engineEdits, ensureBitmap, ensureTextFonts, fitRatio, formatLens, formatValue, frameFor, fullRenderKey, lensEdits, lensProfileState, lensSummary, quarterOf, ratioLabel, releaseEngines, renderFrame, scheduleAdvancedRender, shareWidth, showDeveloping, syncApplyButtons, syncControls, syncFramePreview, syncSavedCollages, textUi, updateButtons, useEngine };
