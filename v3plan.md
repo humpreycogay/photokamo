@@ -151,15 +151,16 @@ node tools/v3-check.mjs                              # added in Task 0, grows wi
 #### Task 5: Full-resolution Basic renders off the main thread
 Do this with, or right after, workflow Task 0 (pure `adjustPixels(data, width, height, a)`).
 
-- [ ] **[C]** Export (`js/app.js:2793`), batch and collage export (`:2573` → `js/renderer.js:335-347`) and zoomed previews up to 4096 px (`:1731`, `:1752`) run `renderImage`/`renderEdit` synchronously
-- [ ] Move pixel work for edges above `PREVIEW_EDGE` into `js/adjust-worker.js` (transfer the buffer, return an ImageBitmap); main thread keeps only draw, frame and text
-- [ ] Latest-wins for zoomed previews; stale results dropped by token, as in the film path
-- [ ] Export and batch show progress and stay cancellable while the Worker runs
+- [x] **[C]** Export (`js/app.js:2793`), batch and collage export (`:2573` → `js/renderer.js:335-347`) and zoomed previews up to 4096 px (`:1731`, `:1752`) run `renderImage`/`renderEdit` synchronously
+- [x] Move pixel work for edges above `PREVIEW_EDGE` into `js/adjust-worker.js` (transfer the buffer, return an ImageBitmap); main thread keeps only draw, frame and text
+- [x] Latest-wins for zoomed previews; stale results dropped by token, as in the film path
+- [x] Export and batch show progress and stay cancellable while the Worker runs
 
 **Tests:** Node case: `adjustPixels` output equals the old `processPixels` path byte-for-byte on 5 synthetic buffers (shared with workflow Task 0). Baseline exports byte-identical.
 **Check:** Performance panel, 24 MP photo, Basic look: export, batch of 5, and a slider drag at 400 % zoom. The UI stays responsive (the spinner animates, Cancel works).
 **Done when:** no main-thread task > 100 ms during full-size Basic work; preview latency at fit zoom not worse than baseline by more than 10 %.
 **Output changes:** no.
+*Done 2026-11-27 (with workflow Task 0):* `adjustPixels(data, width, height, a)` is pure, and `processPixels` is a thin wrapper around it. Above `PREVIEW_EDGE`, Basic edits run in `js/adjust-worker.js`. The Worker runs the same `renderEdit` on an OffscreenCanvas, and the main thread only frames, adds text and encodes. This covers zoomed previews (latest wins: a waiting zoomed preview is replaced and rejects with AbortError, and stale results are dropped by token), export, batch, and collage slot and export renders. Byte-identity: 30 Node goldens recorded from the old loop, 7/7 v3 baseline exports, and all 17 Basic presets on the sample export byte-identical (`docs/v2/BASELINE.md`). Measured on a 24 MP photo (headless Chromium on an M5, long tasks via PerformanceObserver), before → after: slider drag at 100 % zoom, 12 tasks over 100 ms (max 133 ms) → 0 (max 51 ms); export, 1 task (217 ms) → 0; batch of 5, 1 task (238 ms) → 0. Fit preview for 5 slider steps: 189 → 184 ms, so not worse. Export and batch cancel: the buttons now respond during the render. Batch still stops after the current photo, as before. Phone timing not measured.
 
 #### Task 6: Memory on phones
 - [ ] **[C]** `opticsCache` bitmaps are dropped without `close()` and survive a photo switch (`js/app.js:1112-1114`, `2171-2182`): close on key change and in `releaseImage`

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoKamo · workflow fixtures (dev tool)</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <!-- Dev-only page (plan_workflow.md Task 0). Not linked from the app. Serve the repo root
+       (python -m http.server 8080) and open http://localhost:8080/tools/workflow-fixtures.html
+       Synthetic fixtures come from tools/workflow-fixtures.mjs (also run by Node); the sample is images/model.jpg. -->
+  <style>
+    body { margin:0; padding:24px; background:#121210; color:#f3f1ea; font:14px/1.45 system-ui, sans-serif; }
+    h1 { margin:0 0 6px; font-size:20px; }
+    p { max-width:75ch; color:#c9c7be; }
+    button { min-height:44px; padding:0 16px; border:0; border-radius:10px; background:#f3f1ea; color:#121210; font:inherit; font-weight:600; cursor:pointer; }
+    button:focus-visible { outline:2px solid #4fc4b4; outline-offset:2px; }
+    table { border-collapse:collapse; margin-top:16px; }
+    th, td { padding:6px 12px; border-bottom:1px solid #3a3a35; text-align:left; font-variant-numeric:tabular-nums; }
+    .pass { color:#4fc4b4; font-weight:600; } .fail { color:#ff8a7a; font-weight:700; }
+    #status { min-height:1.45em; color:#4fc4b4; }
+  </style>
+</head>
+<body>
+  <h1>Workflow fixtures</h1>
+  <p>Checks that the pure <code>adjustPixels</code> gives the bytes the canvas path gives: the Node goldens (recorded from the code before the split), then the canvas path (<code>applyAdjustments</code>) against <code>adjustPixels</code> on the same pixels, for the opaque fixtures and for the sample photo with every Basic look.</p>
+  <button id="run" type="button">Run checks</button>
+  <p id="status" role="status" aria-live="polite"></p>
+  <table><thead><tr><th scope="col">Check</th><th scope="col">Cases</th><th scope="col">Differences</th><th scope="col">Result</th></tr></thead><tbody id="rows"></tbody></table>
+  <script type="module">
+    import { fixtures, adjustmentSets, checkGolden } from './workflow-fixtures.mjs';
+    import { adjustPixels, applyAdjustments } from '../js/renderer.js';
+    import { presets } from '../js/presets.js';
+    const $ = selector => document.querySelector(selector);
+    const sha = async data => [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    function row(name, cases, failures) {
+      const tr = document.createElement('tr'), pass = !failures.length;
+      tr.innerHTML = `<td></td><td>${cases}</td><td></td><td class="${pass ? 'pass' : 'fail'}">${pass ? 'Pass' : 'Fail'}</td>`;
+      tr.children[0].textContent = name; tr.children[2].textContent = failures.slice(0, 3).join('; ') || '0';
+      tr.dataset.result = JSON.stringify({ name, cases, failed: failures.length, pass });
+      $('#rows').append(tr);
+    }
+    /** The canvas path against the pure function on the pixels the canvas holds. */
+    function compare(canvas, a) {
+      const ctx = canvas.getContext('2d', { willReadFrequently: true }), { width, height } = canvas;
+      const pure = ctx.getImageData(0, 0, width, height); adjustPixels(pure.data, width, height, a);
+      const out = applyAdjustments(canvas, a), got = out.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+      let diff = 0; for (let i = 0; i < got.length; i++) if (got[i] !== pure.data[i]) diff++;
+      return diff;
+    }
+    const canvasOf = image => { const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d', { willReadFrequently: true }).putImageData(new ImageData(image.data, image.width, image.height), 0, 0); return c; };
+    $('#run').addEventListener('click', async () => {
+      $('#rows').replaceChildren(); $('#status').textContent = 'Running…';
+      const golden = await checkGolden(adjustPixels, sha);
+      row('Node goldens in this browser', Object.keys(fixtures).length * Object.keys(adjustmentSets).length, golden);
+      const opaque = [];
+      for (const [name, make] of Object.entries(fixtures)) {
+        if (name === 'alpha edges') continue; // canvases store premultiplied alpha: partly transparent pixels can't round-trip
+        for (const [setName, a] of Object.entries(adjustmentSets)) { const diff = compare(canvasOf(make()), a); if (diff) opaque.push(`${name}/${setName}: ${diff} bytes`); }
+      }
+      row('Canvas path = adjustPixels (opaque fixtures)', (Object.keys(fixtures).length - 1) * Object.keys(adjustmentSets).length, opaque);
+      const img = new Image(); img.src = '../images/model.jpg'; await img.decode();
+      const sample = document.createElement('canvas'); sample.width = img.naturalWidth; sample.height = img.naturalHeight;
+      sample.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0);
+      const looks = [];
+      for (const preset of presets) { const diff = compare(sample, preset.values); if (diff) looks.push(`${preset.id}: ${diff} bytes`); }
+      row('Canvas path = adjustPixels (sample, every Basic look)', presets.length, looks);
+      $('#status').textContent = 'Done.';
+    });
+  </script>
+</body>
+</html>

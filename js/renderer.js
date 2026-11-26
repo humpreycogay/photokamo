@@ -66,7 +66,12 @@ function frameLayout(width, height, frame) {
 
 function processPixels(ctx, width, height, a) {
   const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
+  adjustPixels(imageData.data, width, height, a);
+  ctx.putImageData(imageData, 0, 0);
+}
+/** The Basic adjustments on RGBA pixels in place (alpha untouched): pure, so it runs on the main thread, in a
+ *  Worker or in Node. 8-bit code values throughout; grain is seeded by pixel index, so it repeats exactly. */
+export function adjustPixels(data, width, height, a) {
   const exposure = 2 ** a.exposure;
   const contrast = Math.max(0, (100 + a.contrast) / 100) ** 1.35;
   const saturation = Math.max(0, 1 + a.saturation / 100);
@@ -124,7 +129,7 @@ function processPixels(ctx, width, height, a) {
     }
     data[i] = clamp(r); data[i + 1] = clamp(g); data[i + 2] = clamp(b);
   }
-  ctx.putImageData(imageData, 0, 0);
+  return data;
 }
 
 // "Filed carrier" darkroom border: irregular black jags biting into each edge of the photo.

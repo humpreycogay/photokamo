@@ -1775,13 +1775,17 @@ function renderPreview(token) {
       const lensed = await opticsSource(edge);
       if (token !== state.renderToken || !state.image) return; // a newer render replaced this one
       const source = croppedSource(edge);
-      state.editedCanvas = renderImage(lensed, effectiveAdjustments(), frame, edge);
+      // Zoomed in: the full-size pixel work runs in the Worker (latest wins), not on the main thread.
+      const edited = edge > PREVIEW_EDGE ? frameBitmap(await renderEditOff(lensed, effectiveAdjustments(), edge, { replaceable: true }), frame) : renderImage(lensed, effectiveAdjustments(), frame, edge);
+      if (token !== state.renderToken || !state.image) return;
+      state.editedCanvas = edited;
       const originalKey = JSON.stringify([frame, edge, cropKey()]);
       if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(source, defaultAdjustments, frame, edge); state.originalKey = originalKey; }
       elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
       applyZoom();
       drawPreview(); scheduleActiveThumb();
     } catch (error) {
+      if (error?.name === 'AbortError') return; // a newer zoomed preview took its place
       console.error(error);
       toast('This photo could not be rendered.');
     } finally {
@@ -1815,27 +1819,49 @@ let advancedDirty = false;
 let enginePreview = { key: '', bitmap: null };
 const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams()]);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
-let adjustWorker = null, adjustJobId = 0;
-const adjustJobs = new Map();
-/** Applies `adjustments` to a full-size bitmap off the main thread (the bitmap is transferred). */
-function adjustFull(bitmap, adjustments) {
-  if (!adjustments) return Promise.resolve(bitmap);
+// js/adjust-worker.js: one job at a time. A newer *replaceable* job (a zoomed preview) takes the place of one still
+// waiting, which rejects with AbortError: dragging a slider at 400 % never builds a backlog. Exports and batch
+// photos are never replaced.
+let adjustWorker = null, adjustRunning = null, adjustJobId = 0;
+const adjustQueue = [];
+function pumpAdjust() {
+  if (adjustRunning || !adjustQueue.length) return;
   if (!adjustWorker) {
     adjustWorker = new Worker(new URL('./adjust-worker.js', import.meta.url), { type: 'module' });
     adjustWorker.onmessage = ({ data }) => {
-      const job = adjustJobs.get(data.id); adjustJobs.delete(data.id);
-      if (data.error) job?.reject(new Error(data.error)); else job?.resolve(data.bitmap);
+      const job = adjustRunning; adjustRunning = null;
+      if (job?.id === data.id) { if (data.error) job.reject(new Error(data.error)); else job.resolve(data.bitmap); }
+      pumpAdjust();
     };
     adjustWorker.onerror = event => {
-      for (const job of adjustJobs.values()) job.reject(new Error(event.message || 'Adjust worker failed'));
-      adjustJobs.clear(); adjustWorker.terminate(); adjustWorker = null;
+      const error = new Error(event.message || 'Adjust worker failed');
+      for (const job of [adjustRunning, ...adjustQueue.splice(0)]) if (job) { job.message.bitmap.close?.(); job.reject(error); }
+      adjustRunning = null; adjustWorker.terminate(); adjustWorker = null;
     };
   }
+  const job = adjustRunning = adjustQueue.shift();
+  adjustWorker.postMessage({ id: job.id, ...job.message }, [job.message.bitmap]);
+}
+function postAdjust(message, { replaceable = false } = {}) {
   return new Promise((resolve, reject) => {
-    const id = ++adjustJobId; adjustJobs.set(id, { resolve, reject });
-    adjustWorker.postMessage({ id, bitmap, adjustments }, [bitmap]);
+    if (replaceable) {
+      const waiting = adjustQueue.findIndex(job => job.replaceable);
+      if (waiting >= 0) { const [old] = adjustQueue.splice(waiting, 1); old.message.bitmap.close(); old.reject(new DOMException('Replaced by a newer preview', 'AbortError')); }
+    }
+    adjustQueue.push({ id: ++adjustJobId, message, replaceable, resolve, reject }); pumpAdjust();
   });
 }
+/** Applies `adjustments` to a full-size bitmap off the main thread (the bitmap is transferred). */
+function adjustFull(bitmap, adjustments) {
+  return adjustments ? postAdjust({ bitmap, adjustments }) : Promise.resolve(bitmap);
+}
+/** The Basic edit of `source` (scaled to `edge`, adjusted) as an ImageBitmap, made in the Worker: the same pixels as
+ *  renderEdit, without blocking the main thread. For anything larger than the preview (zoom, export, batch, collage). */
+async function renderEditOff(source, adjustments, edge, options) {
+  return postAdjust({ bitmap: await createImageBitmap(source), adjustments, edge }, options);
+}
+/** frameCanvas over an off-thread edit; the edit's bitmap is freed once it is drawn into the frame. */
+function frameBitmap(bitmap, frame, texts) { const output = frameCanvas(bitmap, frame, texts); bitmap.close(); return output; }
 // The engine's input: the cropped photo at full size with the Lens optics, re-made when the crop or optics change.
 const bitmapKey = () => JSON.stringify([cropKey(), opticsRenderKey(state.optics)]);
 /** Input for an engine *preview*: with Lens optics on, they run at preview size (fast, like Basic) and the result
@@ -2606,7 +2632,10 @@ async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from 
   const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop, workEdge);
   const source = await renderOptics(cropped, settings.optics, workEdge);
   if (job?.stale) return null;
-  if (look.engine === PRESETS) return { image: renderEdit(source, adjustmentsFor(settings), workEdge), tint: null, settings };
+  if (look.engine === PRESETS) {
+    const large = Math.min(workEdge, Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height)) > PREVIEW_EDGE;
+    return { image: large ? await renderEditOff(source, adjustmentsFor(settings), workEdge) : renderEdit(source, adjustmentsFor(settings), workEdge), tint: null, settings };
+  }
   const module = await loadEngine(look.engine);
   onEngine?.(module);
   const params = module.normalizeParams(look.engineParams[look.engine]);
@@ -2825,7 +2854,7 @@ function prepareExport() {
     await ensureTextFonts(state.text);
     const edge = exportEdge();
     const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
-    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : renderImage(await opticsSource(edge), effectiveAdjustments(), renderFrame(), edge, state.text) };
+    if (exportCanvas.key !== canvasKey) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : frameBitmap(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), renderFrame(), state.text) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');

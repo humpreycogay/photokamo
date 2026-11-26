@@ -62,6 +62,15 @@ test('optics: encodeAdd is encode without added light, monotonic, exact below th
   assert.ok(encodeAdd(.85, .1) < 255 && encodeAdd(.85, .1) > encode(.9), 'light past the knee keeps gradation');
 });
 
+// ---------- Task 5 (with plan_workflow.md Task 0): pure adjustPixels ----------
+test('adjustPixels equals the old canvas-bound processPixels byte for byte', async repo => {
+  const { checkGolden } = await import(`${repo}/tools/workflow-fixtures.mjs`);
+  const { adjustPixels } = await import(`${repo}/js/renderer.js`);
+  const { createHash } = await import('node:crypto');
+  const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
+  assert.deepEqual(failures, [], failures.join('; '));
+});
+
 let failed = 0;
 for (const { name, fn } of cases) {
   try { await fn(repo); console.log('ok  ', name); }
