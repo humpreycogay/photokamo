@@ -9,7 +9,7 @@
 // Spatial scales are defined on a 36 mm frame so preview and export match.
 
 import {
-  P3_TO_XYZ, RGB709_TO_XYZ, XYZ_TO_P3, clamp, mat3Mul, seededRandom, srgbDecode,
+  P3_TO_XYZ, RGB709_TO_XYZ, XYZ_TO_P3, clamp, mat3Mul, srgbDecode,
 } from './math.js';
 
 const DECODE = Float32Array.from({ length: 256 }, (_, i) => srgbDecode(i / 255));
@@ -92,34 +92,74 @@ export function gaussianBlur(src, width, height, sigma) {
   return out;
 }
 
-function gaussian(random) {
-  return (random() + random() + random() + random() - 2) * 1.7320508; // Irwin–Hall, unit variance
+// Grain noise is a function of the position in the full frame (and the seed and layer), not of the order pixels are
+// visited, so a tile of a frame gets exactly the grain of that part of the whole render (PhotoKamo v3 Task 9).
+function hash32(a, b, c, d) {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be59b, 0xc2b2ae35) ^ Math.imul(c ^ 0x27d4eb2f, 0x165667b1) ^ Math.imul(d + 0x1b873593, 0xcc9e2d51);
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15;
+  return h >>> 0;
 }
-
-/** Unit-variance noise field with feature size `cellPx` pixels (bilinear cells). */
-function noiseField(width, height, cellPx, random) {
+/** Unit-variance Gaussian-ish value (Irwin–Hall of four uniforms) for frame position (x, y). */
+function gaussianAt(x, y, seed, layer) {
+  const h1 = hash32(x, y, seed, layer * 2), h2 = hash32(x, y, seed, layer * 2 + 1);
+  return ((h1 & 0xffff) + (h1 >>> 16) + (h2 & 0xffff) + (h2 >>> 16) - 131070) / 65536 * 1.7320508;
+}
+/** Unit-variance noise with feature size `cellPx`, for the part of the frame starting at (ox, oy). Larger cells are
+ *  bilinear between grid points on the frame (interpolation keeps (2/3)² of the variance on average, hence × 1.5). */
+function noiseFieldAt(width, height, cellPx, seed, layer, ox, oy) {
   const out = new Float32Array(width * height);
   if (cellPx <= 1) {
-    for (let i = 0; i < out.length; i++) out[i] = gaussian(random);
+    for (let y = 0, i = 0; y < height; y++) for (let x = 0; x < width; x++, i++) out[i] = gaussianAt(x + ox, y + oy, seed, layer);
     return out;
   }
-  const gw = Math.ceil(width / cellPx) + 2, gh = Math.ceil(height / cellPx) + 2;
+  const gx0 = Math.floor(ox / cellPx), gy0 = Math.floor(oy / cellPx);
+  const gw = Math.floor((ox + width - 1) / cellPx) - gx0 + 2, gh = Math.floor((oy + height - 1) / cellPx) - gy0 + 2;
   const grid = new Float32Array(gw * gh);
-  for (let i = 0; i < grid.length; i++) grid[i] = gaussian(random);
-  let sumSq = 0;
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) grid[j * gw + i] = gaussianAt(gx0 + i, gy0 + j, seed, layer);
   for (let y = 0; y < height; y++) {
-    const gy = y / cellPx, y0 = gy | 0, fy = gy - y0;
+    const gy = (y + oy) / cellPx, y0 = Math.floor(gy), fy = gy - y0, row = (y0 - gy0) * gw;
     for (let x = 0; x < width; x++) {
-      const gx = x / cellPx, x0 = gx | 0, fx = gx - x0;
-      const i = y0 * gw + x0;
-      const v = (grid[i] * (1 - fx) + grid[i + 1] * fx) * (1 - fy)
-        + (grid[i + gw] * (1 - fx) + grid[i + gw + 1] * fx) * fy;
-      out[y * width + x] = v; sumSq += v * v;
+      const gx = (x + ox) / cellPx, x0 = Math.floor(gx), fx = gx - x0, i = row + x0 - gx0;
+      out[y * width + x] = 1.5 * ((grid[i] * (1 - fx) + grid[i + 1] * fx) * (1 - fy) + (grid[i + gw] * (1 - fx) + grid[i + gw + 1] * fx) * fy);
     }
   }
-  const scale = 1 / Math.sqrt(sumSq / out.length || 1);
-  for (let i = 0; i < out.length; i++) out[i] *= scale;
   return out;
+}
+
+/** Pixels a tile must extend past the part it delivers so that blurs and shifts there see the same neighbours as in
+ *  the whole frame: the reach of chromatic aberration, halation, the film MTF bank and sharpening, added up (they
+ *  run one after another). Measured on the full frame `{ fullWidth, fullHeight, frameWidthMm }`. */
+export function tileMargin(pipeline, settings, { fullWidth, fullHeight, frameWidthMm = 36 }) {
+  const s = settings, pxPerMm = Math.max(fullWidth, fullHeight) / frameWidthMm;
+  const gaussReach = sigma => (!(sigma > 0.25) ? 0 : sigma > 2 ? 3 * Math.max(1, Math.round((Math.sqrt(1 + 4 * sigma * sigma) - 1) / 2)) : Math.ceil(3 * sigma));
+  let reach = 2;
+  if (s.chromaticAberration > 0) reach += Math.ceil((s.chromaticAberration / 100) * 0.006 * Math.hypot(fullWidth / 2, fullHeight / 2)) + 1;
+  if (s.halation > 0) reach += 3 * Math.round(Math.max(1, 0.3 * pxPerMm));
+  const mtf = pipeline.stock.mtf;
+  if (mtf && (s.filmSharpness ?? 100) > 0) {
+    let widest = 0;
+    for (const layer of mtf.layers) {
+      const widths = layer.bank.map(({ sigma }) => sigma * pxPerMm).filter(px => px >= 0.25).sort((a, b) => a - b);
+      let previous = 0, total = 0;
+      for (const px of widths) { total += gaussReach(Math.sqrt(Math.max(0, px * px - previous * previous))); previous = px; }
+      widest = Math.max(widest, total);
+    }
+    reach += widest;
+  }
+  if (s.sharpening > 0) reach += Math.max(1, Math.round(Math.max(fullWidth, fullHeight) / 900));
+  return reach;
+}
+
+/** Tiles covering a fullWidth × fullHeight frame: each delivers its core { x, y, w, h } and is rendered from the source
+ *  rectangle { sx, sy, sw, sh } (the core grown by `margin`, clipped to the frame), as `region: { x: sx, y: sy, … }`. */
+export function tileRects(fullWidth, fullHeight, tileSize, margin) {
+  const tiles = [];
+  for (let y = 0; y < fullHeight; y += tileSize) for (let x = 0; x < fullWidth; x += tileSize) {
+    const w = Math.min(tileSize, fullWidth - x), h = Math.min(tileSize, fullHeight - y);
+    const sx = Math.max(0, x - margin), sy = Math.max(0, y - margin);
+    tiles.push({ x, y, w, h, sx, sy, sw: Math.min(fullWidth, x + w + margin) - sx, sh: Math.min(fullHeight, y + h + margin) - sy });
+  }
+  return tiles;
 }
 
 function resampleScaled(plane, width, height, scale, cx = (width - 1) / 2, cy = (height - 1) / 2) {
@@ -349,10 +389,10 @@ export function processSpectralImage(image, pipeline, settings, options = {}) {
     const clumpUm = 6 + (s.grainSize / 100) * 34;
     const cellPx = clumpUm / pitchUm;
     const amplitude = (s.grain / 100) * 0.11 * Math.min(1, cellPx);
-    const random = seededRandom(s.seed);
-    const shared = noiseField(width, height, cellPx, random);
-    for (const plane of [LR, LG, LB]) {
-      const own = noiseField(width, height, cellPx, random);
+    const seed = (Math.trunc(s.seed) || 1) >>> 0, ox = region.x, oy = region.y;
+    const shared = noiseFieldAt(width, height, cellPx, seed, 0, ox, oy);
+    for (const [layer, plane] of [LR, LG, LB].entries()) {
+      const own = noiseFieldAt(width, height, cellPx, seed, layer + 1, ox, oy);
       for (let i = 0; i < n; i++) plane[i] += amplitude * (0.55 * shared[i] + 0.835 * own[i]);
     }
   }
@@ -440,7 +480,9 @@ export function processSpectralImage(image, pipeline, settings, options = {}) {
   const histogram = options.histogram === false ? null
     : { r: new Uint32Array(256), g: new Uint32Array(256), b: new Uint32Array(256) };
   for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const dither = ((i * 0.7548776662 + (i / width | 0) * 0.5698402910) % 1) - 0.5;
+    // Dither by position in the full frame (the same as before for a whole-frame render; tiles agree with it).
+    const fy = (i / width | 0) + region.y, fi = fy * region.fullWidth + (i % width) + region.x;
+    const dither = ((fi * 0.7548776662 + fy * 0.5698402910) % 1) - 0.5;
     const r = clamp(Math.round(encR[i] * 255 + dither), 0, 255);
     const g = clamp(Math.round(encG[i] * 255 + dither), 0, 255);
     const b = clamp(Math.round(encB[i] * 255 + dither), 0, 255);

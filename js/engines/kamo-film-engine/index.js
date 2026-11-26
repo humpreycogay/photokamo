@@ -4,10 +4,14 @@ import {
   engineJob, getSpectralOutput, getSpectralStock, sectionVisible, creativeBase, creativeNote,
   presetDefaults, presetFor, presetNote,
 } from './params.js';
-import { engineInfo, fullRenderSize, render as renderJob, warm as warmJob, dispose, onDownload } from './engine.js';
+import { engineInfo, fullRenderSize as sizeForJob, setPixelLimit, render as renderJob, warm as warmJob, dispose, onDownload } from './engine.js';
 
 export { sections, controls, controlByPath, defaultParams, defaultFor, sameValue, isChanged, sliderValue, formatValue,
-  optionLabel, optionGroup, sectionSummary, stockSummary, sectionVisible, engineInfo, fullRenderSize, dispose, onDownload };
+  optionLabel, optionGroup, sectionSummary, stockSummary, sectionVisible, engineInfo, setPixelLimit, dispose, onDownload };
+/** Size of a full-quality render of a width × height photo with these settings (creative looks are capped lower). */
+export const fullRenderSize = (width, height, params = null) => sizeForJob(width, height, params ? engineJob(normalizeParams(params)) : null);
+/** What caps a full render: 'engine' (creative looks: one pass) or 'device' (spectral: tiled up to the canvas limit). */
+export const fullRenderLimit = params => (engineJob(normalizeParams(params)).creative ? 'engine' : 'device');
 
 export function normalizeParams(params) {
   const stockId = controlByPath.stockId.options.includes(params?.stockId) ? params.stockId : defaultParams().stockId;

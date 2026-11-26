@@ -40,9 +40,9 @@ const canShareFiles = (() => {
 function exportDimensions() {
   const { width, height } = croppedSize();
   const module = activeModule();
-  const engine = module ? module.fullRenderSize(width, height) : { width, height, capped: false };
+  const engine = module ? module.fullRenderSize(width, height, advParams()) : { width, height, capped: false };
   const device = deviceCap(engine.width, engine.height, renderFrame());
-  return device.capped ? { ...device, limit: 'device' } : { ...engine, limit: engine.capped ? 'engine' : null };
+  return device.capped ? { ...device, limit: 'device' } : { ...engine, limit: engine.capped ? module.fullRenderLimit?.(advParams()) || 'engine' : null };
 }
 function exportEdge(size = state.exportSize) {
   const { width, height } = exportDimensions();

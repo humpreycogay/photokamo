@@ -1,7 +1,13 @@
 const coarsePointer = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-export const engineInfo = { name: 'Kamo', previewEdge: 900, previewLabel: 'Preview', previewDetail: 'full spectral model · 900 px', fullMaxPixels: coarsePointer ? 2e6 : 4e6 };
-export function fullRenderSize(width, height) {
-  const scale = Math.min(1, Math.sqrt(engineInfo.fullMaxPixels / (width * height)));
+// Full-quality renders: spectral looks render at full size in tiles (worker.js), up to tiledMaxPixels, which the app
+// sets to this device's canvas limit (setPixelLimit); creative looks render in one pass, so they keep fullMaxPixels.
+export const engineInfo = { name: 'Kamo', previewEdge: 900, previewLabel: 'Preview', previewDetail: 'full spectral model · 900 px', fullMaxPixels: coarsePointer ? 2e6 : 4e6, tiledMaxPixels: coarsePointer ? 16.7e6 : 24e6 };
+/** The largest full render (pixels) for an engine job (creative looks: one pass; spectral: tiled). */
+const maxPixelsFor = job => (job?.creative ? engineInfo.fullMaxPixels : engineInfo.tiledMaxPixels);
+/** The app's canvas limit for this device: full spectral renders stay within it. */
+export function setPixelLimit(pixels) { if (pixels > 0) engineInfo.tiledMaxPixels = pixels; }
+export function fullRenderSize(width, height, job = null) {
+  const scale = Math.min(1, Math.sqrt(maxPixelsFor(job) / (width * height)));
   return { width: Math.max(2, Math.round(width * scale)), height: Math.max(2, Math.round(height * scale)), capped: scale < 1 };
 }
 
@@ -67,7 +73,7 @@ export function render(bitmap, job, { quality = 'preview', signal, onProgress, o
   if (slot.image !== bitmap) { slot.worker.postMessage({ type: 'image', imageId, bitmap }); slot.image = bitmap; }
   const jobId = nextId++;
   return new Promise((resolve, reject) => {
-    send(slot, { type: 'render', jobId, imageId, job, quality, maxEdge: engineInfo.previewEdge, maxPixels: engineInfo.fullMaxPixels }, { resolve, reject, onProgress, onStatus });
+    send(slot, { type: 'render', jobId, imageId, job, quality, maxEdge: engineInfo.previewEdge, maxPixels: maxPixelsFor(job), tile: coarsePointer ? 512 : 1024 }, { resolve, reject, onProgress, onStatus });
     signal?.addEventListener('abort', () => {
       const pending = jobs.get(jobId); if (!pending) return;
       // Alone in its Worker: stop that Worker (no other render waits on it). Shared: drop just this result.

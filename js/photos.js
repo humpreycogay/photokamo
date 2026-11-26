@@ -462,7 +462,13 @@ async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from 
   const module = await loadEngine(look.engine);
   onEngine?.(module);
   const params = module.normalizeParams(look.engineParams[look.engine]);
-  const input = source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
+  // Full renders are full size (tiled) unless the caller needs less (a collage slot, a capped batch photo): then the
+  // engine gets the photo at that size, so it doesn't render pixels that are thrown away. Kamo's grain is sized to the
+  // frame, so the look is the same.
+  const sw = source.naturalWidth || source.width, sh = source.naturalHeight || source.height, shrink = !preview && edge < Math.max(sw, sh);
+  const input = shrink ? await createImageBitmap(source, { resizeWidth: Math.max(1, Math.round(sw * edge / Math.max(sw, sh))), resizeHeight: Math.max(1, Math.round(sh * edge / Math.max(sw, sh))), resizeQuality: 'high' })
+    : source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
+  if (shrink && source !== cropped) source.close?.();
   const raw = await module.render(input, cloneParams(params), { quality, onProgress });
   input.close();
   if (job?.stale) return null;

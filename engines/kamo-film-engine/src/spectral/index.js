@@ -10,7 +10,7 @@ export * from './catalog.js';
 export * from './controls.js';
 export { FilmPipeline, LUT_SIZE, OUTPUT_SPACES } from './pipeline.js';
 export { buildEquipment, buildFilmStock, buildPrintMaterial, buildStandards, fitMtf } from './materials.js';
-export { gaussianBlur, processSpectralImage, recoverHighlights, sampleLut } from './render.js';
+export { gaussianBlur, processSpectralImage, recoverHighlights, sampleLut, tileMargin, tileRects } from './render.js';
 
 /** The cached promise for `key`, made once; a rejected one is dropped so the next call tries again (a failed
  *  download must not stay failed until a reload). */
