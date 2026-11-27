@@ -1,6 +1,7 @@
 // Auto in the Adjust panel (plan_workflow.md Tasks 3–4): Auto white balance and the neutral picker. The analysis runs
 // in js/analysis/worker.js (started on first use) on the image Adjust receives (C1); the result is ordinary Adjust
 // edits, one undo step per photo (C2), worked out for each selected photo on its own (C3), never copied.
+import { ENHANCE_KEYS } from '../analysis/auto.js';
 import { engineInputPreview, releaseEngines, useEngine } from '../engine-host.js';
 import { change } from '../history.js';
 import { activePhoto, adjustmentsFor, editPhotoSettings, renderPhotoEdit, settingsOf } from '../photos.js';
@@ -71,7 +72,7 @@ async function eachTarget(label, run) {
   } finally { app.liveEdit = live; setBusy(false); status.textContent = ''; }
   return results;
 }
-function setBusy(busy) { for (const id of ['autoWbButton', 'pickNeutralButton']) { const button = $(`#${id}`); button.disabled = busy; button.toggleAttribute('aria-busy', busy); } }
+function setBusy(busy) { for (const id of ['autoButton', 'autoWbButton', 'pickNeutralButton']) { const button = $(`#${id}`); button.disabled = busy; button.toggleAttribute('aria-busy', busy); } }
 
 // ---------- Auto white balance ----------
 async function autoWhiteBalance() {
@@ -85,6 +86,36 @@ async function autoWhiteBalance() {
   if (results.length === 1) { const [r] = results; toast(r.failed ? 'Auto white balance didn’t work on this photo.' : r.changed ? `${r.reason}. Undo to go back.` : r.reason.startsWith('Removed') ? 'White balance is already as Auto would set it.' : `${r.reason}.`); return; }
   const changed = results.filter(r => r.changed).length, failed = results.filter(r => r.failed).length;
   toast(`Auto white balance: ${changed} of ${results.length} photos changed${failed ? `, ${failed} failed` : ''}. Undo on each photo.`);
+}
+
+// ---------- Auto (Task 4): light and colour in one step ----------
+async function autoEnhance() {
+  if (!state.image) return;
+  const results = await eachTarget('Auto', async photo => {
+    const settings = settingsOf(photo), { a, base } = valuesFor(settings);
+    const result = await analyse('enhance', await proxyInput(photo), { a, base });
+    const changed = applyResult(photo, result.values, base);
+    // The chip stays while these edits are as Auto left them (compared by value, like "edited" on looks).
+    const edits = settingsOf(photo).edits;
+    photo.auto = { edits: Object.fromEntries(ENHANCE_KEYS.map(key => [key, edits[key] || 0])), reasons: result.reasons, confidence: result.confidence };
+    return { changed, reasons: result.reasons, confidence: result.confidence };
+  });
+  syncAutoChip();
+  if (results.length === 1) {
+    const [r] = results;
+    toast(r.failed ? 'Auto didn’t work on this photo.' : r.changed ? 'Auto set light and colour. Undo to go back.' : 'Auto found nothing to change.');
+    return;
+  }
+  const changed = results.filter(r => r.changed).length, failed = results.filter(r => r.failed).length;
+  toast(`Auto: ${changed} of ${results.length} photos changed${failed ? `, ${failed} failed` : ''}. Undo on each photo.`);
+}
+/** The Auto chip and its reasons line, for the photo in view: shown while its Auto'd controls are untouched. */
+function syncAutoChip() {
+  const auto = activePhoto()?.auto, untouched = Boolean(auto) && ENHANCE_KEYS.every(key => (state.edits[key] || 0) === auto.edits[key]);
+  $('#autoChip').hidden = !untouched;
+  const reasons = $('#autoReasons');
+  reasons.hidden = !untouched;
+  reasons.textContent = untouched ? `Auto: ${auto.reasons.join(' · ') || 'nothing needed changing'}.${auto.confidence < .5 ? ' (Low confidence: check the result.)' : ''}` : '';
 }
 
 // ---------- Neutral picker: click a grey, or move the reticle with the arrow keys ----------
@@ -123,6 +154,7 @@ async function pickAt(u, v) {
   finally { setBusy(false); }
 }
 function buildAuto() {
+  $('#autoButton').addEventListener('click', autoEnhance);
   $('#autoWbButton').addEventListener('click', autoWhiteBalance);
   $('#pickNeutralButton').addEventListener('click', () => setPicking(!picker.on));
   // Clicks on the photo pick while picking (before zoom, split and compare see them).
@@ -145,4 +177,4 @@ function buildAuto() {
   elements.viewport.addEventListener('scroll', () => { if (picker.on) placeReticle(); }, true);
 }
 
-export { analyse, buildAuto, eachTarget, proxyInput, setBusy, valuesFor, applyResult };
+export { buildAuto, syncAutoChip };

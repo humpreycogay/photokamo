@@ -394,6 +394,33 @@ export async function checkAutoWB() {
   const white = castScene([1, 1, 1]).fill(255);
   expect('picker refuses a clipped spot', auto.pickWhiteBalance(white, 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'clipped');
   expect('picker refuses a black spot', auto.pickWhiteBalance(castScene([0, 0, 0]).map((v, i) => (i % 4 === 3 ? 255 : 3)), 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'dark');
+  // ---------- Task 4: Auto Enhance ----------
+  const scene = (scale, lift = 0) => { const d = castScene([1, 1, 1]); const { linearOf, encodeLinear } = auto; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = encodeLinear(lift + linearOf[d[i + c]] * scale); return d; };
+  const uniform = (values) => { const d = new Uint8ClampedArray(64 * 64 * 4); for (let p = 0; p < 64 * 64; p++) { const v = values(p); d.set([v, v, v, 255], p * 4); } return d; };
+  const fixtures = {
+    dark: scene(.25), bright: scene(2.2), flat: scene(.35, .12),
+    snow: uniform(p => (p % 64 < 4 && p < 400 ? 60 : 235 + (p % 7))), night: uniform(p => (p % 97 === 0 ? 250 : 8 + (p % 11))), normal: scene(1)
+  };
+  const stats = (data, values) => { const px = data.slice(); adjustPixels(px, 64, 64, { ...set({}), ...values }); let w = 0, b = 0; const ys = []; for (let i = 0; i < px.length; i += 4) { const [r, g, bb] = [px[i], px[i + 1], px[i + 2]]; if (r >= 253 || g >= 253 || bb >= 253) w++; else if (r <= 2 && g <= 2 && bb <= 2) b++; ys.push(.2126 * auto.linearOf[r] + .7152 * auto.linearOf[g] + .0722 * auto.linearOf[bb]); } ys.sort((x, y) => x - y); return { p50: ys[ys.length >> 1], white: w / ys.length, black: b / ys.length }; };
+  const zero = set({});
+  for (const [name, data] of Object.entries(fixtures)) {
+    const t0 = performance.now(), r = auto.autoEnhance(data, zero, zero), ms = performance.now() - t0;
+    const before = stats(data, {}), after = stats(data, r.values);
+    console.log(`  auto enhance ${name}: median ${before.p50.toFixed(3)} → ${after.p50.toFixed(3)}, white ${(before.white * 100).toFixed(1)} → ${(after.white * 100).toFixed(1)} %, black ${(before.black * 100).toFixed(1)} → ${(after.black * 100).toFixed(1)} % · ${Object.entries(r.values).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(', ') || 'no change'} · ${ms.toFixed(0)} ms · "${r.reasons.join(' · ')}"`);
+    expect(`${name}: no new clipping above 0.5 %`, after.white - before.white <= .005 + 1e-9 && after.black - before.black <= .005 + 1e-9);
+    expect(`${name}: < 250 ms (${ms.toFixed(0)})`, ms < 250);
+    const again = auto.autoEnhance(data, { ...zero, ...r.values }, zero);
+    expect(`${name}: Auto twice gives the same values`, JSON.stringify(again.values) === JSON.stringify(r.values));
+  }
+  const dark = auto.autoEnhance(fixtures.dark, zero, zero);
+  expect('dark: brightened toward a middle grey', dark.values.exposure > 0 && Math.abs(Math.log2(stats(fixtures.dark, dark.values).p50 / .18)) < Math.abs(Math.log2(stats(fixtures.dark, {}).p50 / .18)));
+  const snow = auto.autoEnhance(fixtures.snow, zero, zero);
+  expect(`snow: high-key kept (exposure ${snow.values.exposure})`, snow.highKey && snow.values.exposure >= -.3);
+  const night = auto.autoEnhance(fixtures.night, zero, zero);
+  expect(`night: low-key kept (exposure ${night.values.exposure})`, night.lowKey && night.values.exposure <= .8);
+  // A Basic preset at 60 %: edits are measured from its values, so its contrast and warmth stay.
+  const preset = set({ temperature: 13.2, contrast: 12, saturation: -9.6 }), withPreset = auto.autoEnhance(fixtures.normal, preset, preset);
+  expect(`preset at 60 %: its contrast/warmth kept (contrast ${withPreset.values.contrast}, temperature ${withPreset.values.temperature})`, Math.abs(withPreset.values.contrast - 12) <= 30 && Math.abs(withPreset.values.temperature - 13.2) <= 40);
   return failures;
 }
 

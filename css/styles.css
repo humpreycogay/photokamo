@@ -440,6 +440,9 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 .auto-row [aria-pressed=true] { background:var(--text); color:var(--bg); }
 .auto-status { margin:0 0 10px; font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
 .auto-status:empty { display:none; }
+.auto-reasons { margin:0 0 10px; font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
+.auto-chip { display:inline-block; margin-left:6px; padding:1px 8px; border:1px solid var(--accent); border-radius:10px; color:var(--accent); font-size:var(--fs-xs); font-weight:600; vertical-align:middle; }
+.auto-chip[hidden] { display:none; }
 body.picking-neutral #previewCanvas { cursor:crosshair; }
 .neutral-reticle { position:fixed; z-index:30; width:28px; height:28px; margin:-14px 0 0 -14px; border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 2px #000, inset 0 0 0 1px #000; pointer-events:none; }
 .neutral-reticle:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
@@ -980,7 +983,7 @@ body.is-film .render-divider { display:block; }
   .histogram { margin:0 16px 8px; padding-bottom:6px; }
   .auto-row { margin:0 16px 6px; flex-wrap:nowrap; }
   .auto-row .button { flex:1; padding:0 8px; }
-  .auto-status { margin:0 16px 8px; }
+  .auto-status,.auto-reasons { margin:0 16px 8px; }
   .histogram-graph { height:40px; }
   .look-search input { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
   .look-search-status { margin:0 16px; }

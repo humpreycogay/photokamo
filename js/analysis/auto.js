@@ -145,6 +145,98 @@ export function pickWhiteBalance(data, width, height, x, y, size, a, base) {
   return { change: true, ...fitWhiteBalance(data, a, picked.gains, base), reason: castReason(picked.gains) };
 }
 
+// ---------- Auto Enhance (Task 4, A§5.2 and A§5.4) ----------
+export const ENHANCE_KEYS = ['exposure', 'brightness', 'contrast', 'highlights', 'shadows', 'temperature', 'tint', 'vibrance'];
+const RANGE = { exposure: [-2, 2, .05], brightness: [-100, 100, 1], contrast: [-100, 100, 1], highlights: [-100, 100, 1], shadows: [-100, 100, 1], temperature: [-100, 100, 1], tint: [-100, 100, 1], vibrance: [-100, 100, 1] };
+const LAMBDA = { exposure: .02, brightness: .04, contrast: .06, highlights: .08, shadows: .08, temperature: .05, tint: .05, vibrance: .1 };
+const quantize = (key, v) => { const [min, max, step] = RANGE[key]; return Math.min(max, Math.max(min, Number((Math.round(v / step) * step).toFixed(4)))); };
+// Temperature and Tint are code-value offsets: left to the descent they act as extra brightness knobs. They come from
+// the white-balance fit only; the descent moves the tone controls.
+const DESCENT_KEYS = ['exposure', 'brightness', 'contrast', 'highlights', 'shadows']; // Vibrance stays the look's (it only moved as a side effect on luminance)
+
+/** Statistics of a rendered sample: linear-luminance percentiles and clipped fractions (code values, as Task 2). */
+function stats(rgba) {
+  const ys = [], n = rgba.length / 4; let white = 0, black = 0;
+  for (let i = 0; i < rgba.length; i += 4) {
+    const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+    ys.push(lumaOf(LINEAR[r], LINEAR[g], LINEAR[b]));
+    if (r >= 253 || g >= 253 || b >= 253) white++; else if (r <= 2 && g <= 2 && b <= 2) black++;
+  }
+  ys.sort((x, y) => x - y);
+  const at = p => ys[Math.min(ys.length - 1, Math.floor(p * (ys.length - 1)))];
+  return { p5: at(.05), p50: at(.5), p95: at(.95), p99: at(.99), p995: at(.995), white: white / n, black: black / n };
+}
+
+/** Auto Enhance for one photo. `data`: the Adjust input (RGBA, ≤ 256 px); `a`: effective Adjust values; `base`: the
+ *  look's own values (edits are measured from them, so a preset's character stays). → { values (effective, the 8 keys),
+ *  reasons [], confidence, lowKey/highKey }. Deterministic. */
+export function autoEnhance(data, a, base) {
+  const sample = samplePixels(data, 4096), fixed = { ...a, grain: 0, vignette: 0 };
+  const start = { ...fixed, ...Object.fromEntries(ENHANCE_KEYS.map(key => [key, base[key]])) };
+  const source = stats(render(sample, start)); // the look as it is, without edits: its own clipping isn't penalised
+  // A§5.2: exposure from the input's luminance (code-value exposure: 2^EV multiplies code values).
+  const input = stats(sample);
+  let ev = Math.min(1.5, Math.max(-1.5, Math.log2(.18 / Math.max(source.p50, 1e-6)) / 2.2));
+  // (keyed scenes: computed below, before the first render, from the same median) // ≈ code-value stops for a linear median shift
+  if (ev > 0) ev = Math.min(ev, Math.log2(.98 / Math.max(source.p995, 1e-6)) / 2.2);
+  let dark = 0, bright = 0; for (let i = 0; i < sample.length; i += 4) { const y = lumaOf(LINEAR[sample[i]], LINEAR[sample[i + 1]], LINEAR[sample[i + 2]]); if (y < .03) dark++; else if (y > .8) bright++; } // low-key: 70 % below Y 0.03 (A§5.2 says 0.1, which also caught photos two stops under)
+  const pixels = sample.length / 4, lowKey = dark > .7 * pixels, highKey = bright > .7 * pixels;
+  const keyed = lowKey || highKey;
+  if (keyed) ev /= 2; // intentional low-/high-key scenes keep most of their mood
+  const wb = estimateCast(data);
+  const x = { ...Object.fromEntries(ENHANCE_KEYS.map(key => [key, base[key]])), exposure: quantize('exposure', base.exposure + ev) };
+  if (wb.confidence >= MIN_CONFIDENCE) Object.assign(x, fitWhiteBalance(data, { ...start, exposure: x.exposure }, wb.gains, base));
+  const bounds = key => {
+    const b = base[key], [min, max] = RANGE[key];
+    const reach = key === 'exposure' ? 1.5 : key === 'temperature' || key === 'tint' ? 40 : key === 'vibrance' ? null : 30;
+    return key === 'vibrance' ? [Math.max(min, b), Math.min(max, b + 25)] : [Math.max(min, b - reach), Math.min(max, b + reach)];
+  };
+  // Low-/high-key: aim three-quarters of the way toward the scene's own median, not at middle grey.
+  const e = 1e-4, midTarget = keyed ? 2 ** (.25 * Math.log2(.18) + .75 * Math.log2(Math.max(source.p50, 1e-4))) : .18;
+  const cache = new Map();
+  const loss = values => {
+    const key = ENHANCE_KEYS.map(k => values[k]).join();
+    if (cache.has(key)) return cache.get(key);
+    const s = stats(render(sample, { ...fixed, ...values }));
+    let l = 4 * Math.log2((s.p50 + e) / (midTarget + e)) ** 2 + 2 * Math.max(0, .02 - s.p5) ** 2 + 2 * Math.max(0, s.p99 - .98) ** 2
+      + 50 * Math.max(0, s.white - source.white - .005) ** 2 + 30 * Math.max(0, s.black - source.black - .005) ** 2 + .5 * Math.max(0, .55 - (s.p95 - s.p5)) ** 2;
+    for (const k of ENHANCE_KEYS) l += LAMBDA[k] * ((values[k] - base[k]) / (RANGE[k][1] - RANGE[k][0])) ** 2;
+    cache.set(key, { l, s }); return { l, s };
+  };
+  // Coordinate descent: fixed order, steps of 25, 10, 5, 2 and 1 % of each range (never under the slider step).
+  let best = loss(x).l;
+  for (const fraction of [.25, .1, .05, .02, .01]) {
+    for (let pass = 0; pass < 3; pass++) {
+      let improved = false;
+      for (const key of DESCENT_KEYS) {
+        const [lo, hi] = bounds(key), step = Math.max(RANGE[key][2], quantize(key, (RANGE[key][1] - RANGE[key][0]) * fraction));
+        for (const candidate of [x[key] - step, x[key] + step]) {
+          const v = quantize(key, candidate); if (v < lo - 1e-9 || v > hi + 1e-9) continue;
+          const l = loss({ ...x, [key]: v }).l;
+          if (l < best - 1e-9 || (Math.abs(l - best) <= 1e-9 && Math.abs(v - base[key]) < Math.abs(x[key] - base[key]))) { best = l; x[key] = v; improved = true; }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+  // Clip guard: back exposure off one step at a time until new clipping is ≤ 0.5 % at each end.
+  for (let i = 0; i < 80; i++) {
+    const { s } = loss(x);
+    if (s.white - source.white <= .005 && s.black - source.black <= .005) break;
+    const step = RANGE.exposure[2], toward = s.white - source.white > .005 ? -step : step;
+    const next = quantize('exposure', x.exposure + toward); if (next === x.exposure) break; x.exposure = next;
+  }
+  const reasons = [], d = key => x[key] - base[key];
+  if (d('exposure') >= .1 || d('brightness') >= 5) reasons.push('Brightened midtones'); else if (d('exposure') <= -.1 || d('brightness') <= -5) reasons.push('Toned down the brightness');
+  if (d('highlights') <= -5) reasons.push('protected highlights'); if (d('shadows') >= 5) reasons.push('lifted shadows');
+  if (d('contrast') >= 5) reasons.push('added contrast'); else if (d('contrast') <= -5) reasons.push('softened contrast');
+  if (Math.abs(d('temperature')) >= 3 || Math.abs(d('tint')) >= 3) reasons.push('corrected colour'); if (d('vibrance') >= 5) reasons.push('added vibrance');
+  if (wb.confidence < MIN_CONFIDENCE) reasons.push('left colour as it was (it looks intentional)');
+  if (keyed) reasons.push(lowKey ? 'kept the dark mood' : 'kept the bright, airy look');
+  const confidence = Math.min(1, (wb.confidence >= MIN_CONFIDENCE ? .5 + wb.confidence / 2 : .6) * (keyed ? .7 : 1));
+  return { values: Object.fromEntries(ENHANCE_KEYS.map(key => [key, x[key]])), reasons, confidence, lowKey, highKey, input: { p50: input.p50 } };
+}
+
 /** CIE76 ΔE of an 8-bit sRGB colour from the neutral grey of the same lightness (fixtures). */
 export function deltaEFromNeutral(r8, g8, b8) {
   const [r, g, b] = [LINEAR[r8], LINEAR[g8], LINEAR[b8]];

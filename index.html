@@ -392,7 +392,7 @@
         </section>
 
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
-          <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
+          <div class="panel-heading"><h2>Adjustments <span class="auto-chip" id="autoChip" hidden title="Light and colour set by Auto">Auto</span></h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
           <p class="engine-wait-note" data-engine-wait hidden></p>
           <details class="histogram" id="histogram" open>
             <summary>Histogram</summary>
@@ -400,10 +400,12 @@
             <div class="histogram-foot"><p class="histogram-text" id="histogramText"></p><button class="chip" id="clipToggle" type="button" aria-pressed="false" title="Hatch clipped shadows and highlights on the photo">Show clipping</button></div>
           </details>
           <div class="auto-row" id="autoRow" role="group" aria-label="Automatic adjustments">
+            <button class="button button-secondary" id="autoButton" type="button" title="Set light and colour for this photo (one undo step)">Auto</button>
             <button class="button button-ghost" id="autoWbButton" type="button">Auto white balance</button>
             <button class="button button-ghost" id="pickNeutralButton" type="button" aria-pressed="false" title="Click something that should be grey or white">Pick neutral</button>
           </div>
           <p class="auto-status" id="autoStatus" role="status"></p>
+          <p class="auto-reasons" id="autoReasons" hidden></p>
           <p class="slider-hint" id="adjustResetHint">Double-click a slider, or press Delete while it has focus, to reset it.</p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">

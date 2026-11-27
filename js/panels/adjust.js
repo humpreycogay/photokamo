@@ -6,6 +6,7 @@ import { syncLooks } from '../looks.js';
 import { adjustmentSections } from '../presets.js';
 import { scheduleRender } from '../preview.js';
 import { $, baseValue, controlSpec, editCount, effectiveValue, elements, roundToStep, state } from '../state.js';
+import { syncAutoChip } from './auto.js';
 // ↑ imports
 function formatValue(key, value) {
   const { step, suffix } = controlSpec[key];
@@ -104,6 +105,7 @@ function syncAdjustments() {
   elements.adjustBadge.hidden = !count;
   elements.adjustBadge.innerHTML = count ? `${count}<span class="visually-hidden"> edited</span>` : '';
   $('#resetAdjustments').disabled = !count;
+  syncAutoChip();
   syncMobileAdjust();
 }
 
