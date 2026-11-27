@@ -13,6 +13,7 @@ import { buildLens } from './panels/lens.js';
 import { setTab } from './panels/tabs.js';
 import { buildText } from './panels/text.js';
 import { buildHistogram } from './panels/histogram.js';
+import { buildAuto } from './panels/auto.js';
 import { addFiles, buildApply, buildStrip, closePhoto, syncStrip } from './photos.js';
 import { defaultBorder, presets } from './presets.js';
 import { drawPreview, scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './preview.js';
@@ -30,7 +31,7 @@ import { initTheme } from './theme.js';
 
 
 // ---------- Wiring ----------
-initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); buildHistogram({ redraw: drawPreview }); syncControls(); updateButtons(); initRecovery();
+initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); buildHistogram({ redraw: drawPreview }); buildAuto(); syncControls(); updateButtons(); initRecovery();
 // Saved engines once the page is idle (Cache Storage names only; badge sizes wait for the film tiles).
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges({ sizes: false }), { timeout: 3000 });
 document.body.dataset.tab = 'looks';

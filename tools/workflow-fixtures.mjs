@@ -351,17 +351,64 @@ export async function checkHistogram() {
   return failures;
 }
 
+/** A 64 × 64 test scene in linear light: grey steps, skin, sky and foliage patches, then a cast (gains, linear). */
+export function castScene(gains = [1, 1, 1], { sunset = false } = {}) {
+  const { encodeLinear } = castScene.auto;
+  const patches = sunset ? [[.9, .35, .08], [.8, .3, .05], [.6, .2, .04], [.95, .5, .12], [.7, .25, .06], [.4, .12, .03], [.85, .42, .1], [.5, .16, .05]]
+    : [[.05, .05, .05], [.1, .1, .1], [.18, .18, .18], [.3, .3, .3], [.45, .45, .45], [.6, .6, .6], [.42, .28, .2], [.2, .35, .55], [.12, .22, .08], [.6, .15, .15], [.25, .25, .25], [.48, .48, .48]]; // greys are grey; colours are clearly coloured
+  const data = new Uint8ClampedArray(64 * 64 * 4);
+  for (let p = 0; p < 64 * 64; p++) {
+    const x = p % 64, y = Math.floor(p / 64), patch = patches[(Math.floor(y / 16) * 4 + Math.floor(x / 16)) % patches.length];
+    for (let c = 0; c < 3; c++) data[p * 4 + c] = encodeLinear(patch[c] * gains[c]);
+    data[p * 4 + 3] = 255;
+  }
+  return data;
+}
+/** Task 3 (Auto WB): tungsten fixture corrected, sunset left alone, deterministic and idempotent, picker. Returns failures. */
+export async function checkAutoWB() {
+  const auto = castScene.auto = await import(`${repo}/js/analysis/auto.js`);
+  const { adjustPixels } = await import(`${repo}/js/renderer.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`auto WB: ${name}`); };
+  const greyPatch = (data, a) => { const px = data.slice(0, 64 * 64 * 4); adjustPixels(px, 64, 64, { ...set({}), ...a }); const i = (34 * 64 + 40) * 4; return [px[i], px[i + 1], px[i + 2]]; }; // the 0.18 grey patch
+  for (const [name, gains] of [['tungsten', [1.3, 1, .68]], ['daylight-blue', [.82, 1, 1.25]], ['green fluorescent', [.92, 1.15, .95]]]) {
+    const data = castScene(gains), before = auto.deltaEFromNeutral(...greyPatch(data, {}));
+    const t0 = performance.now(), r = auto.autoWhiteBalance(data, set({}), { temperature: 0, tint: 0 }), ms = performance.now() - t0;
+    const after = r.change ? auto.deltaEFromNeutral(...greyPatch(data, { temperature: r.temperature, tint: r.tint })) : before;
+    console.log(`  auto WB ${name}: grey ΔE ${before.toFixed(1)} → ${after.toFixed(1)} (temperature ${r.temperature}, tint ${r.tint}, confidence ${r.confidence.toFixed(2)}, ${ms.toFixed(0)} ms) "${r.reason}"`);
+    expect(`${name}: grey patch ΔE < 3 after (${after.toFixed(2)})`, r.change && after < 3);
+    expect(`${name}: < 150 ms (${ms.toFixed(0)})`, ms < 150);
+    const again = auto.autoWhiteBalance(data, { ...set({}), temperature: r.temperature, tint: r.tint }, { temperature: 0, tint: 0 });
+    expect(`${name}: Auto twice gives the same values`, again.temperature === r.temperature && again.tint === r.tint);
+  }
+  const sunset = auto.autoWhiteBalance(castScene([1, 1, 1], { sunset: true }), set({}), { temperature: 0, tint: 0 });
+  console.log(`  auto WB sunset: confidence ${sunset.confidence.toFixed(2)} → ${sunset.change ? 'changed' : 'no change'}`);
+  expect('sunset: low confidence, no change', !sunset.change && sunset.confidence < auto.MIN_CONFIDENCE);
+  const neutral = auto.autoWhiteBalance(castScene([1, 1, 1]), set({}), { temperature: 0, tint: 0 });
+  expect(`neutral scene: (almost) no change (${neutral.temperature}, ${neutral.tint})`, !neutral.change || (Math.abs(neutral.temperature) <= 2 && Math.abs(neutral.tint) <= 2));
+  // A preset's own warmth stays: base temperature 22 → the answer is about 22 plus the cast correction, not 0.
+  const warmBase = auto.autoWhiteBalance(castScene([1, 1, 1]), set({ temperature: 22 }), { temperature: 22, tint: 0 });
+  expect(`a look's own warmth is kept (${warmBase.temperature})`, !warmBase.change || Math.abs(warmBase.temperature - 22) <= 2);
+  const data = castScene([1.3, 1, .68]);
+  const picked = auto.pickWhiteBalance(data, 64, 64, 40, 34, 5, set({}), { temperature: 0, tint: 0 });
+  expect(`picker on the grey patch neutralises it (ΔE ${auto.deltaEFromNeutral(...greyPatch(data, picked)).toFixed(2)})`, picked.change && auto.deltaEFromNeutral(...greyPatch(data, picked)) < 2);
+  const white = castScene([1, 1, 1]).fill(255);
+  expect('picker refuses a clipped spot', auto.pickWhiteBalance(white, 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'clipped');
+  expect('picker refuses a black spot', auto.pickWhiteBalance(castScene([0, 0, 0]).map((v, i) => (i % 4 === 3 ? 255 : 3)), 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'dark');
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()];
-  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures]) console.log('FAIL', failure);
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()], autoFailures = await checkAutoWB();
+  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures, ...autoFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
   console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
   console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
   console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
   console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search and histogram checks, ${searchFailures.length} failed`);
-  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length ? 1 : 0);
+  console.log(`${autoFailures.length ? 'FAIL' : 'OK'}: auto checks, ${autoFailures.length} failed`);
+  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length || autoFailures.length ? 1 : 0);
 }

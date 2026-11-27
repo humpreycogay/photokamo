@@ -399,6 +399,11 @@
             <canvas class="histogram-graph" id="histogramCanvas" width="512" height="120" role="img" aria-label="Histogram of the edited photo: brightness and red, green and blue" aria-describedby="histogramText"></canvas>
             <div class="histogram-foot"><p class="histogram-text" id="histogramText"></p><button class="chip" id="clipToggle" type="button" aria-pressed="false" title="Hatch clipped shadows and highlights on the photo">Show clipping</button></div>
           </details>
+          <div class="auto-row" id="autoRow" role="group" aria-label="Automatic adjustments">
+            <button class="button button-ghost" id="autoWbButton" type="button">Auto white balance</button>
+            <button class="button button-ghost" id="pickNeutralButton" type="button" aria-pressed="false" title="Click something that should be grey or white">Pick neutral</button>
+          </div>
+          <p class="auto-status" id="autoStatus" role="status"></p>
           <p class="slider-hint" id="adjustResetHint">Double-click a slider, or press Delete while it has focus, to reset it.</p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">
@@ -690,6 +695,7 @@
     </aside>
   </main>
 
+  <div class="neutral-reticle" id="neutralReticle" tabindex="-1" role="slider" aria-label="Neutral picker: arrow keys move (Shift for bigger steps), Enter picks this spot, Escape cancels" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
   <div class="photo-loading" id="photoLoading" role="status" hidden><span class="engine-wait-spinner" aria-hidden="true"></span><span id="photoLoadingText">Opening photos…</span></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
