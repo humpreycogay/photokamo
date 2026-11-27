@@ -2,7 +2,7 @@
 import { openCamera } from './camera.js';
 import { collage, deleteSavedCollage, enterCollage, exitCollage, openExport, openSavedCollage, popoverOpen, redo, undo, updateButtons } from './collage-host.js';
 import { buildAdvancedPanel, cancelFullRender, removeSavedEngines, renderFullQuality, scheduleAdvancedRender, syncAdvancedPanel, syncControls, syncEngineStorage, syncRenderStatus } from './engine-host.js';
-import { buildBatch, downloadPhoto, freeExport, prepareTimer, preparedExport, schedulePrepare, sharePhoto, syncExportOptions } from './export.js';
+import { buildBatch, downloadPhoto, syncPhotoPrivacy, freeExport, prepareTimer, preparedExport, schedulePrepare, sharePhoto, syncExportOptions } from './export.js';
 import { beginSlider, change, commitSlider, endSlider } from './history.js';
 import { buildLooks, engineReady, filmFilterMatches, filmTileLooks, filterMatches, pickEngineFor, pickFilmLook, pickLook, syncDownloadBadges, syncLooks, toggleFavorite } from './looks.js';
 import { defaultOptics } from './optics/index.js';
@@ -12,12 +12,17 @@ import { buildApplyRows, buildFrames } from './panels/frames.js';
 import { buildLens } from './panels/lens.js';
 import { setTab } from './panels/tabs.js';
 import { buildText } from './panels/text.js';
+import { buildHistogram } from './panels/histogram.js';
+import { buildAuto } from './panels/auto.js';
+import { buildHeal } from './panels/heal.js';
 import { addFiles, buildApply, buildStrip, closePhoto, syncStrip } from './photos.js';
 import { defaultBorder, presets } from './presets.js';
-import { scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './preview.js';
+import { drawPreview, scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './preview.js';
 import { defaultCrop } from './renderer.js';
 import { loadSample, renderStartCollage } from './start-screen.js';
 import { $, PRESETS, app, elements, filmLookById, isFilm, mobileQuery, sheetQuery, state, toast } from './state.js';
+import { initRecovery } from './session/recovery.js';
+import { emptyHealing } from './heal/model.js';
 import { initTheme } from './theme.js';
 // ↑ imports
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
@@ -28,7 +33,7 @@ import { initTheme } from './theme.js';
 
 
 // ---------- Wiring ----------
-initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
+initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); buildHistogram({ redraw: drawPreview }); buildAuto(); buildHeal(); syncControls(); updateButtons(); initRecovery();
 // Saved engines once the page is idle (Cache Storage names only; badge sizes wait for the film tiles).
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges({ sizes: false }), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
@@ -102,6 +107,36 @@ $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
 $('#sampleButton').addEventListener('click', loadSample);
 $('#cameraButton').addEventListener('click', openCamera);
 $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click());
+// Filmstrip "+": phones open the system picker (it offers the camera too); on a computer it offers both choices,
+// since a file picker there can't take a photo.
+{
+  const add = $('#stripAdd'), menu = $('#stripAddMenu');
+  const items = () => [...menu.querySelectorAll('[data-strip-add]')];
+  add.addEventListener('click', () => {
+    if (mobileQuery.matches) { elements.fileInput.click(); return; }
+    menu.togglePopover();
+  });
+  menu.addEventListener('toggle', event => {
+    const open = event.newState === 'open';
+    add.setAttribute('aria-expanded', open);
+    if (!open) return;
+    const rect = add.getBoundingClientRect(), height = menu.offsetHeight;
+    menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, rect.left))}px`;
+    menu.style.top = `${rect.top - height - 6 >= 8 ? rect.top - height - 6 : rect.bottom + 6}px`; // above the strip when it fits
+    items()[0].focus();
+  });
+  menu.addEventListener('click', event => {
+    const item = event.target.closest('[data-strip-add]'); if (!item) return;
+    menu.hidePopover(); add.focus();
+    if (item.dataset.stripAdd === 'camera') openCamera(); else elements.fileInput.click();
+  });
+  menu.addEventListener('keydown', event => {
+    const list = items(), index = list.indexOf(document.activeElement);
+    const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: list.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault(); list[(next + list.length) % list.length].focus();
+  });
+}
 elements.fileMenu.addEventListener('click', event => {
   const open = event.target.closest('[data-collage-open]'), remove = event.target.closest('[data-collage-delete]');
   if (open) { elements.fileMenu.hidePopover(); openSavedCollage(open.dataset.collageOpen); return; }
@@ -112,6 +147,7 @@ elements.fileMenu.addEventListener('click', event => {
 });
 elements.fileMenu.addEventListener('toggle', event => {
   if (event.newState !== 'open') return;
+  syncPhotoPrivacy();
   const rect = elements.fileChip.getBoundingClientRect();
   elements.fileMenu.style.left = `${Math.max(8, rect.left)}px`;
   elements.fileMenu.style.top = `${rect.bottom + 6}px`;
@@ -119,7 +155,7 @@ elements.fileMenu.addEventListener('toggle', event => {
 });
 elements.fileMenu.addEventListener('keydown', event => {
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden]),[data-collage-open],[data-collage-delete]')];
+  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden]),[data-collage-open],[data-collage-delete],#sessionToggle:not([hidden])')];
   const next = items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
   event.preventDefault(); next.focus();
 });
@@ -162,7 +198,7 @@ document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListen
 $('#zoomIn').addEventListener('click', () => stepZoom(1)); $('#zoomOut').addEventListener('click', () => stepZoom(-1));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; state.text = []; state.optics = defaultOptics(); }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; state.text = []; state.optics = defaultOptics(); state.healing = emptyHealing(); }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', async () => {
   // Film looks only when their engine needs no download: Surprise me never starts one.

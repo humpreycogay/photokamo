@@ -1,5 +1,5 @@
-// Saved collage documents for the current photo session. The workflow recovery database will persist this array when
-// plan_workflow.md Task 5 lands; keeping storage separate here avoids pretending ephemeral photo ids survive reloads.
+// Saved collage documents for the current photo session. Session recovery (js/session/recovery.js) keeps this list in
+// the session record, next to the photos whose ids it refers to, so both come back together after a reload.
 import { templateById, slotCount } from './templates.js';
 import { cloneDoc, fitSlots } from './model.js';
 import { cleanStickers } from './stickers.js';

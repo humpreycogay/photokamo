@@ -25,7 +25,7 @@ function ratioLabel(crop) {
   return ratio ? ratio[2] || ratio[1] : crop.ratio;
 }
 const cloneCrop = crop => ({ ...defaultCrop, ...crop });
-const cropKey = () => JSON.stringify([state.imageId, state.crop]);
+const cropKey = () => JSON.stringify([state.imageId, state.crop, state.healing.rev]); // healing is drawn with the crop (Task 9)
 // `size` is the photo (an image, or { naturalWidth, naturalHeight } for a photo not in view).
 const cropGeo = (crop = state.crop, size = state.image) => cropGeometry(size.naturalWidth, size.naturalHeight, crop);
 const cropUi = { k: 1, vw: 0, vh: 0, key: '', thumb: null, thumbId: -1, start: null, timer: 0, drag: null, pointers: new Map(), previousTab: 'looksTab' };

@@ -11,14 +11,19 @@ import { renderQueue, scheduleActiveThumb } from './photos.js';
 import { defaultAdjustments } from './presets.js';
 import { cropSource, drawTexts, frameCanvas, isIdentityCrop, renderImage, scaledCanvas } from './renderer.js';
 import { $, PREVIEW_EDGE, ZOOM_MAX_EDGE, effectiveAdjustments, elements, isFilm, state, toast } from './state.js';
+import { drawClipOverlay, scheduleHistogram } from './panels/histogram.js';
+import { hasHealing } from './heal/model.js';
+import { patchesFor } from './heal/render.js';
+import { drawHealOverlay } from './panels/heal.js';
 // ↑ imports
 const croppedCache = { key: '', sizes: new Map() };
 function croppedSource(maxEdge = Infinity) {
-  if (isIdentityCrop(state.crop)) return state.image;
+  if (isIdentityCrop(state.crop) && !hasHealing(state.healing)) return state.image;
   const key = cropKey();
   if (croppedCache.key !== key) { croppedCache.key = key; croppedCache.sizes.clear(); }
-  if (maxEdge > ZOOM_MAX_EDGE) return cropSource(state.image, state.crop, maxEdge);
-  if (!croppedCache.sizes.has(maxEdge)) croppedCache.sizes.set(maxEdge, cropSource(state.image, state.crop, maxEdge));
+  const crop = () => cropSource(state.image, state.crop, maxEdge, patchesFor(state.image, state.healing, state.crop, maxEdge));
+  if (maxEdge > ZOOM_MAX_EDGE) return crop();
+  if (!croppedCache.sizes.has(maxEdge)) croppedCache.sizes.set(maxEdge, crop());
   return croppedCache.sizes.get(maxEdge);
 }
 // The cropped source with the Lens optics applied (js/optics, in a Worker): the start of every look.
@@ -106,7 +111,9 @@ function drawPreview() {
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, Math.round(width * state.split), height); ctx.clip();
     ctx.drawImage(state.originalCanvas, 0, 0, width, height); ctx.restore();
   }
-  drawTextOverlay();
+  drawClipOverlay(ctx, state.split);
+  drawTextOverlay(); drawHealOverlay();
+  scheduleHistogram(); // display only: reads this preview once it settles
 }
 
 

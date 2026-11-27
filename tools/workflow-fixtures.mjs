@@ -76,12 +76,441 @@ export async function checkGolden(adjustPixels, sha) {
   return failures;
 }
 
+/** Task 5 (session recovery): the pure record checks, history budget, fingerprint and collage slot ids. Returns failures. */
+export async function checkSession() {
+  const v = await import(`${repo}/js/session/validate.js`);
+  const model = await import(`${repo}/js/collage/model.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`session: ${name}`); };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const known = { engines: new Set(['kamo-film-engine']), presets: new Set(['original', 'golden-hour']), controls: { exposure: { min: -2, max: 2 }, contrast: { min: -100, max: 100 } } };
+  const snap = { look: { engine: 'presets', presetId: 'golden-hour', strength: 60, engineParams: { 'kamo-film-engine': { iso: 400, curve: [1, 2] } }, myLookId: null },
+    edits: { exposure: .35, contrast: -12 }, crop: { ratio: 'orig', zoom: 1 }, optics: { lens: 'x' }, frame: { id: 'paper', border: { width: 4 }, color: null }, text: [{ content: 'hi', x: .5 }], healing: { rev: 'r1', strokes: [{ m: 'heal', p: [100, 200], r: .01, h: .5, o: 1, d: [300, -40] }] } };
+  expect('a real snapshot is kept as it is', same(v.sanitizeSettings(snap, known), snap));
+  const odd = v.sanitizeSettings({ ...snap, look: { ...snap.look, engine: 'gone', presetId: 'gone' }, edits: { exposure: 0, contrast: 'x', bogus: 3, }, text: [{}], frame: 7 }, known);
+  expect('unknown engine/preset/keys fall back', odd.look.engine === 'presets' && odd.look.presetId === 'original' && same(odd.edits, {}) && odd.text.length === 0 && odd.frame === 'none');
+  expect('a film look keeps its look id', v.sanitizeSettings({ ...snap, look: { ...snap.look, engine: 'kamo-film-engine', presetId: 'x', myLookId: 'film:portra' } }, known).look.myLookId === 'film:portra');
+  for (const bad of [null, 1, [], {}, { look: null }, { look: { engine: 1, presetId: 'a', strength: 1 } }, { look: { engine: 'presets', presetId: 'a', strength: NaN } }]) expect(`rejects ${JSON.stringify(bad)}`, v.sanitizeSettings(bad, known) === null);
+  const many = Array.from({ length: 60 }, (_, i) => ({ i }));
+  let h = v.pruneHistory(many, many.slice(0, 3));
+  expect('undo capped at 50, newest kept', h.undo.length === 50 && h.undo[49].i === 59 && h.redo.length === 3);
+  const big = n => Array.from({ length: n }, (_, i) => ({ i, pad: 'x'.repeat(1000) }));
+  h = v.pruneHistory(big(10), big(10), { bytes: 10500 }); // ~1015 B each: all of undo fits, no redo does
+  expect('byte budget drops redo first, then oldest undo', h.redo.length === 0 && h.undo.length === 10);
+  h = v.pruneHistory(big(10), big(10), { bytes: 5000 });
+  expect('then oldest undo', h.redo.length === 0 && h.undo.length === 4 && h.undo[3].i === 9);
+  const record = { photoId: 3, sourceId: 'sha256-ab', name: 'a.jpg', width: 10, height: 8, v: 1, rev: 4, settings: snap, undo: [snap, { junk: 1 }], redo: [] };
+  const clean = v.sanitizePhotoRecord(record, known, 4);
+  expect('photo record kept, bad history entries dropped', clean && clean.undo.length === 1 && same(clean.settings, snap));
+  expect('photo record newer than the session is ignored', v.sanitizePhotoRecord(record, known, 3) === null);
+  expect('photo record of another version is ignored', v.sanitizePhotoRecord({ ...record, v: 2 }, known, 9) === null);
+  expect('photo record without size is ignored', v.sanitizePhotoRecord({ ...record, width: 0 }, known, 9) === null);
+  const session = v.sanitizeSession({ v: 1, rev: 2, order: [4, 2, 4, -1, 'x', 9], activeId: 7, selected: [2, 8], nextId: 3, collages: [] });
+  expect('session order deduped, active falls back, next id above all', same(session.order, [4, 2, 9]) && session.activeId === 4 && same(session.selected, [2]) && session.nextId === 10);
+  expect('bad session is null', v.sanitizeSession({ v: 1, rev: 1 }) === null && v.sanitizeSession(null) === null);
+  if (globalThis.crypto?.subtle && globalThis.File) {
+    const bytes = new Uint8Array(200000).map((_, i) => i * 7);
+    const file = (data, name = 'a.jpg') => new File([data], name, { type: 'image/jpeg', lastModified: 1000 });
+    const a = await v.fingerprint(file(bytes)), b = await v.fingerprint(file(bytes.slice()));
+    const tail = bytes.slice(); tail[tail.length - 1] ^= 1;
+    expect('fingerprint: same file, same id', a === b && /^[0-9a-f]{64}$/.test(a));
+    expect('fingerprint: last byte or name changes it', a !== await v.fingerprint(file(tail)) && a !== await v.fingerprint(file(bytes, 'b.jpg')));
+  }
+  model.seedSlotIds([{ slots: [{ id: 's41' }, { id: 'x9' }, null] }, null]);
+  expect('restored slot ids are not reused', Number(model.emptySlot().id.slice(1)) > 41);
+  return failures;
+}
+
+/** Task 6 (export sizes): exact sizes, aspect, no unasked enlarging, render edge and fitting. Returns failures. */
+export async function checkExportSize() {
+  const z = await import(`${repo}/js/export/size.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`export size: ${name}`); };
+  const custom = (by, value, upscale = false) => ({ mode: 'custom', custom: { ...z.defaultCustom(), by, [by]: value, upscale } });
+  const land = { width: 6000, height: 4000 }, port = { width: 1311, height: 1514 }, odd = { width: 4033, height: 3025 };
+  const t = (full, choice) => z.targetSize(full, choice);
+  expect('full is full', JSON.stringify(t(land, { mode: 'full' })) === JSON.stringify({ width: 6000, height: 4000, scale: 1, kept: false }));
+  expect('share keeps today\'s size (baseline row 8: 1080 × 1247)', t(port, { mode: 'share', shareWidth: 1080 }).width === 1080 && t(port, { mode: 'share', shareWidth: 1080 }).height === 1247);
+  expect('long edge 1080 on landscape', t(land, custom('edge', 1080)).width === 1080 && t(land, custom('edge', 1080)).height === 720);
+  expect('long edge 1080 on portrait', t(port, custom('edge', 1080)).height === 1080 && t(port, custom('edge', 1080)).width === 935);
+  expect('width 2000 exact', t(odd, custom('width', 2000)).width === 2000);
+  expect('height 999 exact', t(odd, custom('height', 999)).height === 999);
+  expect('percent 50', t(land, custom('percent', 50)).width === 3000 && t(land, custom('percent', 50)).height === 2000);
+  for (const full of [land, port, odd]) for (const choice of [custom('edge', 1080), custom('width', 2000), custom('height', 777), custom('percent', 33)]) {
+    const r = t(full, choice), aspectError = Math.abs(r.height - r.width * full.height / full.width);
+    expect(`aspect ≤ 1 px ${full.width}×${full.height} ${choice.custom.by}`, aspectError <= 1);
+  }
+  const small = t(port, custom('width', 2000));
+  expect('no upscaling unless allowed', small.width === 1311 && small.kept);
+  const big = t(port, custom('width', 2000, true));
+  expect('upscaling when allowed', big.width === 2000 && big.height === 2310 && !big.kept);
+  expect('bad custom values are repaired', JSON.stringify(z.sanitizeCustom({ by: 'x', edge: -5, width: 1e9, percent: 33.6, upscale: 'yes' })) === JSON.stringify({ ...z.defaultCustom(), width: 16384, percent: 34 }));
+  // Render edge: the scaledCanvas/cropSource rounding of the full photo at that edge covers the target on both sides.
+  const rendered = (full, edge) => { const long = Math.max(full.width, full.height), s = Math.min(1, edge / long); return { width: Math.max(1, Math.round(full.width * s)), height: Math.max(1, Math.round(full.height * s)) }; };
+  let worst = 0;
+  for (let w = 900; w < 1400; w += 7) for (const full of [land, port, odd, { width: 3001, height: 4999 }]) for (const by of ['edge', 'width', 'height']) {
+    const target = t(full, custom(by, w)); if (target.kept) continue;
+    const r = rendered(full, z.renderEdgeFor(full, target)), plan = z.fitPlan(r, target);
+    if (plan === 'resize') worst = Infinity; else worst = Math.max(worst, r.width - target.width, r.height - target.height);
+  }
+  expect(`render edge always trims, never resamples (worst overshoot ${worst} px)`, worst <= 2);
+  expect('share at today\'s edge needs no fitting', z.fitPlan(rendered(port, z.renderEdgeFor(port, t(port, { mode: 'share', shareWidth: 1080 }))), { width: 1080, height: 1247 }) === 'same');
+  expect('full renders at full size', z.renderEdgeFor(land, t(land, { mode: 'full' })) === Infinity);
+  expect('halving stops at or above the target', JSON.stringify(z.halvingSteps({ width: 6000, height: 4000 }, { width: 1000, height: 667 })) === JSON.stringify([{ width: 3000, height: 2000 }, { width: 1500, height: 1000 }]));
+  return failures;
+}
+
+/** Task 7 (target file size): the quality search against fake encoders. Returns failures. */
+export async function checkTargetSize() {
+  const t = await import(`${repo}/js/export/target.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`target size: ${name}`); };
+  const encoder = size => { const calls = []; return { calls, encode: async q => { calls.push(q); return { size: Math.round(size(q)), blob: { q } }; } }; };
+  const smooth = q => 200e3 + 25e3 * q + 400 * q * q; // ~0.7 MB at 20, ~6.5 MB at 98
+  for (const target of [1e6, 2e6, 3.5e6, 5e6]) {
+    const e = encoder(smooth), r = await t.searchQuality(e.encode, target);
+    expect(`smooth ${target}: fits, within 5 %, ≤ 12 encodes (${r.size}, q ${r.quality}, ${r.encodes})`, r.fits && r.size <= target && (r.size >= target * .95 || smooth(r.quality + 1) > target) && e.calls.length <= 12);
+    expect(`smooth ${target}: the blob is the reported quality`, r.blob.q === r.quality);
+  }
+  let e = encoder(smooth), r = await t.searchQuality(e.encode, 9e6);
+  expect('fits at the top: one encode', r.status === 'max' && r.quality === 98 && e.calls.length === 1);
+  e = encoder(smooth); r = await t.searchQuality(e.encode, 300e3);
+  expect('too big at the bottom: reported, two encodes', r.status === 'too-big' && !r.fits && r.quality === 20 && e.calls.length === 2 && r.smallest > 300e3);
+  // Non-monotonic: a dip around 60-70 (some encoders change chroma subsampling at a quality step).
+  const bumpy = q => smooth(q) * (q >= 60 && q <= 70 ? .8 : 1);
+  e = encoder(bumpy); r = await t.searchQuality(e.encode, 2.2e6);
+  expect(`bumpy: never over, ≤ 12 encodes (${r.size}, q ${r.quality}, ${e.calls.length})`, r.fits && r.size <= 2.2e6 && e.calls.length <= 12);
+  e = encoder(q => 1e6 + (q * 7919 % 13) * 1e4); r = await t.searchQuality(e.encode, 1.05e6);
+  expect('noise: never over, ≤ 12 encodes', r.fits && r.size <= 1.05e6 && e.calls.length <= 12);
+  let stale = false; e = encoder(q => { if (q === 20) stale = true; return smooth(q); });
+  const aborted = await t.searchQuality(e.encode, 1e6, { isStale: () => stale }).then(() => false, error => error.name === 'AbortError');
+  expect('a superseded search stops', aborted && e.calls.length === 2);
+  expect('suggested edge shrinks with the square root', t.suggestEdge(4000, 2e6, 500e3) === 1800 && t.suggestEdge(1000, 1.01e6, 1e6) === 800);
+  expect('targets: presets and repairs', t.sanitizeTarget('') === null && t.sanitizeTarget(0) === null && t.sanitizeTarget('512.4') === 512 && t.sanitizeTarget(1e9) === 50000 && t.sanitizeTarget(3) === 20);
+  expect('formats', t.formatBytes(1_940_000) === '1.94 MB' && t.formatBytes(480_400) === '480 KB' && t.formatTarget(2000) === '2 MB' && t.formatTarget(500) === '500 KB');
+  return failures;
+}
+
+// ---------- Task 8: metadata files built by hand (also used by the browser export check) ----------
+const bytesOf = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const text = value => new TextEncoder().encode(value);
+/** A TIFF block. `ifds`: { ifd0: [[tag, type, count, value|bytes]], exif, gps, ifd1 }; pointers are filled in. */
+export function buildTiff({ little = true, camera = true, date = true, gps = true, owner = false, thumbnail = false, orientation = 0 } = {}) {
+  const ifd0 = [], exif = [], gpsIfd = [];
+  if (camera) ifd0.push([0x010f, 2, 'TestCam\0'], [0x0110, 2, 'Model 9\0']);
+  if (orientation) ifd0.push([0x0112, 3, orientation]);
+  if (owner) ifd0.push([0x013b, 2, 'Someone\0']);
+  if (date) exif.push([0x9003, 2, '2026:11:27 10:00:00\0']);
+  if (gps) gpsIfd.push([0x0001, 2, 'N\0'], [0x0002, 5, new Uint8Array(24)], [0x0003, 2, 'E\0'], [0x0004, 5, new Uint8Array(24)]);
+  const tables = [['ifd0', ifd0], ...(exif.length ? [['exif', exif]] : []), ...(gpsIfd.length ? [['gps', gpsIfd]] : []), ...(thumbnail ? [['ifd1', [[0x0201, 4, 0], [0x0202, 4, 0]]]] : [])];
+  if (exif.length) ifd0.push([0x8769, 4, 'exif']);
+  if (gpsIfd.length) ifd0.push([0x8825, 4, 'gps']);
+  for (const [, list] of tables) list.sort((a, b) => a[0] - b[0]);
+  // layout: header, each table followed by its out-of-line data
+  const offsets = {}; let size = 8;
+  const dataOf = value => (typeof value === 'string' ? text(value) : value instanceof Uint8Array ? value : null);
+  for (const [name, list] of tables) { offsets[name] = size; size += 2 + list.length * 12 + 4; for (const [, , value] of list) { const d = dataOf(value); if (d && d.length > 4) size += d.length + (d.length & 1); } }
+  const buf = new Uint8Array(size), view = new DataView(buf.buffer);
+  buf.set(text(little ? 'II' : 'MM')); view.setUint16(2, 42, little); view.setUint32(4, 8, little);
+  for (const [name, list] of tables) {
+    let at = offsets[name], data = at + 2 + list.length * 12 + 4;
+    view.setUint16(at, list.length, little);
+    list.forEach(([tag, type, value], i) => {
+      const e = at + 2 + i * 12, d = dataOf(value), width = { 2: 1, 3: 2, 4: 4, 5: 8 }[type];
+      view.setUint16(e, tag, little); view.setUint16(e + 2, type, little);
+      if (d) { view.setUint32(e + 4, d.length / width, little); if (d.length <= 4) buf.set(d, e + 8); else { view.setUint32(e + 8, data, little); buf.set(d, data); data += d.length + (d.length & 1); } }
+      else if (typeof value === 'string') view.setUint32(e + 8, offsets[value], little);
+      else { view.setUint32(e + 4, 1, little); if (type === 3) view.setUint16(e + 8, value, little); else view.setUint32(e + 8, value, little); }
+      if (offsets[value] !== undefined) { view.setUint32(e + 4, 1, little); view.setUint32(e + 8, offsets[value], little); }
+    });
+    view.setUint32(at + 2 + list.length * 12, name === 'ifd0' && thumbnail ? offsets.ifd1 : 0, little);
+  }
+  return buf;
+}
+const be16 = n => new Uint8Array([n >> 8, n & 255]), be32 = n => new Uint8Array([n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255]), le32 = n => new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255, n >>> 24]);
+const jpegSegment = (marker, payload) => bytesOf(new Uint8Array([0xff, marker]), be16(payload.length + 2), payload);
+/** An Exif APP1 segment to put after a JPEG's SOI. */
+export const exifSegment = options => jpegSegment(0xe1, bytesOf(text('Exif\0\0'), buildTiff(options)));
+export function buildJpeg(options) { return bytesOf(new Uint8Array([0xff, 0xd8]), exifSegment(options), jpegSegment(0xe1, text('http://ns.adobe.com/xap/1.0/\0<x/>')), jpegSegment(0xdb, new Uint8Array(65)), new Uint8Array([0xff, 0xda]), be16(8), new Uint8Array(6), new Uint8Array(32), new Uint8Array([0xff, 0xd9])); }
+export async function buildPng(options) {
+  const { crc32 } = await import(`${repo}/js/zip.js`);
+  const chunk = (type, data) => bytesOf(be32(data.length), text(type), data, be32(crc32(bytesOf(text(type), data))));
+  return bytesOf(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]), chunk('IHDR', new Uint8Array(13)), chunk('eXIf', buildTiff(options)), chunk('tEXt', text('Comment\0hello')), chunk('iCCP', text('x\0\0')), chunk('IDAT', new Uint8Array(20)), chunk('IEND', new Uint8Array(0)));
+}
+export function buildWebp(options) {
+  const chunk = (fourcc, data) => bytesOf(text(fourcc), le32(data.length), data, data.length & 1 ? new Uint8Array(1) : new Uint8Array(0));
+  const body = bytesOf(text('WEBP'), chunk('VP8X', new Uint8Array(10)), chunk('VP8L', new Uint8Array(21)), chunk('EXIF', buildTiff(options)), chunk('XMP ', text('<x/>')));
+  return bytesOf(text('RIFF'), le32(body.length), body);
+}
+
+/** Task 8: scanner detection, hostile files and 1,000 random mutations per format. Returns failures. */
+export async function checkMetadata() {
+  const m = await import(`${repo}/js/export/metadata.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`metadata: ${name}`); };
+  const scan = bytes => m.scanMetadata(bytes, { strict: true });
+  const files = { jpeg: buildJpeg(), png: await buildPng(), webp: buildWebp() };
+  for (const [format, bytes] of Object.entries(files)) {
+    const r = scan(bytes);
+    expect(`${format}: gps, camera, date found, nothing malformed`, r.format === format && r.gps && r.camera && r.date && r.exif && !r.malformed);
+  }
+  expect('jpeg: XMP found', scan(files.jpeg).xmp); expect('png: text and ICC found', scan(files.png).text && scan(files.png).icc); expect('webp: XMP found', scan(files.webp).xmp);
+  const r = scan(buildJpeg({ little: false, gps: false, owner: true, thumbnail: true }));
+  expect('big-endian, no GPS, owner and thumbnail', !r.gps && r.camera && r.owner && r.thumbnail && !r.malformed);
+  const clean = scan(bytesOf(new Uint8Array([0xff, 0xd8]), jpegSegment(0xdb, new Uint8Array(65)), new Uint8Array([0xff, 0xda, 0, 8, 0, 0, 0, 0, 0, 0, 0xff, 0xd9])));
+  expect('a plain JPEG reports nothing private', m.privateKinds(clean).length === 0 && !clean.malformed);
+  // Hostile TIFFs: patch the built one.
+  const tiff = buildTiff(), le = new DataView(tiff.buffer);
+  const withTiff = t => bytesOf(new Uint8Array([0xff, 0xd8]), jpegSegment(0xe1, bytesOf(text('Exif\0\0'), t)), new Uint8Array([0xff, 0xd9]));
+  const patched = (fn) => { const t = tiff.slice(); fn(new DataView(t.buffer), t); return scan(withTiff(t)); };
+  expect('cyclic: IFD0 points to itself as its Exif IFD', patched((v, t) => { const n = v.getUint16(8, true); for (let i = 0; i < n; i++) if (v.getUint16(10 + i * 12, true) === 0x8769) v.setUint32(10 + i * 12 + 8, 8, true); }).malformed);
+  expect('huge entry count', patched(v => v.setUint16(8, 0xffff, true)).malformed);
+  expect('wrong byte order mark', patched((v, t) => { t[0] = 0x4d; t[1] = 0x4d; }).malformed);
+  expect('overflow value offset', patched(v => { v.setUint32(10 + 8, 0xfffffff0, true); v.setUint32(10 + 4, 0xffffffff, true); }).malformed);
+  expect('IFD0 offset past the end', patched(v => v.setUint32(4, 0x7fffffff, true)).malformed);
+  expect('truncated JPEG segment', scan(files.jpeg.subarray(0, 30)).malformed);
+  expect('a file\'s start (complete: false) is not malformed', !m.scanMetadata(files.jpeg.subarray(0, 30), { complete: false }).malformed);
+  const badCrc = files.png.slice(); badCrc[50] ^= 1;
+  expect('PNG metadata chunk with a bad CRC is malformed', scan(badCrc).malformed);
+  expect('not an image', scan(text('hello')).format === null);
+  // Fuzz: flips, truncations, insertions and 0xFF floods; no exception, quick.
+  let seed = 12345; const rand = n => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const t0 = performance.now(); let thrown = 0;
+  for (const bytes of Object.values(files)) for (let i = 0; i < 1000; i++) {
+    let f = bytes.slice();
+    const kind = rand(4);
+    if (kind === 0) for (let k = 0; k < 1 + rand(8); k++) f[rand(f.length)] = rand(256);
+    else if (kind === 1) f = f.subarray(0, rand(f.length));
+    else if (kind === 2) { const at = rand(f.length); f = bytesOf(f.subarray(0, at), new Uint8Array(rand(64)).map(() => rand(256)), f.subarray(at)); }
+    else { const at = rand(f.length); f.fill(0xff, at, Math.min(f.length, at + 4)); }
+    try { scan(f); } catch (error) { if (++thrown <= 3) failures.push(`metadata: fuzz threw ${error.message}`); }
+  }
+  const ms = performance.now() - t0;
+  expect(`3 × 1,000 mutations in < 1 s (${ms.toFixed(0)} ms, ${thrown} exceptions)`, ms < 1000 && !thrown);
+  return failures;
+}
+
+/** Task 1 (look search): golden rankings over the real catalogue, and speed. Returns failures. */
+export async function checkLookSearch() {
+  const { buildIndex, searchLooks, normalize } = await import(`${repo}/js/look-search.js`);
+  const { presets, lookStyles } = await import(`${repo}/js/presets.js`);
+  const { filmLooks } = await import(`${repo}/js/film-looks.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`look search: ${name}`); };
+  const styleLabel = Object.fromEntries(lookStyles);
+  const items = [...presets.map(p => ({ ...p, style: 'Basic' })), ...filmLooks.map(l => ({ ...l, style: styleLabel[l.style] }))];
+  const index = buildIndex(items), ids = query => searchLooks(index, query).map(r => r.id);
+  expect('normalize', JSON.stringify(normalize('Crème  Brûlée—B&W fine-grain')) === JSON.stringify(['creme', 'brulee', 'bw', 'finegrain']));
+  expect('empty query keeps every look in order', ids('').length === items.length && ids('  ')[0] === 'original');
+  const portra = ids('portra');
+  expect(`"portra": the three Portra stocks first (${portra.slice(0, 3)})`, portra.slice(0, 3).join() === 'film:kodak-portra-160,film:kodak-portra-400,film:kodak-portra-800');
+  expect(`"Portra 4": Portra 400 first, no 160/800 (${ids('Portra 4').slice(0, 4)})`, ids('Portra 4')[0] === 'film:kodak-portra-400' && !ids('Portra 4').includes('film:kodak-portra-160') && !ids('Portra 4').includes('film:kodak-portra-800'));
+  const bw = ids('black and white');
+  expect(`"black and white": only B&W-tagged looks (${bw.length})`, bw.length >= 15 && bw.every(id => items.find(i => i.id === id).tags.includes('bw')));
+  expect('"monochrome" = "bw" set', ids('monochrome').join() === ids('bw').join());
+  expect(`"noir": Hard Noir first`, ids('noir')[0] === 'hard-noir');
+  expect('"xyz": nothing', ids('xyz').length === 0);
+  expect('"polaroid": the Polaroid looks by name, then other instant looks', ids('polaroid')[0].includes('polaroid') && ids('polaroid').includes('film:instant-instax-mini'));
+  expect('"people" finds portrait looks', ids('people').includes('portrait-air'));
+  expect('"golden" finds Golden Hour first', ids('golden')[0] === 'golden-hour');
+  expect('"velvia 50" exact', ids('velvia 50')[0] === 'film:fujifilm-velvia-50');
+  expect('"fine grain" phrase = tag', ids('fine grain').includes('film:kodak-portra-160'));
+  // ≤ 3 typed characters + Enter reaches 95 % of looks by name (release criterion): its first 3 letters put it in the top 6? Count those that are first among equals.
+  const reach = items.filter(item => { const first = normalize(item.name).find(word => word.length >= 3) || normalize(item.name)[0]; return ids(first.slice(0, 3)).slice(0, 12).includes(item.id); }).length;
+  console.log(`  look search: ${reach}/${items.length} looks are in the first 12 results for the first 3 letters of their name`);
+  expect(`reachable by 3 letters in the first 12 results: ${reach}/${items.length}`, reach / items.length >= .9);
+  const t0 = performance.now(); for (let i = 0; i < 500; i++) searchLooks(index, ['p', 'po', 'por', 'port', 'portra 4', 'black and white', 'night street'][i % 7]);
+  const per = (performance.now() - t0) / 500;
+  console.log(`  look search: ${per.toFixed(3)} ms per query`);
+  expect(`speed: ${per.toFixed(3)} ms per keystroke for ${items.length} looks (< 2 ms)`, per < 2);
+  return failures;
+}
+
+/** Task 2 (histogram): bins, clipping and percentiles against counts done by hand. Returns failures. */
+export async function checkHistogram() {
+  const h = await import(`${repo}/js/analysis/histogram.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`histogram: ${name}`); };
+  const px = list => new Uint8ClampedArray(list.flat());
+  // 10 pixels by hand: 2 black, 1 near-black (2,1,0), 1 dark not clipped (3,0,0), 3 white, 1 red-clipped (253,10,10), 1 mid grey, 1 transparent white
+  const data = px([[0, 0, 0, 255], [0, 0, 0, 255], [2, 1, 0, 255], [3, 0, 0, 255], [255, 255, 255, 255], [255, 255, 255, 255], [255, 255, 255, 255], [253, 10, 10, 255], [128, 128, 128, 255], [255, 255, 255, 0]]);
+  const r = h.histogram(data);
+  expect(`total ${r.total} = 9 (transparent pixel ignored)`, r.total === 9);
+  expect(`shadows ${r.shadows} = 3/9`, Math.abs(r.shadows - 3 / 9) < 1e-12);
+  expect(`highlights ${r.highlights} = 4/9`, Math.abs(r.highlights - 4 / 9) < 1e-12);
+  expect('red bins: 0 ×2, 2, 3, 255 ×3, 253, 128', r.r[0] === 2 && r.r[2] === 1 && r.r[3] === 1 && r.r[255] === 3 && r.r[253] === 1 && r.r[128] === 1);
+  expect('luma bins: 0 ×2; (2,1,0) → 1.14 and (3,0,0) → 0.64 both 1; (253,10,10) → 61.7 = 62', r.luma[0] === 2 && r.luma[1] === 2 && r.luma[255] === 3 && r.luma[128] === 1 && r.luma[62] === 1);
+  const half = h.histogram(px([[255, 255, 255, 128], [0, 0, 0, 255]]));
+  expect('alpha weights: half-transparent white counts 128/255', Math.abs(half.total - (1 + 128 / 255)) < 1e-12 && Math.abs(half.r[255] - 128 / 255) < 1e-12);
+  const ramp = h.histogram(new Uint8ClampedArray(Array.from({ length: 256 }, (_, v) => [v, v, v, 255]).flat()));
+  expect('ramp: one per bin, percentiles 25/50/99', ramp.luma.every(n => n === 1) && h.percentile(ramp.luma, ramp.total, .25) === 63 && h.percentile(ramp.luma, ramp.total, .5) === 127 && h.percentile(ramp.luma, ramp.total, .99) === 253);
+  expect('ramp clipping: 3 shadow values, 3 highlight values', Math.abs(ramp.shadows - 3 / 256) < 1e-12 && Math.abs(ramp.highlights - 3 / 256) < 1e-12);
+  const mask = h.clipMask(data);
+  expect('mask matches the hand labels ((3,0,0) is not clipped)', mask.join('') === '1110222200');
+  const hatch = h.hatchPixels(new Uint8Array([2, 1, 0, 0]), 2, 2);
+  expect('hatch: clipped pixels painted, others clear', hatch[3] > 0 && hatch[7] > 0 && hatch[11] === 0 && hatch[15] === 0);
+  expect('summary', h.clipSummary({ shadows: .004, highlights: .0213 }) === 'Shadows clipped 0.4 %, highlights 2.1 %' && h.clipSummary({ shadows: 0, highlights: .0004 }) === 'Shadows clipped 0 %, highlights < 0.1 %');
+  const big = new Uint8ClampedArray(1000 * 1000 * 4).map((_, i) => (i * 2654435761) >>> 24);
+  const t0 = performance.now(); h.histogram(big); h.clipMask(big); const ms = performance.now() - t0;
+  console.log(`  histogram + mask of 1 MP: ${ms.toFixed(1)} ms`);
+  expect(`1 MP in < 20 ms (${ms.toFixed(1)})`, ms < 20);
+  return failures;
+}
+
+/** A 64 × 64 test scene in linear light: grey steps, skin, sky and foliage patches, then a cast (gains, linear). */
+export function castScene(gains = [1, 1, 1], { sunset = false } = {}) {
+  const { encodeLinear } = castScene.auto;
+  const patches = sunset ? [[.9, .35, .08], [.8, .3, .05], [.6, .2, .04], [.95, .5, .12], [.7, .25, .06], [.4, .12, .03], [.85, .42, .1], [.5, .16, .05]]
+    : [[.05, .05, .05], [.1, .1, .1], [.18, .18, .18], [.3, .3, .3], [.45, .45, .45], [.6, .6, .6], [.42, .28, .2], [.2, .35, .55], [.12, .22, .08], [.6, .15, .15], [.25, .25, .25], [.48, .48, .48]]; // greys are grey; colours are clearly coloured
+  const data = new Uint8ClampedArray(64 * 64 * 4);
+  for (let p = 0; p < 64 * 64; p++) {
+    const x = p % 64, y = Math.floor(p / 64), patch = patches[(Math.floor(y / 16) * 4 + Math.floor(x / 16)) % patches.length];
+    for (let c = 0; c < 3; c++) data[p * 4 + c] = encodeLinear(patch[c] * gains[c]);
+    data[p * 4 + 3] = 255;
+  }
+  return data;
+}
+/** Task 3 (Auto WB): tungsten fixture corrected, sunset left alone, deterministic and idempotent, picker. Returns failures. */
+export async function checkAutoWB() {
+  const auto = castScene.auto = await import(`${repo}/js/analysis/auto.js`);
+  const { adjustPixels } = await import(`${repo}/js/renderer.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`auto WB: ${name}`); };
+  const greyPatch = (data, a) => { const px = data.slice(0, 64 * 64 * 4); adjustPixels(px, 64, 64, { ...set({}), ...a }); const i = (34 * 64 + 40) * 4; return [px[i], px[i + 1], px[i + 2]]; }; // the 0.18 grey patch
+  for (const [name, gains] of [['tungsten', [1.3, 1, .68]], ['daylight-blue', [.82, 1, 1.25]], ['green fluorescent', [.92, 1.15, .95]]]) {
+    const data = castScene(gains), before = auto.deltaEFromNeutral(...greyPatch(data, {}));
+    const t0 = performance.now(), r = auto.autoWhiteBalance(data, set({}), { temperature: 0, tint: 0 }), ms = performance.now() - t0;
+    const after = r.change ? auto.deltaEFromNeutral(...greyPatch(data, { temperature: r.temperature, tint: r.tint })) : before;
+    console.log(`  auto WB ${name}: grey ΔE ${before.toFixed(1)} → ${after.toFixed(1)} (temperature ${r.temperature}, tint ${r.tint}, confidence ${r.confidence.toFixed(2)}, ${ms.toFixed(0)} ms) "${r.reason}"`);
+    expect(`${name}: grey patch ΔE < 3 after (${after.toFixed(2)})`, r.change && after < 3);
+    expect(`${name}: < 150 ms (${ms.toFixed(0)})`, ms < 150);
+    const again = auto.autoWhiteBalance(data, { ...set({}), temperature: r.temperature, tint: r.tint }, { temperature: 0, tint: 0 });
+    expect(`${name}: Auto twice gives the same values`, again.temperature === r.temperature && again.tint === r.tint);
+  }
+  const sunset = auto.autoWhiteBalance(castScene([1, 1, 1], { sunset: true }), set({}), { temperature: 0, tint: 0 });
+  console.log(`  auto WB sunset: confidence ${sunset.confidence.toFixed(2)} → ${sunset.change ? 'changed' : 'no change'}`);
+  expect('sunset: low confidence, no change', !sunset.change && sunset.confidence < auto.MIN_CONFIDENCE);
+  const neutral = auto.autoWhiteBalance(castScene([1, 1, 1]), set({}), { temperature: 0, tint: 0 });
+  expect(`neutral scene: (almost) no change (${neutral.temperature}, ${neutral.tint})`, !neutral.change || (Math.abs(neutral.temperature) <= 2 && Math.abs(neutral.tint) <= 2));
+  // A preset's own warmth stays: base temperature 22 → the answer is about 22 plus the cast correction, not 0.
+  const warmBase = auto.autoWhiteBalance(castScene([1, 1, 1]), set({ temperature: 22 }), { temperature: 22, tint: 0 });
+  expect(`a look's own warmth is kept (${warmBase.temperature})`, !warmBase.change || Math.abs(warmBase.temperature - 22) <= 2);
+  const data = castScene([1.3, 1, .68]);
+  const picked = auto.pickWhiteBalance(data, 64, 64, 40, 34, 5, set({}), { temperature: 0, tint: 0 });
+  expect(`picker on the grey patch neutralises it (ΔE ${auto.deltaEFromNeutral(...greyPatch(data, picked)).toFixed(2)})`, picked.change && auto.deltaEFromNeutral(...greyPatch(data, picked)) < 2);
+  const white = castScene([1, 1, 1]).fill(255);
+  expect('picker refuses a clipped spot', auto.pickWhiteBalance(white, 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'clipped');
+  expect('picker refuses a black spot', auto.pickWhiteBalance(castScene([0, 0, 0]).map((v, i) => (i % 4 === 3 ? 255 : 3)), 64, 64, 10, 10, 5, set({}), { temperature: 0, tint: 0 }).error === 'dark');
+  // ---------- Task 4: Auto Enhance ----------
+  const scene = (scale, lift = 0) => { const d = castScene([1, 1, 1]); const { linearOf, encodeLinear } = auto; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = encodeLinear(lift + linearOf[d[i + c]] * scale); return d; };
+  const uniform = (values) => { const d = new Uint8ClampedArray(64 * 64 * 4); for (let p = 0; p < 64 * 64; p++) { const v = values(p); d.set([v, v, v, 255], p * 4); } return d; };
+  const fixtures = {
+    dark: scene(.25), bright: scene(2.2), flat: scene(.35, .12),
+    snow: uniform(p => (p % 64 < 4 && p < 400 ? 60 : 235 + (p % 7))), night: uniform(p => (p % 97 === 0 ? 250 : 8 + (p % 11))), normal: scene(1)
+  };
+  const stats = (data, values) => { const px = data.slice(); adjustPixels(px, 64, 64, { ...set({}), ...values }); let w = 0, b = 0; const ys = []; for (let i = 0; i < px.length; i += 4) { const [r, g, bb] = [px[i], px[i + 1], px[i + 2]]; if (r >= 253 || g >= 253 || bb >= 253) w++; else if (r <= 2 && g <= 2 && bb <= 2) b++; ys.push(.2126 * auto.linearOf[r] + .7152 * auto.linearOf[g] + .0722 * auto.linearOf[bb]); } ys.sort((x, y) => x - y); return { p50: ys[ys.length >> 1], white: w / ys.length, black: b / ys.length }; };
+  const zero = set({});
+  for (const [name, data] of Object.entries(fixtures)) {
+    const t0 = performance.now(), r = auto.autoEnhance(data, zero, zero), ms = performance.now() - t0;
+    const before = stats(data, {}), after = stats(data, r.values);
+    console.log(`  auto enhance ${name}: median ${before.p50.toFixed(3)} → ${after.p50.toFixed(3)}, white ${(before.white * 100).toFixed(1)} → ${(after.white * 100).toFixed(1)} %, black ${(before.black * 100).toFixed(1)} → ${(after.black * 100).toFixed(1)} % · ${Object.entries(r.values).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(', ') || 'no change'} · ${ms.toFixed(0)} ms · "${r.reasons.join(' · ')}"`);
+    expect(`${name}: no new clipping above 0.5 %`, after.white - before.white <= .005 + 1e-9 && after.black - before.black <= .005 + 1e-9);
+    expect(`${name}: < 250 ms (${ms.toFixed(0)})`, ms < 250);
+    const again = auto.autoEnhance(data, { ...zero, ...r.values }, zero);
+    expect(`${name}: Auto twice gives the same values`, JSON.stringify(again.values) === JSON.stringify(r.values));
+  }
+  const dark = auto.autoEnhance(fixtures.dark, zero, zero);
+  expect('dark: brightened toward a middle grey', dark.values.exposure > 0 && Math.abs(Math.log2(stats(fixtures.dark, dark.values).p50 / .18)) < Math.abs(Math.log2(stats(fixtures.dark, {}).p50 / .18)));
+  const snow = auto.autoEnhance(fixtures.snow, zero, zero);
+  expect(`snow: high-key kept (exposure ${snow.values.exposure})`, snow.highKey && snow.values.exposure >= -.3);
+  const night = auto.autoEnhance(fixtures.night, zero, zero);
+  expect(`night: low-key kept (exposure ${night.values.exposure})`, night.lowKey && night.values.exposure <= .8);
+  // A Basic preset at 60 %: edits are measured from its values, so its contrast and warmth stay.
+  const preset = set({ temperature: 13.2, contrast: 12, saturation: -9.6 }), withPreset = auto.autoEnhance(fixtures.normal, preset, preset);
+  expect(`preset at 60 %: its contrast/warmth kept (contrast ${withPreset.values.contrast}, temperature ${withPreset.values.temperature})`, Math.abs(withPreset.values.contrast - 12) <= 30 && Math.abs(withPreset.values.temperature - 13.2) <= 40);
+  return failures;
+}
+
+/** Task 9–10 (healing): model, search and blend on synthetic scenes with known clean pixels. Returns failures. */
+export async function checkHealing() {
+  const model = await import(`${repo}/js/heal/model.js`), { blendPatch } = await import(`${repo}/js/heal/blend.js`), { searchSource } = await import(`${repo}/js/heal/search.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`healing: ${name}`); };
+  // Model: RDP, stamps, mask, compact strokes.
+  const line = Array.from({ length: 50 }, (_, i) => ({ x: i, y: i % 2 ? .1 : 0 }));
+  expect('RDP drops points on a straight line', model.simplify(line, .25).length === 2);
+  expect('stamps every 2 px along 10 px', model.stamps([{ x: 0, y: 0 }, { x: 10, y: 0 }], 2).length === 6);
+  const geo = model.strokeGeometry({ p: [32768, 32768], r: .05, d: [0, 0] }, 200, 100);
+  const mask = model.strokeMask(geo, geo.bounds, .5, 1), centre = Math.floor(geo.bounds.height / 2) * geo.bounds.width + Math.floor(geo.bounds.width / 2);
+  expect('mask: full at the centre, zero at the corner', mask[centre] === 1 && mask[0] === 0);
+  const twice = model.strokeMask({ ...geo, centres: [...geo.centres, ...geo.centres] }, geo.bounds, 1, .5);
+  expect('overlapping stamps combine as coverage (0.5, 0.5 → 0.75)', Math.abs(twice[centre] - .75) < 1e-6);
+  const stroke = model.makeStroke({ mode: 'heal', path: Array.from({ length: 2000 }, (_, i) => ({ x: i, y: 500 + 100 * Math.sin(i / 50) })), radius: 10, hardness: .5, opacity: 1, offset: { x: 30, y: -20 }, width: 4000, height: 3000 });
+  expect(`stroke capped at 512 points (${stroke.p.length / 2}) and compact (${JSON.stringify(stroke).length} chars)`, stroke.p.length / 2 <= 512 && JSON.stringify(stroke).length < 6000);
+  expect('sanitize keeps a good stroke, drops a bad one', model.sanitizeHealing({ rev: 'x', strokes: [stroke, { m: 'heal', p: [1], r: 1, h: 0, o: 1, d: [0, 0] }] }).strokes.length === 1);
+
+  // Scenes: W × H RGBA from f(x, y) → [r, g, b]; a defect painted over a copy.
+  const W = 160, H = 160, scene = f => { const d = new Uint8ClampedArray(W * H * 4); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const [r, g, b] = f(x, y); d.set([r, g, b, 255], (y * W + x) * 4); } return d; };
+  const rnd = (x, y) => { let n = Math.imul(x * 73856093 ^ y * 19349663, 2654435761); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
+  const heal = ({ clean, cx, cy, radius, defect, mode = 'heal' }) => {
+    const dirty = clean.slice();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (Math.hypot(x - cx, y - cy) < radius * .6) dirty.set(defect(x, y), (y * W + x) * 4);
+    const g = model.strokeGeometry({ p: [Math.round(cx / W * 65535), Math.round(cy / H * 65535)], r: radius / Math.max(W, H), d: [0, 0] }, W, H);
+    const full = model.strokeMask(g, { x: 0, y: 0, width: W, height: H }, .6, 1);
+    const t0 = performance.now(), found = searchSource({ data: dirty, width: W, height: H, mask: full, radius: g.radius }), searchMs = performance.now() - t0;
+    if (!found) return { found };
+    const r = { ...g.bounds }; r.x = Math.max(0, r.x); r.y = Math.max(0, r.y); r.width = Math.min(W - r.x, r.width); r.height = Math.min(H - r.y, r.height);
+    const D = new Uint8ClampedArray(r.width * r.height * 4), S = D.slice(), A = model.strokeMask(g, r, .6, 1);
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const i = (y * r.width + x) * 4, dst = ((r.y + y) * W + r.x + x) * 4, sx = r.x + x + found.x, sy = r.y + y + found.y;
+      D.set(dirty.subarray(dst, dst + 4), i);
+      if (sx >= 0 && sy >= 0 && sx < W && sy < H) S.set(dirty.subarray((sy * W + sx) * 4, (sy * W + sx) * 4 + 4), i);
+    }
+    const t1 = performance.now(), patch = blendPatch(D, S, A, mode), blendMs = performance.now() - t1;
+    const out = dirty.slice();
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) { const i = (y * r.width + x) * 4; if (patch[i + 3]) out.set(patch.subarray(i, i + 3), ((r.y + y) * W + r.x + x) * 4); }
+    // Error against the clean scene: mean over the healed area, and the seam (a 3 × 3 blur of both, on the mask edge).
+    const blur = (img, x, y, c) => { let s = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) s += img[((Math.min(H - 1, Math.max(0, y + j))) * W + Math.min(W - 1, Math.max(0, x + i))) * 4 + c]; return s / 9; };
+    let area = 0, areaN = 0, seam = 0, seamN = 0;
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const a = A[y * r.width + x], X = r.x + x, Y = r.y + y; if (!a) continue;
+      for (let c = 0; c < 3; c++) {
+        const e = Math.abs(blur(out, X, Y, c) - blur(clean, X, Y, c));
+        if (a > .99) { area += e; areaN++; } else { seam += e; seamN++; }
+      }
+    }
+    return { found, area: area / Math.max(1, areaN), seam: seam / Math.max(1, seamN), searchMs, blendMs };
+  };
+  const cases = {
+    'flat sky, dust': { clean: scene((x, y) => [70 + y * .3, 120 + y * .3, 200 + y * .2]), cx: 80, cy: 80, radius: 9, defect: () => [30, 35, 40, 255] },
+    'skin blemish': { clean: scene((x, y) => [205 + 4 * rnd(x, y), 160 + 4 * rnd(y, x), 135 + 4 * rnd(x + 7, y)]), cx: 70, cy: 90, radius: 8, defect: () => [170, 70, 70, 255] },
+    'diagonal edge': { clean: scene((x, y) => (x + y < 160 ? [40, 45, 50] : [220, 215, 205])), cx: 80, cy: 80, radius: 7, defect: () => [255, 0, 0, 255] },
+    'brick': { clean: scene((x, y) => ((y % 16 < 2) || ((x + (Math.floor(y / 16) % 2) * 16) % 32 < 2) ? [200, 200, 195] : [150, 70, 50])), cx: 75, cy: 72, radius: 6, defect: () => [20, 20, 20, 255] },
+    'source near the edge': { clean: scene((x, y) => [60 + x * .2, 140, 90]), cx: 8, cy: 80, radius: 6, defect: () => [250, 250, 250, 255] },
+    'clone (no match)': { clean: scene((x, y) => [70 + y * .3, 120 + y * .3, 200 + y * .2]), cx: 80, cy: 80, radius: 9, defect: () => [30, 35, 40, 255], mode: 'clone' }
+  };
+  for (const [name, c] of Object.entries(cases)) {
+    const r = heal(c);
+    if (!r.found) { expect(`${name}: a source is found`, false); continue; }
+    console.log(`  heal ${name}: offset (${r.found.x}, ${r.found.y}), area error ${r.area.toFixed(2)}/255, seam ${r.seam.toFixed(2)}/255, search ${r.searchMs.toFixed(1)} ms, blend ${r.blendMs.toFixed(1)} ms`);
+    expect(`${name}: seam step < 3/255 (${r.seam.toFixed(2)})`, r.seam < 3);
+    expect(`${name}: healed area within 3/255 of the clean scene (${r.area.toFixed(2)})`, r.area < 3);
+  }
+  // Impossible: a tiny photo where no source fits around the stroke.
+  const tiny = new Uint8ClampedArray(24 * 24 * 4).fill(128), tinyGeo = model.strokeGeometry({ p: [32768, 32768], r: .4, d: [0, 0] }, 24, 24);
+  expect('impossible search returns null', searchSource({ data: tiny, width: 24, height: 24, mask: model.strokeMask(tinyGeo, { x: 0, y: 0, width: 24, height: 24 }, .5, 1), radius: tinyGeo.radius }) === null);
+  // Speed: a 100 px radius heal blend (the search runs on a proxy where R is 8–32 px).
+  const big = 260, bigD = new Uint8ClampedArray(big * big * 4).fill(140), bigA = model.strokeMask(model.strokeGeometry({ p: [32768, 32768], r: 100 / big, d: [0, 0] }, big, big), { x: 0, y: 0, width: big, height: big }, .5, 1);
+  const t0 = performance.now(); blendPatch(bigD, bigD.slice(), bigA, 'heal'); const ms = performance.now() - t0;
+  console.log(`  heal 100 px radius blend: ${ms.toFixed(1)} ms`);
+  expect(`100 px radius blend < 100 ms (${ms.toFixed(1)})`, ms < 100);
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  for (const failure of failures) console.log('FAIL', failure);
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()], autoFailures = [...await checkAutoWB(), ...await checkHealing()];
+  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures, ...autoFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
+  console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
+  console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
+  console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
+  console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search and histogram checks, ${searchFailures.length} failed`);
+  console.log(`${autoFailures.length ? 'FAIL' : 'OK'}: auto and healing checks, ${autoFailures.length} failed`);
+  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length || autoFailures.length ? 1 : 0);
 }

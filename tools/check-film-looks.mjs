@@ -47,5 +47,16 @@ for (const preset of kamo.presets) {
 for (const stockId of kamo.controlByPath.stockId.options) if (!kamo.creativeBase(stockId) && !stocks.has(stockId)) fail(`missing stock ${stockId}`);
 if (kamo.presets.length !== MENU) fail(`expected ${MENU} presets, got ${kamo.presets.length}`);
 if (filmLooks.length !== MENU) fail(`expected ${MENU} looks, got ${filmLooks.length}`);
+// Tags (plan_workflow.md Task 1): the shared vocabulary only, 2–4 per look (Original may have fewer), Basic presets included.
+const { lookTags, presets } = await import(`${repo}/js/presets.js`);
+const vocabulary = new Set(lookTags.map(([id]) => id)), tagUse = {};
+for (const item of [...presets, ...filmLooks]) {
+  const tags = item.tags || [];
+  for (const tag of tags) { if (!vocabulary.has(tag)) fail(`${item.id} unknown tag ${tag}`); tagUse[tag] = (tagUse[tag] || 0) + 1; }
+  if (new Set(tags).size !== tags.length) fail(`${item.id} repeats a tag`);
+  if (tags.length > 4 || (tags.length < 2 && item.id !== 'original') || !tags.length) fail(`${item.id} has ${tags.length} tags (2–4)`);
+}
+for (const tag of vocabulary) if (!tagUse[tag]) fail(`tag ${tag} is used by no look`);
+console.log(`tags: ${Object.entries(tagUse).map(([tag, n]) => `${tag} ${n}`).join(', ')}`);
 console.log(`looks ${filmLooks.length} (stock recipes ${stocks.size}, presets ${used.size}); menu ${kamo.presets.length}; errors ${errors}`);
 if (errors) process.exit(1);

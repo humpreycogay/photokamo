@@ -5,6 +5,7 @@ import { filmLooks } from './film-looks.js';
 import { defaultOptics } from './optics/index.js';
 import { adjustmentSections, defaultAdjustments, defaultBorder, presets } from './presets.js';
 import { defaultCrop } from './renderer.js';
+import { emptyHealing } from './heal/model.js';
 // ↑ imports
 const $ = selector => document.querySelector(selector);
 const elements = {
@@ -47,7 +48,7 @@ const elements = {
 //   original + (look - original) * strength + edit
 // so a look can be dialled back with Strength, and Adjust edits sit on top of it.
 const state = {
-  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [], optics: defaultOptics(),
+  image: null, imageId: 0, filename: 'photo', presetId: 'original', strength: 100, edits: {}, frame: { id: 'none', border: { ...defaultBorder } }, crop: { ...defaultCrop }, text: [], optics: defaultOptics(), healing: emptyHealing(),
   filter: 'All', zoom: 'fit', holding: false, split: null, mobileTool: 'exposure',
   exportFormat: 'image/jpeg', exportSize: 'full',
   // The engine: 'presets' (the looks above) or a film engine id, and each film engine's own settings ({ [engineId]: params }).

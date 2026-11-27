@@ -14,8 +14,11 @@ import { frameFor, renderFrame } from './panels/frames.js';
 import { ensureTextFonts } from './panels/text.js';
 import { plural, renderPhotoEdit, renderQueue, settingsOf } from './photos.js';
 import { frames } from './presets.js';
-import { adjustFull, croppedSize, frameBitmap, opticsSource, renderEditOff } from './preview.js';
-import { capFramed, cropGeometry, frameCanvas, isIdentityCrop } from './renderer.js';
+import { adjustFull, croppedSize, opticsSource, renderEditOff } from './preview.js';
+import { CUSTOM_BY, renderEdgeFor, sanitizeCustom, targetSize } from './export/size.js';
+import { kindLabel, privateKinds, scanBlob } from './export/metadata.js';
+import { TARGET_LIMITS, TARGET_PRESETS, Q_MIN, formatBytes, formatTarget, sanitizeTarget, searchQuality, suggestEdge } from './export/target.js';
+import { capFramed, cropGeometry, fitToSize, frameCanvas, framedSize, isIdentityCrop } from './renderer.js';
 import { $, SHARE_WIDTH, app, currentPreset, editCount, effectiveAdjustments, elements, isFilm, state, toast } from './state.js';
 import { createZip } from './zip.js';
 // ↑ imports
@@ -44,15 +47,37 @@ function exportDimensions() {
   const device = deviceCap(engine.width, engine.height, renderFrame());
   return device.capped ? { ...device, limit: 'device' } : { ...engine, limit: engine.capped ? module.fullRenderLimit?.(advParams()) || 'engine' : null };
 }
-function exportEdge(size = state.exportSize) {
-  const { width, height } = exportDimensions();
-  const full = Math.max(width, height);
-  if (size === 'share' && width > shareWidth()) return Math.round(shareWidth() * full / width);
-  return full;
+// Size choices (Task 6): Full, For sharing, or Custom (js/export/size.js). The custom values and the batch size are
+// remembered on this device; Custom is also remembered as the choice.
+const SIZE_KEY = 'photokamo:export-size';
+const sizePrefs = (() => {
+  let value = null; try { value = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null'); } catch { /* defaults */ }
+  return { custom: sanitizeCustom(value?.custom), batch: value?.batch === 'custom' ? 'custom' : 'full', single: value?.single === 'custom' ? 'custom' : null,
+    target: sanitizeTarget(value?.target), batchTarget: sanitizeTarget(value?.batchTarget) }; // max file sizes in KB (Task 7)
+})();
+if (sizePrefs.single) state.exportSize = 'custom';
+function saveSizePrefs() { try { localStorage.setItem(SIZE_KEY, JSON.stringify({ custom: sizePrefs.custom, batch: sizePrefs.batch, single: state.exportSize === 'custom' ? 'custom' : null, target: sizePrefs.target, batchTarget: sizePrefs.batchTarget })); } catch { /* this visit only */ } }
+const sizeChoice = (mode = state.exportSize) => (mode === 'share' ? { mode, shareWidth: shareWidth() } : mode === 'custom' ? { mode, custom: sizePrefs.custom } : { mode: 'full' });
+/** The exported photo's exact size (before the frame): { width, height, kept, limit }. An enlargement is still held to
+ *  the device canvas limit, frame included. */
+function sizeFor(full, choice, frame) {
+  const target = targetSize(full, choice);
+  if (target.width <= full.width && target.height <= full.height) return { ...target, limit: null };
+  const cap = deviceCap(target.width, target.height, frame);
+  return cap.capped ? { ...target, width: cap.width, height: cap.height, limit: 'device' } : { ...target, limit: null };
 }
-function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportEdge(), state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
+const exportTarget = (mode = state.exportSize) => sizeFor(exportDimensions(), sizeChoice(mode), renderFrame());
+/** The long edge the photo renders at: just above the target (trimmed to it after), at most the full size. */
+function exportEdge(target = exportTarget()) {
+  const full = exportDimensions(), edge = renderEdgeFor(full, target);
+  return Number.isFinite(edge) ? edge : Math.max(full.width, full.height);
+}
+const lossy = type => type !== 'image/png';
+/** The max file size in force for `type` (KB), or null: PNG has no quality to trade. */
+const activeTarget = (type = state.exportFormat, kb = sizePrefs.target) => (lossy(type) ? kb : null);
+function exportKey() { const target = exportTarget(), kb = activeTarget(); return JSON.stringify([state.imageId, snapshot(), exportEdge(target), target.width, target.height, state.exportFormat, kb ? `≤${kb}KB` : lossy(state.exportFormat) ? elements.quality.value : 0]); }
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
-async function renderAdvancedExport(edge) {
+async function renderAdvancedExport(edge, target) {
   const frame = renderFrame();
   const module = await activateEngine();
   const key = fullRenderKey(); const edits = engineEdits();
@@ -64,12 +89,24 @@ async function renderAdvancedExport(edge) {
   }
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   await ensureTextFonts(state.text);
-  if (scale === 1) return frameCanvas(full, frame, state.text);
-  const scaled = document.createElement('canvas');
-  scaled.width = Math.round(full.width * scale); scaled.height = Math.round(full.height * scale);
-  const ctx = scaled.getContext('2d'); ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(full, 0, 0, scaled.width, scaled.height);
-  return frameCanvas(scaled, frame, state.text);
+  let photo = full;
+  if (scale < 1) {
+    photo = document.createElement('canvas');
+    photo.width = Math.round(full.width * scale); photo.height = Math.round(full.height * scale);
+    const ctx = photo.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(full, 0, 0, photo.width, photo.height);
+  }
+  const fitted = fitToSize(photo, target.width, target.height), output = frameCanvas(fitted, frame, state.text);
+  if (fitted !== photo) fitted.width = 0;
+  if (photo !== full) photo.width = 0;
+  return output;
+}
+/** Basic: the off-thread edit brought to the exact size, then framed; the edit's bitmap is freed. */
+function fitAndFrame(bitmap, target, frame, texts) {
+  const fitted = fitToSize(bitmap, target.width, target.height), output = frameCanvas(fitted, frame, texts);
+  if (fitted !== bitmap) fitted.width = 0;
+  bitmap.close?.();
+  return output;
 }
 function exportSummary() {
   const frameName = state.frame.id === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame.id).name} frame`;
@@ -89,6 +126,11 @@ function syncExportOptions() {
   const canShrink = width > shareWidth();
   if (!canShrink && state.exportSize === 'share') state.exportSize = 'full';
   document.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === state.exportSize));
+  $('#exportCustom').hidden = state.exportSize !== 'custom';
+  $('#customSizeDetail').textContent = customLabel();
+  syncCustomSize('exportCustom');
+  $('#sizeReadout').textContent = sizeReadout(exportTarget(), renderFrame(), exportDimensions());
+  saveSizePrefs();
   const shareButton = document.querySelector('[data-size="share"]');
   shareButton.disabled = !canShrink;
   const target = exportDimensions();
@@ -96,12 +138,78 @@ function syncExportOptions() {
     : target.limit === 'engine' ? `${target.width} × ${target.height} · film engine limit` : `${width} × ${height}`;
   const platform = PLATFORMS[state.crop.platform];
   elements.shareSizeDetail.textContent = !canShrink ? 'Already small' : platform ? `${platform.group} · ${platform.w} × ${platform.h}` : `${SHARE_WIDTH} px wide`;
-  elements.qualityGroup.hidden = state.exportFormat === 'image/png';
+  elements.qualityGroup.hidden = !lossy(state.exportFormat) || Boolean(sizePrefs.target);
+  syncTargetPicker('exportTarget', state.exportFormat, sizePrefs.target);
   elements.qualityOutput.value = `${qualityWord(Number(elements.quality.value))} · ${elements.quality.value}%`;
   elements.exportSummary.textContent = exportSummary();
   elements.shareButton.hidden = !canShareFiles;
   elements.downloadButton.className = `button button-xl ${canShareFiles ? 'button-ghost' : 'button-primary'}`;
 }
+// ---------- Custom size controls (the Save sheet and batch export share the values) ----------
+const customLabel = (custom = sizePrefs.custom) => { const by = CUSTOM_BY[custom.by]; return custom.by === 'percent' ? `${custom.percent} %` : `${by.label} ${custom[custom.by]} px`; };
+const mpLimit = () => `${Math.round((deviceLimit ||= canvasLimit()) / 1e5) / 10} MP`;
+/** What the user gets: the photo's size and, with a frame, the final size; why it isn't bigger when it isn't. */
+function sizeReadout(target, frame, full) {
+  const framed = framedSize(target.width, target.height, frame);
+  const hasFrame = framed.width !== target.width || framed.height !== target.height;
+  const parts = [hasFrame ? `Photo ${target.width} × ${target.height} px · with frame ${framed.width} × ${framed.height} px.` : `${target.width} × ${target.height} px.`];
+  if (state.exportSize === 'custom' && target.kept) parts.push(`Not enlarged: the photo is ${full.width} × ${full.height}. Turn on Allow upscaling to enlarge it.`);
+  if (target.limit === 'device') parts.push(`Limited to ${mpLimit()} on this device.`);
+  if (hasFrame && state.exportSize !== 'full') parts.push('The frame is added around the resized photo.');
+  return parts.join(' ');
+}
+function buildCustomSize(container, onChange) {
+  const id = container.id;
+  container.innerHTML = `<div class="custom-size-row"><label class="custom-field"><span>Resize by</span><select id="${id}By">${Object.entries(CUSTOM_BY).map(([key, { label }]) => `<option value="${key}">${label}</option>`).join('')}</select></label>`
+    + `<label class="custom-field"><span id="${id}Label">Long edge</span><span class="custom-input"><input id="${id}Value" type="number" inputmode="numeric" step="1" required><span id="${id}Unit" aria-hidden="true">px</span></span></label></div>`
+    + `<label class="check-row"><input type="checkbox" id="${id}Upscale"> Allow upscaling</label>`;
+  const by = $(`#${id}By`), value = $(`#${id}Value`), upscale = $(`#${id}Upscale`);
+  const changed = () => { saveSizePrefs(); document.querySelectorAll('[data-custom-size]').forEach(panel => syncCustomSize(panel.id)); onChange(); };
+  by.addEventListener('change', () => { sizePrefs.custom.by = by.value; changed(); });
+  upscale.addEventListener('change', () => { sizePrefs.custom.upscale = upscale.checked; changed(); });
+  // Typing: only whole numbers in range count; leaving the field puts back the value in use.
+  value.addEventListener('input', () => {
+    const { min, max } = CUSTOM_BY[sizePrefs.custom.by], number = Number(value.value);
+    if (!Number.isInteger(number) || number < min || number > max) return;
+    sizePrefs.custom[sizePrefs.custom.by] = number; saveSizePrefs(); onChange();
+  });
+  value.addEventListener('change', changed);
+}
+function syncCustomSize(id) {
+  const custom = sizePrefs.custom, spec = CUSTOM_BY[custom.by], value = $(`#${id}Value`); if (!value) return;
+  $(`#${id}By`).value = custom.by; $(`#${id}Label`).textContent = spec.label; $(`#${id}Unit`).textContent = spec.unit;
+  value.min = spec.min; value.max = spec.max; if (document.activeElement !== value || value.value === '') value.value = custom[custom.by];
+  value.setAttribute('aria-label', `${spec.label} in ${spec.unit === '%' ? 'percent' : 'pixels'}, ${spec.min} to ${spec.max}`);
+  $(`#${id}Upscale`).checked = custom.upscale;
+}
+
+// ---------- Max file size picker (Task 7): No limit, presets, or a custom KB value ----------
+function buildTargetPicker(container, key, onChange) {
+  const id = container.id;
+  container.innerHTML = `<label class="quality-label" for="${id}Select"><span>Max file size</span></label><div class="custom-size-row"><span class="custom-field"><select id="${id}Select"><option value="">No limit</option>${TARGET_PRESETS.map(kb => `<option value="${kb}">${formatTarget(kb)}</option>`).join('')}<option value="custom">Custom…</option></select></span>`
+    + `<span class="custom-field" id="${id}CustomWrap" hidden><span class="custom-input"><input id="${id}Custom" type="number" inputmode="numeric" min="${TARGET_LIMITS.min}" max="${TARGET_LIMITS.max}" step="1" aria-label="Max file size in kilobytes, ${TARGET_LIMITS.min} to ${TARGET_LIMITS.max}"><span aria-hidden="true">KB</span></span></span></div>`
+    + `<p class="size-readout" id="${id}Report" aria-live="polite"></p>`;
+  const select = $(`#${id}Select`), custom = $(`#${id}Custom`);
+  const set = kb => { if (sizePrefs[key] === kb) return; sizePrefs[key] = kb; saveSizePrefs(); onChange(); };
+  select.addEventListener('change', () => {
+    select.dataset.custom = select.value === 'custom' ? '1' : ''; // stays on Custom even when the value matches a preset
+    if (select.value !== 'custom') { set(sanitizeTarget(select.value)); return; }
+    $(`#${id}CustomWrap`).hidden = false; custom.value = sizePrefs[key] || 1500; set(sanitizeTarget(custom.value)); custom.focus();
+  });
+  custom.addEventListener('input', () => { const kb = Number(custom.value); if (Number.isInteger(kb) && kb >= TARGET_LIMITS.min && kb <= TARGET_LIMITS.max) set(kb); });
+  custom.addEventListener('change', () => { set(sanitizeTarget(custom.value) ?? sizePrefs[key]); custom.value = sizePrefs[key] ?? ''; });
+}
+function syncTargetPicker(id, type, kb, disabled = false) {
+  const select = $(`#${id}Select`); if (!select) return;
+  const isPreset = kb == null || TARGET_PRESETS.includes(kb), custom = $(`#${id}Custom`);
+  select.value = kb == null ? '' : select.dataset.custom || !isPreset ? 'custom' : String(kb);
+  $(`#${id}CustomWrap`).hidden = select.value !== 'custom';
+  if (document.activeElement !== custom && kb != null) custom.value = kb;
+  select.disabled = custom.disabled = disabled || !lossy(type);
+  if (!lossy(type)) $(`#${id}Report`).textContent = 'PNG is lossless, so its file size can’t be set. Choose JPEG or WebP for a size limit.';
+  else if (id === 'batchTarget') $(`#${id}Report`).textContent = kb ? `Each photo at the highest quality under ${formatTarget(kb)}. Photos that can’t get there are listed; none are resized.` : '';
+}
+
 function prepareExport() {
   const key = exportKey();
   if (preparedExport?.key === key) return preparedExport.promise;
@@ -109,31 +217,84 @@ function prepareExport() {
   job.promise = (async () => {
     await new Promise(resolve => setTimeout(resolve, 30));
     await ensureTextFonts(state.text);
-    const edge = exportEdge();
-    const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
+    const target = exportTarget(), edge = exportEdge(target);
+    const canvasKey = JSON.stringify([state.imageId, snapshot(), edge, target.width, target.height]);
     if (exportCanvas.key !== canvasKey) { if (exportCanvas.canvas) exportCanvas.canvas.width = 0; exportCanvas = { key: canvasKey, canvas: null }; }
-    if (!exportCanvas.canvas) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : frameBitmap(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), renderFrame(), state.text) };
+    if (!exportCanvas.canvas) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge, target) : fitAndFrame(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), target, renderFrame(), state.text) };
     const type = state.exportFormat;
-    const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
-    if (!blob) throw new Error('Encoding failed');
+    const { blob, report } = await encodeCanvas(exportCanvas.canvas, type, activeTarget(), Number(elements.quality.value), () => preparedExport !== job);
+    job.report = report && { ...report, photoLong: Math.max(target.width, target.height) };
     // The browser may not encode the requested type (WebP in older Safari gives PNG): name the file after what it made.
     const actual = blob.type || type;
     job.file = new File([blob], `${state.filename}-photokamo.${extensionFor(actual)}`, { type: actual });
+    job.privacy = await scanBlob(job.file); // Task 8: what the browser's encoder wrote, checked, not assumed
     return job.file;
   })();
   job.promise.catch(() => {});
   preparedExport = job;
   return job.promise;
 }
+/** Encodes a finished canvas: at `quality` (%), or (`kb`) at the highest quality whose file fits in `kb` KB
+ *  (js/export/target.js). Resolves { blob, report }; `report` is null without a target. */
+async function encodeCanvas(canvas, type, kb, quality, isStale = () => false) {
+  const encode = q => new Promise((resolve, reject) => canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Encoding failed'))), type, q / 100));
+  if (!kb) return { blob: await encode(quality), report: null };
+  const result = await searchQuality(async q => { const blob = await encode(q); return { size: blob.size, blob }; }, kb * 1000, { isStale });
+  // A browser that can't make this type (WebP in older Safari gives PNG) ignores quality: say so, don't pretend.
+  const status = result.blob.type && result.blob.type !== type ? 'unsupported' : result.status;
+  return { blob: result.blob, report: { ...result, blob: null, status, kb, width: canvas.width, height: canvas.height } };
+}
+/** The line under Max file size: what the search got, or why it couldn't. */
+function targetReport(report) {
+  if (!report) return '';
+  if (report.status === 'unsupported') return `This browser can’t make ${formatName(state.exportFormat)} files, so the size can’t be set.`;
+  if (report.status === 'too-big') {
+    const edge = suggestEdge(report.photoLong, report.smallest, report.kb * 1000);
+    return `Can’t reach ${formatTarget(report.kb)} at ${report.width} × ${report.height} px: the smallest is ${formatBytes(report.smallest)} at quality ${Q_MIN}. Try a long edge of ${edge} px (Custom size). The file you save is over the limit.`;
+  }
+  return `${formatBytes(report.size)} at quality ${report.quality}${report.status === 'max' ? ' (the highest; it’s under the limit)' : ''}.`;
+}
 function schedulePrepare(delay = 250) {
   clearTimeout(prepareTimer);
   elements.exportStatus.textContent = '';
+  // Nothing changed (a field losing focus): the file in hand stays, and the buttons stay usable.
+  if (preparedExport?.file && preparedExport.key === exportKey()) return;
+  $('#exportPrivacy').textContent = '';
+  const searching = Boolean(activeTarget());
+  if (lossy(state.exportFormat)) $('#exportTargetReport').textContent = searching ? 'Finding the best quality…' : '';
+  // A size search takes several encodes: Share and Download wait for it, so Share still runs inside the tap.
+  setExportBusy(searching);
   prepareTimer = setTimeout(() => {
     const promise = prepareExport();
     const job = preparedExport;
     if (!job.file) elements.exportStatus.textContent = 'Preparing your photo…';
-    promise.finally(() => { if (preparedExport === job) elements.exportStatus.textContent = ''; }).catch(() => {});
+    promise.then(() => { if (preparedExport !== job) return; if (job.report) $('#exportTargetReport').textContent = targetReport(job.report); syncExportPrivacy(job); }, () => {})
+      .finally(() => { if (preparedExport === job) { elements.exportStatus.textContent = ''; setExportBusy(false); } });
   }, delay);
+}
+// ---------- Metadata (Task 8): presence only, values are never read out or kept ----------
+const listKinds = (kinds, joiner = 'and') => { const labels = kinds.filter(kind => kind !== 'exif' || kinds.length === 1).map(kindLabel); return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} ${joiner} ${labels.at(-1)}` : labels[0] || ''; };
+/** The source file's report, read once per photo from the start of its file. */
+async function photoPrivacy(photo) { return (photo.privacy ||= scanBlob(photo.file).catch(() => null)); }
+/** The photo menu line: what the open photo's file carries and that exports leave it out. */
+async function syncPhotoPrivacy() {
+  const line = $('#photoPrivacy'), photo = app.photos.find(item => item.id === app.activeId);
+  const report = photo && await photoPrivacy(photo), kinds = report ? privateKinds(report) : [];
+  line.hidden = !kinds.length && !report?.malformed;
+  line.textContent = kinds.length ? `This photo’s file contains ${listKinds(kinds)}. Exports leave ${kinds.length === 1 ? 'it' : 'them'} out.` : report?.malformed ? 'This photo’s metadata couldn’t be fully read. Exports don’t copy any of it.' : '';
+}
+/** The Save sheet line, from the exported file itself. */
+async function syncExportPrivacy(job) {
+  const line = $('#exportPrivacy'), out = job.privacy, photo = app.photos.find(item => item.id === app.activeId);
+  if (!out) { line.textContent = ''; return; }
+  const leaked = privateKinds(out);
+  if (leaked.length) { line.textContent = `This browser wrote ${listKinds(leaked)} into the file. Nothing from your photo’s own metadata is copied, but check before sharing.`; return; }
+  const source = photo && await photoPrivacy(photo), removed = source ? privateKinds(source) : [];
+  if (preparedExport !== job) return;
+  line.textContent = removed.length ? `Location and camera data removed: the file has no ${listKinds(removed, 'or')}.` : 'The file has no location or camera data.';
+}
+function setExportBusy(busy) {
+  for (const button of [elements.shareButton, elements.downloadButton]) { button.disabled = busy; button.toggleAttribute('aria-busy', busy); }
 }
 function openSave() {
   if (isBatchExport()) { openBatch(); return; }
@@ -202,20 +363,29 @@ function photoCroppedSize(photo) {
 async function renderPhotoFull(photo, engineModules, onProgress) {
   const texts = settingsOf(photo).text || [];
   await ensureTextFonts(texts);
-  const size = photoCroppedSize(photo), cap = deviceCap(size.width, size.height, frameFor(settingsOf(photo).frame, null));
-  const { image, tint, settings } = await renderPhotoEdit(photo, { edge: cap.capped ? Math.max(cap.width, cap.height) : Infinity, onEngine: module => useEngine(engineModules, module), onProgress });
-  const output = frameCanvas(image, frameFor(settings.frame, tint), texts);
+  const frame = frameFor(settingsOf(photo).frame, null), size = photoCroppedSize(photo), cap = deviceCap(size.width, size.height, frame);
+  const full = cap.capped ? { width: cap.width, height: cap.height } : size, choice = batchChoice();
+  let target = sizeFor(full, choice, frame);
+  const edge = renderEdgeFor(full, target);
+  const { image, tint, settings } = await renderPhotoEdit(photo, { edge: Number.isFinite(edge) ? edge : cap.capped ? Math.max(cap.width, cap.height) : Infinity, onEngine: module => useEngine(engineModules, module), onProgress });
+  // Full size is what the render gives. A render smaller than planned (an engine limit) is never enlarged unasked.
+  if (choice.mode === 'full') target = { width: image.width, height: image.height };
+  else if (!sizePrefs.custom.upscale && (image.width < target.width || image.height < target.height)) target = sizeFor({ width: image.width, height: image.height }, choice, frame);
+  const fitted = fitToSize(image, target.width, target.height), output = frameCanvas(fitted, frameFor(settings.frame, tint), texts);
+  if (fitted !== image) fitted.width = 0;
   image.close?.();
   return output;
 }
-const batchKey = photos => JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, batch.format === 'image/png' ? 0 : elements.batchQuality.value]);
+const batchChoice = () => sizeChoice(sizePrefs.batch);
+const batchKey = photos => { const kb = activeTarget(batch.format, sizePrefs.batchTarget); return JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, kb ? `≤${kb}KB` : lossy(batch.format) ? elements.batchQuality.value : 0, batchChoice()]); };
 /** Renders and encodes the photos; `each(file)` gets every file as soon as it is ready. Null when cancelled. */
 async function renderBatch(photos, each = null) {
   const key = batchKey(photos);
   if (!each && batch.prepared?.key === key) return batch.prepared.files;
   batch.running = true; batch.cancel = false; syncBatch();
-  const type = batch.format, quality = Number(elements.batchQuality.value) / 100;
+  const type = batch.format, quality = Number(elements.batchQuality.value), kb = activeTarget(type, sizePrefs.batchTarget);
   const used = new Set(), files = [], engineModules = new Set();
+  batch.overTarget = []; batch.leaked = [];
   const progress = (index, value = 0) => {
     elements.batchProgressCount.textContent = `${Math.min(index + 1, photos.length)} of ${photos.length}`;
     elements.batchBar.style.width = `${Math.round((index + value) / photos.length * 100)}%`;
@@ -225,9 +395,10 @@ async function renderBatch(photos, each = null) {
       if (batch.cancel) break;
       progress(index);
       const canvas = await renderPhotoFull(photo, engineModules, value => progress(index, value));
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
+      const { blob, report } = await encodeCanvas(canvas, type, kb, quality);
       canvas.width = canvas.height = 0; // free the full-size pixels now
-      if (!blob) throw new Error(`Encoding ${photo.name} failed`);
+      if (report && !report.fits) batch.overTarget.push(photo.name);
+      if (privateKinds(await scanBlob(blob)).length) batch.leaked.push(photo.name);
       const actual = blob.type || type; // what the browser encoded (WebP may fall back to PNG)
       const file = new File([blob], uniqueName(photo.filename, extensionFor(actual), used), { type: actual });
       files.push(file);
@@ -262,7 +433,15 @@ function openBatch() {
 function syncBatch() {
   const count = selectedPhotos().length, running = batch.running;
   document.querySelectorAll('[data-batch-format]').forEach(button => { button.setAttribute('aria-pressed', button.dataset.batchFormat === batch.format); button.disabled = running; });
-  elements.batchQualityGroup.hidden = batch.format === 'image/png';
+  elements.batchQualityGroup.hidden = !lossy(batch.format) || Boolean(sizePrefs.batchTarget);
+  syncTargetPicker('batchTarget', batch.format, sizePrefs.batchTarget, running);
+  document.querySelectorAll('[data-batch-size]').forEach(button => { button.setAttribute('aria-pressed', button.dataset.batchSize === sizePrefs.batch); button.disabled = running; });
+  $('#batchCustom').hidden = sizePrefs.batch !== 'custom';
+  $('#batchCustom').querySelectorAll('input,select').forEach(input => { input.disabled = running; });
+  syncCustomSize('batchCustom');
+  const custom = sizePrefs.custom;
+  $('#batchSizeReadout').textContent = sizePrefs.batch === 'full' ? 'Each photo at its full size.'
+    : `Each photo: ${customLabel()}${custom.by === 'percent' ? ' of its size' : ''}.${custom.upscale ? ' Smaller photos are enlarged.' : ' Smaller photos aren’t enlarged.'} Frames are added around the resized photo.`;
   elements.batchQuality.disabled = running;
   $('#batchQualityOutput').value = `${elements.batchQuality.value}%`;
   elements.batchForm.querySelectorAll('[name=mode]').forEach(input => { input.disabled = running; });
@@ -283,19 +462,27 @@ async function downloadBatch() {
       // Each file downloads as soon as it is ready; a short gap keeps browsers from dropping some.
       const files = await renderBatch(photos, async file => { downloadBlob(file, file.name); await new Promise(resolve => setTimeout(resolve, 300)); });
       if (!files) return;
-      elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved as separate files.`);
+      if (!reportOverTarget()) { elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved as separate files.`); }
     } else {
       const files = await renderBatch(photos);
       if (!files) return;
       elements.batchProgressText.textContent = 'Packing the ZIP…';
       const zip = await createZip(files);
       downloadBlob(zip, zipName(files.length));
-      elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved in one ZIP.`);
+      if (!reportOverTarget()) { elements.batchDialog.close(); toast(`${plural(files.length, 'photo')} saved in one ZIP.`); }
     }
   } catch (error) {
     console.error(error);
     elements.batchStatus.textContent = /4 GB|65,535 files/.test(error?.message || '') ? error.message : 'Export failed. Check your connection for film engines, or try JPEG.'; // the ZIP limits (js/zip.js) explain themselves
   } finally { elements.batchProgressText.textContent = 'Rendering full quality'; }
+}
+/** Photos the max file size couldn't be met for (never resized silently): listed in the dialog, which stays open. */
+function reportOverTarget() {
+  const leaked = batch.leaked || [], names = batch.overTarget || []; if (!names.length && !leaked.length) return false;
+  const note = leaked.length ? ` This browser wrote metadata into ${plural(leaked.length, 'file')} (${leaked.slice(0, 3).join(', ')}): check before sharing.` : '';
+  if (!names.length) { elements.batchStatus.textContent = `Saved.${note}`; return true; }
+  elements.batchStatus.textContent = `Saved. ${plural(names.length, 'photo')} couldn’t get under ${formatTarget(sizePrefs.batchTarget)} even at the lowest quality, so ${names.length === 1 ? 'it is' : 'they are'} over: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` and ${names.length - 5} more` : ''}. Choose a smaller Custom size for ${names.length === 1 ? 'it' : 'them'}.${note}`;
+  return true;
 }
 // Share needs a fresh tap: the first tap renders the files, then sharing is one more tap.
 async function shareBatch() {
@@ -316,6 +503,11 @@ async function shareBatch() {
 function buildBatch() {
   elements.batchForm.addEventListener('submit', event => { event.preventDefault(); downloadBatch(); });
   elements.batchShare.addEventListener('click', shareBatch);
+  $('#batchSizes').addEventListener('click', event => { const button = event.target.closest('[data-batch-size]'); if (!button || batch.running) return; sizePrefs.batch = button.dataset.batchSize; saveSizePrefs(); syncBatch(); });
+  buildCustomSize($('#batchCustom'), syncBatch);
+  buildCustomSize($('#exportCustom'), () => { syncExportOptions(); schedulePrepare(400); });
+  buildTargetPicker($('#batchTarget'), 'batchTarget', syncBatch);
+  buildTargetPicker($('#exportTarget'), 'target', () => { syncExportOptions(); schedulePrepare(400); });
   $('#batchFormats').addEventListener('click', event => { const button = event.target.closest('[data-batch-format]'); if (!button || batch.running) return; batch.format = button.dataset.batchFormat; syncBatch(); });
   elements.batchQuality.addEventListener('input', syncBatch);
   // Cancel closes; while rendering it stops after the photo in progress.
@@ -331,4 +523,4 @@ function buildBatch() {
 const shareWidth = () => (PLATFORMS[state.crop.platform]?.w || SHARE_WIDTH);
 
 // ↓ shared with other editor modules (generated by the v3 split)
-export { batch, buildBatch, canShareFiles, downloadBlob, downloadPhoto, freeExport, isBatchExport, openSave, photoCroppedSize, prepareTimer, preparedExport, schedulePrepare, selectedPhotos, setFullRender, sharePhoto, syncExportOptions };
+export { batch, buildBatch, syncPhotoPrivacy, canShareFiles, downloadBlob, downloadPhoto, freeExport, isBatchExport, openSave, photoCroppedSize, prepareTimer, preparedExport, schedulePrepare, selectedPhotos, setFullRender, sharePhoto, syncExportOptions };

@@ -22,6 +22,9 @@ import { ensureTextFonts, textUi } from './panels/text.js';
 import { defaultAdjustments, defaultBorder, frames, presets } from './presets.js';
 import { adjustFull, croppedCache, dropOpticsCache, renderEditOff, scheduleRender, setHolding } from './preview.js';
 import { createRenderQueue } from './render-queue.js';
+import { emptyHealing, hasHealing } from './heal/model.js';
+import { patchesFor } from './heal/render.js';
+import { beforeOpen, photoChanged, photoOpened, photosRemoved, sessionChanged } from './session/recovery.js';
 import { applyAdjustments, cropSource, defaultCrop, drawTexts, frameCanvas, isIdentityCrop, renderEdit } from './renderer.js';
 import { $, PRESETS, PREVIEW_EDGE, app, clampToRange, controlSpec, currentPreset, effectiveValue, elements, isFilm, mobileQuery, state, toast } from './state.js';
 // ↑ imports
@@ -29,10 +32,10 @@ const MAX_PHOTOS = 50, THUMB_EDGE = 256, MAX_FILE_BYTES = 40 * 1024 * 1024;
 const photoById = id => app.photos.find(photo => photo.id === id) || null;
 const activePhoto = () => photoById(app.activeId);
 const photoSize = photo => ({ naturalWidth: photo.width, naturalHeight: photo.height });
-const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, optics: defaultOptics(), frame: { id: 'none', border: { ...defaultBorder } }, text: [] });
+const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, optics: defaultOptics(), frame: { id: 'none', border: { ...defaultBorder } }, text: [], healing: emptyHealing() });
 const settingsOf = photo => (photo.id === app.activeId && state.image ? snapshot() : photo.settings);
 const isEdited = settings => settings.look.engine !== PRESETS || settings.look.presetId !== 'original' || Object.keys(settings.edits).length > 0
-  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length) || !opticsNeutral(settings.optics);
+  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length) || !opticsNeutral(settings.optics) || hasHealing(settings.healing);
 const otherSelected = () => app.photos.filter(photo => app.selected.has(photo.id) && photo.id !== app.activeId);
 
 async function decodeImage(file) {
@@ -59,6 +62,7 @@ async function addFiles(fileList, { view = true } = {}) {
   const files = [...(fileList || [])];
   elements.fileInput.value = ''; elements.cameraInput.value = '';
   if (!files.length) return [];
+  await beforeOpen(); // a saved session not yet continued comes back first, so opening a photo never drops it
   const opened = [];
   const problems = { type: 0, size: 0, decode: 0, cap: 0 };
   let added = 0;
@@ -74,7 +78,7 @@ async function addFiles(fileList, { view = true } = {}) {
     try { image = await decodeImage(file); } catch { problems.decode++; continue; }
     const photo = { id: app.nextId++, file, name: file.name, filename: file.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
       thumb: makeThumb(image), preview: null, settings: defaultSettings(), undo: [], redo: [], render: { status: 'idle' }, el: null };
-    app.photos.push(photo); addStripItem(photo); opened.push(photo);
+    app.photos.push(photo); addStripItem(photo); opened.push(photo); photoOpened(photo);
     if (!added++ && view) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
     syncStrip();
   }
@@ -84,6 +88,34 @@ async function addFiles(fileList, { view = true } = {}) {
   else if (files.length === 1) toast(problems.type ? 'Choose a JPEG, PNG, WebP, or GIF image.' : problems.size ? 'That photo is over the 40 MB limit.' : problems.cap ? `PhotoKamo keeps up to ${MAX_PHOTOS} photos open. Close some to add more.` : 'PhotoKamo could not decode that image.');
   else toast([added ? `${added} opened` : 'No photos opened', problems.cap ? `${problems.cap} over the ${MAX_PHOTOS}-photo limit` : '', problems.size ? `${problems.size} over 40 MB` : '', problems.type + problems.decode ? `${problems.type + problems.decode} not readable` : ''].filter(Boolean).join(' · ') + '.');
   return opened;
+}
+
+/** Session recovery: puts restored photos ({ id, file, sourceId, name, settings, undo, redo }) into the strip in
+ *  order and views `activeId` (else the first). Photos that no longer decode are left out. Returns the restored photos. */
+async function restorePhotos(list, { activeId, selected = [], nextId = 1 }) {
+  const loading = $('#photoLoading'), loadingText = $('#photoLoadingText'), restored = [];
+  let activeImage = null;
+  loading.hidden = !list.length;
+  try {
+    for (const [index, item] of list.entries()) {
+      loadingText.textContent = `Restoring photos… ${index + 1} of ${list.length}`;
+      let image;
+      try { image = await decodeImage(item.file); } catch { continue; }
+      const photo = { id: item.id, file: item.file, sourceId: item.sourceId, name: item.name, filename: item.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
+        thumb: makeThumb(image), preview: null, settings: item.settings, undo: item.undo, redo: item.redo, render: { status: 'idle' }, el: null };
+      app.photos.push(photo); addStripItem(photo); restored.push(photo);
+      if (item.id === activeId) activeImage = image; // the others are decoded again when viewed
+    }
+  } finally { loading.hidden = true; }
+  app.nextId = Math.max(app.nextId, nextId, ...app.photos.map(photo => photo.id + 1));
+  if (!restored.length) { syncStrip(); return restored; }
+  const active = restored.find(photo => photo.id === activeId) || restored[0];
+  app.selected = new Set(selected.filter(id => photoById(id))); app.selected.add(active.id);
+  app.anchorId = app.focusId = active.id;
+  viewPhoto(active.id, active.id === activeId ? activeImage : null);
+  for (const photo of restored) if (photo !== active && isEdited(photo.settings)) renderQueue.add(photo.id); // C16: thumbs re-render
+  syncStrip();
+  return restored;
 }
 
 /** Brings a photo into view (decoding it from its File unless `decoded` is given). */
@@ -156,6 +188,7 @@ function removePhotos(ids) {
     renderQueue.remove(photo.id);
     app.photos.splice(app.photos.indexOf(photo), 1); app.selected.delete(photo.id); photo.el.remove();
   }
+  photosRemoved(targets.map(photo => photo.id));
   collageStore.restore(collageStore.list()); syncSavedCollages();
   toast(one ? `Removed ${targets[0].name}.` : `Removed ${targets.length} photos.`);
   if (!removingActive) {
@@ -254,6 +287,7 @@ function syncStrip() {
   const batchCount = isBatchExport() && !collage.active ? selected : 0;
   elements.exportLabel.textContent = batchCount ? `Export ${batchCount}` : 'Export';
   $('#saveButton').textContent = batchCount ? `Save ${batchCount}` : 'Save';
+  sessionChanged(); // order, selection or the photo in view may have changed (saved only if it did)
 }
 function selectRange(id) {
   const ids = app.photos.map(photo => photo.id);
@@ -311,7 +345,6 @@ function buildStrip() {
     if (event.key === 'Enter') { event.preventDefault(); pickPhoto(app.focusId); syncStrip(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); app.selected = new Set(ids); syncStrip(); }
   });
-  $('#stripAdd').addEventListener('click', () => elements.fileInput.click());
   // Phones: one toggle under the vertical strip selects all, or goes back to the photo in view.
   $('#stripSelectToggle').addEventListener('click', () => {
     const all = app.photos.every(photo => app.selected.has(photo.id));
@@ -347,6 +380,14 @@ function mergeSettings(target, source, parts) {
   if (parts.crop) settings.crop = fitRatio({ ...settings.crop, ratio: source.crop.ratio, swapped: source.crop.swapped, platform: source.crop.platform ?? null, x: .5, y: .5, zoom: 1 }, photoSize(target));
   return settings;
 }
+/** One undo step on a photo that isn't in view (Auto runs per photo, C3): `mutate(settings)` edits a copy. */
+function editPhotoSettings(photo, mutate) {
+  const next = structuredClone(photo.settings); mutate(next);
+  if (sameSnapshot(next, photo.settings)) return false;
+  photo.undo.push(photo.settings); if (photo.undo.length > 50) photo.undo.shift(); photo.redo = [];
+  photo.settings = next; renderQueue.add(photo.id); photoChanged(photo.id); syncStrip();
+  return true;
+}
 /** One undo step per target photo; their thumbnails re-render through the queue. */
 function applyToPhotos(targets, parts) {
   const source = snapshot(); let changed = 0;
@@ -354,7 +395,7 @@ function applyToPhotos(targets, parts) {
     const next = mergeSettings(target, source, parts);
     if (sameSnapshot(next, target.settings)) continue;
     target.undo.push(target.settings); if (target.undo.length > 50) target.undo.shift(); target.redo = [];
-    target.settings = next; changed++;
+    target.settings = next; changed++; photoChanged(target.id);
     renderQueue.add(target.id);
   }
   syncStrip();
@@ -445,16 +486,18 @@ function adjustmentsFor({ look, edits }) {
  *  thumb, the default for 'preview') or 'full' (the full-size photo). From full size, Basic works at `edge`
  *  (resolution-independent) and film engines get full-size input (their grain and MTF have a physical scale),
  *  scaled down to `edge` afterwards. `onEngine(module)` sees each engine it loads. */
-async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from = quality === 'preview' ? 'thumb' : 'full', job = null, onEngine = null, onProgress } = {}) {
+async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from = quality === 'preview' ? 'thumb' : 'full', job = null, onEngine = null, onProgress, raw = false } = {}) {
   const preview = quality === 'preview', thumb = from === 'thumb', inView = !thumb && photo.id === app.activeId && state.image;
   const settings = inView ? snapshot() : photo.settings;
   const { crop, look, edits } = settings;
   const image = thumb ? photo.thumb : inView ? state.image : await decodeImage(photo.file);
   if (job?.stale) return null;
   const workEdge = thumb || look.engine === PRESETS ? edge : Infinity;
-  const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop, workEdge);
+  const cropped = isIdentityCrop(crop) && !hasHealing(settings.healing) ? image : cropSource(image, crop, workEdge, patchesFor(image, settings.healing, crop, workEdge));
   const source = await renderOptics(cropped, settings.optics, workEdge);
   if (job?.stale) return null;
+  // `raw`: the image Adjust receives (Auto, plan_workflow.md Task 3 C1): the optics output on Basic, the engine output on film.
+  if (raw && look.engine === PRESETS) return { image: source, tint: null, settings };
   if (look.engine === PRESETS) {
     const large = Math.min(workEdge, Math.max(source.naturalWidth || source.width, source.naturalHeight || source.height)) > PREVIEW_EDGE;
     return { image: large ? await renderEditOff(source, adjustmentsFor(settings), workEdge) : renderEdit(source, adjustmentsFor(settings), workEdge), tint: null, settings };
@@ -469,11 +512,12 @@ async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from 
   const input = shrink ? await createImageBitmap(source, { resizeWidth: Math.max(1, Math.round(sw * edge / Math.max(sw, sh))), resizeHeight: Math.max(1, Math.round(sh * edge / Math.max(sw, sh))), resizeQuality: 'high' })
     : source !== cropped ? source : await createImageBitmap(source); // a fresh optics bitmap is ours to close
   if (shrink && source !== cropped) source.close?.();
-  const raw = await module.render(input, cloneParams(params), { quality, onProgress });
+  const rendered = await module.render(input, cloneParams(params), { quality, onProgress });
   input.close();
   if (job?.stale) return null;
+  if (raw) return { image: rendered, tint: null, settings };
   const hasEdits = Object.keys(edits).length > 0;
-  let output = preview ? (hasEdits ? applyAdjustments(raw, adjustmentsFor(settings)) : raw) : await adjustFull(raw, hasEdits ? adjustmentsFor(settings) : null);
+  let output = preview ? (hasEdits ? applyAdjustments(rendered, adjustmentsFor(settings)) : rendered) : await adjustFull(rendered, hasEdits ? adjustmentsFor(settings) : null);
   const scale = thumb ? 1 : Math.min(1, edge / Math.max(output.width, output.height));
   if (scale < 1) {
     const scaled = document.createElement('canvas');
@@ -508,4 +552,4 @@ const renderQueue = createRenderQueue({
 });
 
 // ↓ shared with other editor modules (generated by the v3 split)
-export { QUEUE_EDGE, activePhoto, addFiles, applyParts, applyToPhotos, buildApply, buildStrip, closePhoto, otherSelected, photoById, pickPhoto, plural, renderPhotoEdit, renderQueue, scheduleActiveThumb, settingsOf, syncStrip };
+export { QUEUE_EDGE, activePhoto, addFiles, adjustmentsFor, editPhotoSettings, applyParts, applyToPhotos, buildApply, buildStrip, closePhoto, otherSelected, photoById, pickPhoto, plural, renderPhotoEdit, renderQueue, restorePhotos, scheduleActiveThumb, settingsOf, syncStrip };

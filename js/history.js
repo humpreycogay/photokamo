@@ -10,6 +10,7 @@ import { normalizeOptics } from './optics/index.js';
 import { defaultBorder } from './presets.js';
 import { defaultCrop } from './renderer.js';
 import { PRESETS, state } from './state.js';
+import { cloneHealing } from './heal/model.js';
 // ↑ imports
 const hooks = { syncControls() {}, scheduleRender() {}, afterCommit() {} };
 /** Sets the callbacks history needs from the editor (see `hooks`). */
@@ -19,7 +20,7 @@ const cloneEngineParams = all => Object.fromEntries(Object.entries(all).map(([id
 // Frames: { id, border } (border = Paper print settings). Older snapshots stored the frame id only.
 const cloneFrame = frame => (typeof frame === 'string' ? { id: frame, border: { ...defaultBorder }, color: null } : { id: frame.id, border: { ...defaultBorder, ...frame.border }, color: frame.color ?? null });
 // A snapshot has the shape of a photo's settings (SPEC §2): { look, edits, frame }.
-function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, optics: { ...state.optics }, frame: cloneFrame(state.frame), text: cloneTexts(state.text) }; }
+function snapshot() { return { look: { engine: state.engine, presetId: state.presetId, strength: state.strength, engineParams: cloneEngineParams(state.engineParams), myLookId: state.myLookId }, edits: { ...state.edits }, crop: { ...state.crop }, optics: { ...state.optics }, frame: cloneFrame(state.frame), text: cloneTexts(state.text), healing: cloneHealing(state.healing) }; }
 // Older snapshots were flat, with mode 'simple' | 'advanced' next to the engine.
 function migrateSnapshot(value) {
   if (value.look) return value;
@@ -29,11 +30,11 @@ function migrateSnapshot(value) {
 }
 /** Puts settings ({ look, edits, crop, frame }) into the editor state without syncing the UI. */
 function applySettings(value) {
-  const { look, edits, frame, crop, text, optics } = migrateSnapshot(value);
+  const { look, edits, frame, crop, text, optics, healing } = migrateSnapshot(value);
   state.engine = look.engine; state.presetId = look.presetId; state.strength = look.strength;
   state.engineParams = cloneEngineParams(look.engineParams); state.myLookId = look.myLookId;
   state.edits = { ...edits }; state.frame = cloneFrame(frame); state.crop = { ...defaultCrop, ...crop };
-  state.text = cloneTexts(text); state.optics = normalizeOptics(optics);
+  state.text = cloneTexts(text); state.optics = normalizeOptics(optics); state.healing = cloneHealing(healing); // older snapshots: none
 }
 function restore(value) {
   applySettings(value);

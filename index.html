@@ -66,9 +66,14 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg>
           Create collage…
         </button>
+        <p class="file-menu-note file-menu-privacy" id="photoPrivacy" hidden></p>
         <div class="file-menu-collages" id="collageMenuSaved" hidden>
           <p class="file-menu-heading" id="collageMenuHeading">Collages (0)</p>
           <div id="collageMenuList" role="group" aria-labelledby="collageMenuHeading"></div>
+        </div>
+        <div class="file-menu-session" id="sessionMenu">
+          <p class="file-menu-note" id="sessionStatus" role="status">Kept in this browser as you edit.</p>
+          <button class="file-menu-item" role="menuitem" type="button" id="sessionToggle">Stop keeping and clear…</button>
         </div>
       </div>
     </div>
@@ -107,6 +112,13 @@
             <a class="brand start-brand" href="#" aria-label="PhotoKamo home"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></a>
             <h1>Give your photos some character.</h1>
             <p class="start-lede">A little darkroom magic, right in your browser.</p>
+            <div class="start-resume" id="startResume" role="region" aria-labelledby="startResumeText" hidden>
+              <p class="start-resume-text" id="startResumeText">You have photos from last time.</p>
+              <div class="start-resume-actions">
+                <button class="button button-primary" id="resumeButton" type="button">Continue where you left off</button>
+                <button class="button button-quiet" id="freshButton" type="button">Start fresh</button>
+              </div>
+            </div>
             <div class="start-modes" id="startModes">
               <section class="start-mode is-selected" data-mode="edit" aria-labelledby="startEditTitle">
                 <button class="start-mode-pick" type="button" aria-pressed="true" aria-controls="startCompare" aria-describedby="startEditText"><span class="start-mode-title" id="startEditTitle">Photo Editor</span></button>
@@ -158,6 +170,7 @@
       <div class="viewport" id="viewport" hidden>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="previewCanvas" aria-label="Edited photo preview"></canvas>
+          <canvas class="heal-overlay" id="healCanvas" tabindex="-1" aria-label="Heal brush on the photo. Arrow keys move the brush, Space paints, S sets the source."></canvas>
           <canvas class="text-overlay" id="textCanvas" aria-label="Text on the photo. Arrow keys move the selected text, Shift for larger steps."></canvas>
           <span class="original-badge" id="originalBadge" hidden>Original</span>
           <div class="compare-split" id="compareSplit" hidden>
@@ -249,7 +262,11 @@
         <div class="strip-list" id="stripList" role="listbox" aria-label="Open photos. Ctrl or Command click, or long-press, to select several; Shift click for a range" aria-multiselectable="true" aria-orientation="horizontal"></div>
         <button class="strip-select mobile-only" id="stripSelectToggle" type="button" aria-label="Select all photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg></button>
         <button class="strip-collage" id="collageButton" type="button"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg><span class="strip-collage-label">Create collage</span></button>
-        <button class="strip-add" id="stripAdd" type="button" aria-label="Add photos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="strip-add" id="stripAdd" type="button" aria-label="Add photos" aria-haspopup="menu" aria-controls="stripAddMenu" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <div class="file-menu strip-add-menu" id="stripAddMenu" popover role="menu" aria-label="Add a photo">
+          <button class="file-menu-item" role="menuitem" type="button" data-strip-add="open"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg> Add photos…</button>
+          <button class="file-menu-item" role="menuitem" type="button" data-strip-add="camera"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> Take a photo</button>
+        </div>
       </div>
     </section>
 
@@ -259,6 +276,7 @@
         <button role="tab" type="button" aria-selected="false" aria-controls="adjustPanel" id="adjustTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="tab-label">Adjust</span> <span class="tab-badge" id="adjustBadge" hidden></span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="lensPanel" id="lensTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.3 3.3 9.5 11.6M20.6 9.5h-9.6M18.6 17.6 13.8 9.3M9.7 20.7l4.8-8.3M3.4 14.5h9.6M5.4 6.4l4.8 8.3"/></svg><span class="tab-label">Lens</span> <span class="tab-badge" id="lensBadge" hidden></span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="cropPanel" id="cropTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span class="tab-label">Crop</span></button>
+        <button role="tab" type="button" aria-selected="false" aria-controls="healPanel" id="healTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.5 10.5l3 3M13.5 10.5l-3 3"/></svg><span class="tab-label">Heal</span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="framePanel" id="frameTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10"/></svg><span class="tab-label">Frames</span></button>
         <button role="tab" type="button" aria-selected="false" aria-controls="textPanel" id="textTab" tabindex="-1"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg><span class="tab-label">Text</span></button>
       </div>
@@ -315,11 +333,22 @@
           </article>
 
           <div class="presets-view" id="presetsView">
+          <div class="look-search" role="search">
+            <label class="visually-hidden" for="lookSearch">Search looks</label>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+            <input type="search" id="lookSearch" placeholder="Search looks: Portra, night, warm…" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-describedby="lookSearchHint">
+            <button class="look-search-clear" id="lookClearSearch" type="button" aria-label="Clear search" hidden><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+            <span class="visually-hidden" id="lookSearchHint">Enter uses the best match.</span>
+          </div>
           <div class="look-filters">
             <div class="chips" id="lookFilters" role="group" aria-label="Look styles"></div>
+            <div class="look-tags" id="lookTags" role="group" aria-label="Tags (show looks with all the chosen tags)"></div>
           </div>
+          <p class="look-search-status" id="lookSearchStatus" aria-live="polite"></p>
 
           <div class="look-grid-scroll">
+            <p class="look-hidden-note" id="lookHiddenNote" hidden>The look in use is hidden by the filter. <button class="text-button" id="lookShowCurrent" type="button">Show all looks</button></p>
+            <div class="look-empty" id="lookEmpty" hidden><p id="lookEmptyText">No looks match.</p><button class="button button-ghost" id="lookClear" type="button">Clear search and filters</button></div>
             <div class="look-grid" id="lookGrid"></div>
           </div>
           <div class="look-tools" role="group" aria-label="Look shortcuts">
@@ -369,8 +398,20 @@
         </section>
 
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
-          <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
+          <div class="panel-heading"><h2>Adjustments <span class="auto-chip" id="autoChip" hidden title="Light and colour set by Auto">Auto</span></h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
           <p class="engine-wait-note" data-engine-wait hidden></p>
+          <details class="histogram" id="histogram" open>
+            <summary>Histogram</summary>
+            <canvas class="histogram-graph" id="histogramCanvas" width="512" height="120" role="img" aria-label="Histogram of the edited photo: brightness and red, green and blue" aria-describedby="histogramText"></canvas>
+            <div class="histogram-foot"><p class="histogram-text" id="histogramText"></p><button class="chip" id="clipToggle" type="button" aria-pressed="false" title="Hatch clipped shadows and highlights on the photo">Show clipping</button></div>
+          </details>
+          <div class="auto-row" id="autoRow" role="group" aria-label="Automatic adjustments">
+            <button class="button button-secondary" id="autoButton" type="button" title="Set light and colour for this photo (one undo step)">Auto</button>
+            <button class="button button-ghost" id="autoWbButton" type="button">Auto white balance</button>
+            <button class="button button-ghost" id="pickNeutralButton" type="button" aria-pressed="false" title="Click something that should be grey or white">Pick neutral</button>
+          </div>
+          <p class="auto-status" id="autoStatus" role="status"></p>
+          <p class="auto-reasons" id="autoReasons" hidden></p>
           <p class="slider-hint" id="adjustResetHint">Double-click a slider, or press Delete while it has focus, to reset it.</p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">
@@ -432,6 +473,31 @@
             <button class="button button-ghost" id="cropApplySelectedButton" type="button">Apply to selected photos</button>
             <button class="button button-ghost" id="cropApplyAllButton" type="button">Apply to all photos</button>
           </div>
+        </section>
+
+        <section class="tab-panel scroll-panel heal-panel" id="healPanel" role="tabpanel" aria-labelledby="healTab" hidden>
+          <div class="panel-heading"><h2>Heal</h2><button class="text-button" id="healClearAll" type="button">Remove all fixes</button></div>
+          <div class="segmented segmented-2" id="healModes" role="radiogroup" aria-label="Brush">
+            <button type="button" role="radio" data-heal-mode="heal" aria-checked="true">Heal</button>
+            <button type="button" role="radio" data-heal-mode="clone" aria-checked="false">Clone</button>
+          </div>
+          <p class="slider-hint" id="healModeHint">Paint over a spot: Heal finds a clean area nearby and blends it in.</p>
+          <div class="heal-sliders">
+            <div class="slider-row"><label class="slider-label" for="healSize"><span>Size</span><output id="healSizeOutput" for="healSize">40 px</output></label><input id="healSize" type="range" min="2" max="400" step="1" value="40"></div>
+            <div class="slider-row"><label class="slider-label" for="healHardness"><span>Hardness</span><output id="healHardnessOutput" for="healHardness">50%</output></label><input id="healHardness" type="range" min="0" max="100" step="1" value="50"></div>
+            <div class="slider-row"><label class="slider-label" for="healOpacity"><span>Opacity</span><output id="healOpacityOutput" for="healOpacity">100%</output></label><input id="healOpacity" type="range" min="5" max="100" step="1" value="100"></div>
+          </div>
+          <div class="heal-source-row">
+            <button class="button button-ghost" id="healSetSource" type="button" aria-pressed="false">Set source</button>
+            <button class="text-button" id="healAutoSource" type="button" hidden>Use automatic</button>
+            <span class="heal-source-text" id="healSourceText">Source: found automatically</span>
+          </div>
+          <label class="check-row"><input type="checkbox" id="healShowMarks" checked> Show marks on the photo</label>
+          <h3 class="heal-list-title" id="healListTitle">Fixes (0)</h3>
+          <div class="heal-list" id="healList" role="listbox" aria-labelledby="healListTitle" tabindex="0"></div>
+          <button class="button button-ghost" id="healDelete" type="button" disabled>Delete selected fix</button>
+          <p class="slider-hint">On the photo: drag to paint. Keyboard: Tab to the photo, arrow keys move the brush (Shift for bigger steps), Space paints a spot, S sets the source.</p>
+          <p class="auto-status" id="healStatus" role="status"></p>
         </section>
 
         <section class="tab-panel scroll-panel" id="framePanel" role="tabpanel" aria-labelledby="frameTab" hidden>
@@ -662,6 +728,7 @@
     </aside>
   </main>
 
+  <div class="neutral-reticle" id="neutralReticle" tabindex="-1" role="slider" aria-label="Neutral picker: arrow keys move (Shift for bigger steps), Enter picks this spot, Escape cancels" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
   <div class="photo-loading" id="photoLoading" role="status" hidden><span class="engine-wait-spinner" aria-hidden="true"></span><span id="photoLoadingText">Opening photos…</span></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -704,12 +771,17 @@
         <div class="size-options" id="sizeOptions">
           <button type="button" data-size="full" aria-pressed="true"><span>Full size</span><span class="size-detail" id="fullSizeDetail"></span></button>
           <button type="button" data-size="share" aria-pressed="false"><span>For sharing</span><span class="size-detail" id="shareSizeDetail">1080 px wide</span></button>
+          <button type="button" data-size="custom" aria-pressed="false" aria-controls="exportCustom"><span>Custom</span><span class="size-detail" id="customSizeDetail">Long edge 2048 px</span></button>
         </div>
+        <div class="custom-size" id="exportCustom" data-custom-size="export" hidden></div>
+        <p class="size-readout" id="sizeReadout" aria-live="polite"></p>
       </fieldset>
       <div class="quality-group" id="qualityGroup">
         <label class="quality-label" for="exportQuality"><span>Quality</span><output id="qualityOutput" for="exportQuality">High · 92%</output></label>
         <input id="exportQuality" type="range" min="60" max="100" value="92">
       </div>
+      <div class="target-size" id="exportTarget"></div>
+      <p class="export-privacy" id="exportPrivacy" role="status"></p>
       <div class="export-actions">
         <button class="button button-primary button-xl" id="shareButton" type="button" hidden>
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v7h14v-7"/></svg>
@@ -787,6 +859,15 @@
         <label class="batch-mode"><input type="radio" name="mode" value="separate"><span><strong>Separate files</strong><small>Your browser may ask to allow several downloads</small></span></label>
       </fieldset>
       <fieldset>
+        <legend>Size</legend>
+        <div class="segmented segmented-2" id="batchSizes">
+          <button type="button" data-batch-size="full" aria-pressed="true">Full size</button>
+          <button type="button" data-batch-size="custom" aria-pressed="false" aria-controls="batchCustom">Custom</button>
+        </div>
+        <div class="custom-size" id="batchCustom" data-custom-size="batch" hidden></div>
+        <p class="size-readout" id="batchSizeReadout" aria-live="polite"></p>
+      </fieldset>
+      <fieldset>
         <legend>Format</legend>
         <div class="segmented" id="batchFormats">
           <button type="button" data-batch-format="image/jpeg" aria-pressed="true">JPEG</button>
@@ -798,6 +879,7 @@
         <label class="quality-label" for="batchQuality"><span>Quality</span><output id="batchQualityOutput" for="batchQuality">92%</output></label>
         <input id="batchQuality" type="range" min="60" max="100" value="92">
       </div>
+      <div class="target-size" id="batchTarget"></div>
       <div class="batch-progress" id="batchProgress" hidden>
         <div class="batch-progress-head" aria-live="polite"><span id="batchProgressText">Rendering full quality</span><span id="batchProgressCount"></span></div>
         <div class="batch-bar"><span id="batchBar"></span></div>
@@ -871,7 +953,7 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="about-brand"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></p>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
-      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, or arrange them as grids, shaped stickers, contact sheets and scrapbook collages. Export one photo, a batch or a finished collage. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
+      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, or arrange them as grids, shaped stickers, contact sheets and scrapbook collages. Export one photo, a batch or a finished collage. Images and edits stay on your device; there is no upload, account, analytics, or backend. Open photos, their edits and collages are kept in this browser so a reload doesn’t lose them, until you clear them below or close every photo.</p>
       <p>The Basic looks are creative approximations, not exact reproductions. Film looks use Kamo, PhotoKamo’s calibrated spectral engine, and run entirely in your browser. Kamo’s calibration assets download only when you choose a film look.</p>
       <p>The Lens tab’s camera effects (distortion, colour fringing, light falloff, diffusion, bloom, lens flare, simulated depth of field and bokeh, diffraction) are PhotoKamo’s own code, written from the textbook optics below. Lens profiles are illustrative, not measurements of real lenses, and depth of field comes from the focus area you draw, because a photo holds no depth.</p>
       <p>PhotoKamo is free software under the GNU General Public License v3, except the Kamo film engine code, which is proprietary: all rights reserved, not covered by the GPL, and included only so PhotoKamo can run. Kamo’s licence and credits are behind the ⓘ button beside the engine controls.</p>
@@ -893,6 +975,7 @@
       </ul>
       <p>Collage layouts, masks, film markings, paper fibres, tape and the drawn stickers are original PhotoKamo code and generated geometry. Emoji stickers use Twemoji graphics, bundled with the app and loaded only from it. <a href="docs/collage/REFERENCES.md" target="_blank" rel="noopener noreferrer">Collage references and asset register<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
       <p class="engine-storage" id="engineStorage" hidden><span id="engineStorageText"></span> <button class="text-button" id="engineStorageRemove" type="button">Remove</button></p>
+      <p class="engine-storage" id="sessionStorage"><span id="sessionStorageText" role="status"></span> <button class="text-button" id="sessionStorageToggle" type="button">Stop keeping and clear…</button></p>
       <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://humpreycogay.github.io/" target="_blank" rel="noopener noreferrer">humpreycogay.github.io <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
       <p class="about-version">rel. 11222026</p>
     </article>
