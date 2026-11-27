@@ -156,7 +156,7 @@ function releaseImage() {
   state.fullRender?.bitmap?.close?.(); state.fullRender = null;
   dropEnginePreview();
   state.image = null; state.imageId++; state.originalKey = ''; state.originalCanvas = null; state.editedCanvas = null;
-  croppedCache.key = ''; croppedCache.sizes.clear(); cropUi.thumb = null; cropUi.thumbId = -1; dropOpticsCache();
+  croppedCache.key = ''; croppedCache.sizes.clear(); cropUi.thumb?.close?.(); cropUi.thumb = null; cropUi.thumbId = -1; dropOpticsCache();
   freeExport();
 }
 function showPhoto(target, image) {
