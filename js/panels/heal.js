@@ -106,12 +106,14 @@ function drawHealOverlay() {
   // The live stroke, the source (moving with the brush while painting) and the brush itself.
   const radius = Math.min(ui.size, Math.max(v.width, v.height) / 4) * v.scale;
   if (ui.drag) for (const point of ui.drag.path) { const p = v.toPreview(point.x, point.y); circle(p.x, p.y, radius, null, 'rgba(255,255,255,.22)'); } // only while painting
-  const brush = ui.hover || cursorPreview(v);
+  // The brush: under the pointer, or (keyboard) at the cursor while the photo has focus; nowhere otherwise.
+  const brush = ui.hover || (overlay.matches(':focus-visible') ? cursorPreview(v) : null);
   if (ui.source) {
     const start = ui.drag?.path[0], at = ui.drag?.path.at(-1), s = start ? v.toPreview(ui.source.x + at.x - start.x, ui.source.y + at.y - start.y) : v.toPreview(ui.source.x, ui.source.y);
     ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.moveTo(s.x - 8 * px, s.y); ctx.lineTo(s.x + 8 * px, s.y); ctx.moveTo(s.x, s.y - 8 * px); ctx.lineTo(s.x, s.y + 8 * px); ctx.stroke();
     circle(s.x, s.y, radius, 'rgba(0,0,0,.6)', null, [3 * px, 3 * px]);
   }
+  if (!brush) return;
   circle(brush.x, brush.y, radius, 'rgba(0,0,0,.7)'); ctx.lineWidth = .75 * px; circle(brush.x, brush.y, radius, 'rgba(255,255,255,.95)');
   if (ui.setting) { ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.moveTo(brush.x - 10 * px, brush.y); ctx.lineTo(brush.x + 10 * px, brush.y); ctx.moveTo(brush.x, brush.y - 10 * px); ctx.lineTo(brush.x, brush.y + 10 * px); ctx.stroke(); }
 }
@@ -208,6 +210,7 @@ function buildHeal() {
     else if (event.key === 'Escape' && ui.setting) { event.preventDefault(); event.stopPropagation(); ui.setting = false; syncHeal(); }
   });
   overlay.addEventListener('focus', () => { ui.hover = null; drawHealOverlay(); });
+  overlay.addEventListener('blur', drawHealOverlay);
   syncHeal();
 }
 
