@@ -327,11 +327,22 @@
           </article>
 
           <div class="presets-view" id="presetsView">
+          <div class="look-search" role="search">
+            <label class="visually-hidden" for="lookSearch">Search looks</label>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+            <input type="search" id="lookSearch" placeholder="Search looks: Portra, night, warm…" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-describedby="lookSearchHint">
+            <button class="look-search-clear" id="lookClearSearch" type="button" aria-label="Clear search" hidden><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+            <span class="visually-hidden" id="lookSearchHint">Enter uses the best match.</span>
+          </div>
           <div class="look-filters">
             <div class="chips" id="lookFilters" role="group" aria-label="Look styles"></div>
+            <div class="look-tags" id="lookTags" role="group" aria-label="Tags (show looks with all the chosen tags)"></div>
           </div>
+          <p class="look-search-status" id="lookSearchStatus" aria-live="polite"></p>
 
           <div class="look-grid-scroll">
+            <p class="look-hidden-note" id="lookHiddenNote" hidden>The look in use is hidden by the filter. <button class="text-button" id="lookShowCurrent" type="button">Show all looks</button></p>
+            <div class="look-empty" id="lookEmpty" hidden><p id="lookEmptyText">No looks match.</p><button class="button button-ghost" id="lookClear" type="button">Clear search and filters</button></div>
             <div class="look-grid" id="lookGrid"></div>
           </div>
           <div class="look-tools" role="group" aria-label="Look shortcuts">

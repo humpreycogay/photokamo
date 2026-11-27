@@ -34,6 +34,18 @@ export const presets = [
   p('hard-noir', 'Hard Noir', 'bw', 'Graphic black and white drama.', { saturation: -100, contrast: 42, shadows: -25, highlights: 8, grain: 28, vignette: 24, sharpness: 12 })
 ];
 
+/** The look tag vocabulary (search and tag chips, plan_workflow.md Task 1): id → chip label, in chip order. Every look
+ *  has 2–4 of these (Original has one); tools/check-film-looks.mjs rejects anything else. */
+export const lookTags = [['portrait', 'Portrait'], ['landscape', 'Landscape'], ['street', 'Street'], ['night', 'Night'], ['travel', 'Travel'],
+  ['everyday', 'Everyday'], ['wedding', 'Wedding'], ['warm', 'Warm'], ['cool', 'Cool'], ['vivid', 'Vivid'], ['faded', 'Faded'],
+  ['bw', 'B&W'], ['fine-grain', 'Fine grain'], ['instant', 'Instant'], ['cinema', 'Cinema'], ['creative', 'Creative']];
+const presetTags = { original: 'everyday', 'clean-pop': 'everyday vivid', 'soft-proof': 'portrait faded', 'warm-natural': 'everyday warm portrait',
+  'portrait-air': 'portrait wedding warm', 'vivid-day': 'vivid travel landscape', 'quiet-chrome': 'street cool', 'golden-hour': 'warm portrait travel',
+  'cool-document': 'cool street', 'faded-print': 'faded warm', 'silver-mono': 'bw portrait', 'cinema-teal': 'cinema cool night',
+  'desert-dream': 'warm faded travel', 'forest-matte': 'landscape faded cool', 'neon-rain': 'night creative vivid', 'rose-memory': 'faded warm portrait',
+  'hard-noir': 'bw street night' };
+for (const preset of presets) preset.tags = (presetTags[preset.id] || '').split(' ').filter(Boolean);
+
 export const adjustmentSections = [
   { name: 'Light', controls: [
     ['exposure', 'Exposure', -2, 2, .05, ' EV'], ['brightness', 'Brightness', -100, 100, 1, ''],

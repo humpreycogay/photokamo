@@ -429,6 +429,20 @@ body[data-tab=crop] .fullscreen-button { display:none; }
 #strengthSlider:disabled { opacity:.4; cursor:not-allowed; }
 .look-filters { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:18px 20px 10px; }
 .look-filters .chip { padding:0 10px; }
+.look-search { flex:none; position:relative; display:flex; align-items:center; margin:16px 20px 0; }
+.look-search > .icon-sm { position:absolute; left:12px; color:var(--text-muted); pointer-events:none; }
+.look-search input { width:100%; min-height:var(--tap); padding:0 44px 0 36px; border:1px solid var(--line-strong); border-radius:22px; background:var(--raised); color:var(--text); }
+.look-search input::-webkit-search-cancel-button { display:none; }
+.look-search-clear { position:absolute; right:0; width:var(--tap); height:var(--tap); border:0; border-radius:22px; background:transparent; color:var(--text-muted); cursor:pointer; }
+.look-search-clear:hover { color:var(--text); }
+.look-tags { flex:1 0 100%; display:flex; gap:6px; overflow-x:auto; padding:2px 0 4px; scrollbar-width:thin; }
+.look-tags .chip { flex:none; }
+.look-search-status { margin:0 20px; font-size:var(--fs-sm); color:var(--text-muted); }
+.look-search-status:empty { display:none; }
+.look-hidden-note { margin:0 0 10px; font-size:var(--fs-sm); color:var(--text-2); }
+.look-empty { display:grid; justify-items:start; gap:10px; padding:12px 0; color:var(--text-2); font-size:var(--fs-base); }
+.look-empty[hidden] { display:none; }
+.look-empty p { margin:0; }
 .chips { display:contents; }
 .chip { min-height:34px; padding:0 12px; border-radius:17px; border:1px solid var(--line-strong); background:transparent; color:var(--text-2); font-size:var(--fs-md); font-weight:500; cursor:pointer; }
 .chip:hover { border-color:var(--text-muted); color:var(--text); }
@@ -947,6 +961,13 @@ body.is-film .render-divider { display:block; }
   .look-filters { flex-wrap:nowrap; overflow-x:auto; margin:0; padding:5px 16px; scrollbar-width:none; overscroll-behavior-inline:contain; }
   .look-filters .chip { position:relative; flex:none; }
   .look-filters .chip::before { content:""; position:absolute; inset:-5px 0; } /* 44px tap height */
+  .look-search { margin:6px 16px 0; }
+  .look-search input { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
+  .look-search-status { margin:0 16px; }
+  .look-tags { display:contents; } /* phones: one sideways row of style and tag chips */
+  .look-tags .chip:first-child { margin-left:10px; }
+  .look-hidden-note { display:none; } /* phones: said in the (screen-reader) count instead */
+  .look-search-status { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; } /* the tiles need the room */
   /* The look's name sits in the engine row (mockup E); the card keeps Strength */
   .look-card { padding:0 16px; }
   .look-card-head { display:none; }

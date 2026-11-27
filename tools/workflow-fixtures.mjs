@@ -286,16 +286,52 @@ export async function checkMetadata() {
   return failures;
 }
 
+/** Task 1 (look search): golden rankings over the real catalogue, and speed. Returns failures. */
+export async function checkLookSearch() {
+  const { buildIndex, searchLooks, normalize } = await import(`${repo}/js/look-search.js`);
+  const { presets, lookStyles } = await import(`${repo}/js/presets.js`);
+  const { filmLooks } = await import(`${repo}/js/film-looks.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`look search: ${name}`); };
+  const styleLabel = Object.fromEntries(lookStyles);
+  const items = [...presets.map(p => ({ ...p, style: 'Basic' })), ...filmLooks.map(l => ({ ...l, style: styleLabel[l.style] }))];
+  const index = buildIndex(items), ids = query => searchLooks(index, query).map(r => r.id);
+  expect('normalize', JSON.stringify(normalize('Crème  Brûlée—B&W fine-grain')) === JSON.stringify(['creme', 'brulee', 'bw', 'finegrain']));
+  expect('empty query keeps every look in order', ids('').length === items.length && ids('  ')[0] === 'original');
+  const portra = ids('portra');
+  expect(`"portra": the three Portra stocks first (${portra.slice(0, 3)})`, portra.slice(0, 3).join() === 'film:kodak-portra-160,film:kodak-portra-400,film:kodak-portra-800');
+  expect(`"Portra 4": Portra 400 first, no 160/800 (${ids('Portra 4').slice(0, 4)})`, ids('Portra 4')[0] === 'film:kodak-portra-400' && !ids('Portra 4').includes('film:kodak-portra-160') && !ids('Portra 4').includes('film:kodak-portra-800'));
+  const bw = ids('black and white');
+  expect(`"black and white": only B&W-tagged looks (${bw.length})`, bw.length >= 15 && bw.every(id => items.find(i => i.id === id).tags.includes('bw')));
+  expect('"monochrome" = "bw" set', ids('monochrome').join() === ids('bw').join());
+  expect(`"noir": Hard Noir first`, ids('noir')[0] === 'hard-noir');
+  expect('"xyz": nothing', ids('xyz').length === 0);
+  expect('"polaroid": the Polaroid looks by name, then other instant looks', ids('polaroid')[0].includes('polaroid') && ids('polaroid').includes('film:instant-instax-mini'));
+  expect('"people" finds portrait looks', ids('people').includes('portrait-air'));
+  expect('"golden" finds Golden Hour first', ids('golden')[0] === 'golden-hour');
+  expect('"velvia 50" exact', ids('velvia 50')[0] === 'film:fujifilm-velvia-50');
+  expect('"fine grain" phrase = tag', ids('fine grain').includes('film:kodak-portra-160'));
+  // ≤ 3 typed characters + Enter reaches 95 % of looks by name (release criterion): its first 3 letters put it in the top 6? Count those that are first among equals.
+  const reach = items.filter(item => { const first = normalize(item.name).find(word => word.length >= 3) || normalize(item.name)[0]; return ids(first.slice(0, 3)).slice(0, 12).includes(item.id); }).length;
+  console.log(`  look search: ${reach}/${items.length} looks are in the first 12 results for the first 3 letters of their name`);
+  expect(`reachable by 3 letters in the first 12 results: ${reach}/${items.length}`, reach / items.length >= .9);
+  const t0 = performance.now(); for (let i = 0; i < 500; i++) searchLooks(index, ['p', 'po', 'por', 'port', 'portra 4', 'black and white', 'night street'][i % 7]);
+  const per = (performance.now() - t0) / 500;
+  console.log(`  look search: ${per.toFixed(3)} ms per query`);
+  expect(`speed: ${per.toFixed(3)} ms per keystroke for ${items.length} looks (< 2 ms)`, per < 2);
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata();
-  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures]) console.log('FAIL', failure);
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = await checkLookSearch();
+  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
   console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
   console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
   console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
-  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length ? 1 : 0);
+  console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search checks, ${searchFailures.length} failed`);
+  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length ? 1 : 0);
 }

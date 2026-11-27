@@ -7,7 +7,8 @@ import { engineById, engines, legacyEngineId, loadEngine } from './engines/regis
 import { filmLooks } from './film-looks.js';
 import { change, cloneParams } from './history.js';
 import { plural } from './photos.js';
-import { lookStyles, presets } from './presets.js';
+import { buildIndex, searchLooks } from './look-search.js';
+import { lookStyles, lookTags, presets } from './presets.js';
 import { renderPresetPreviews } from './start-screen.js';
 import { $, FAVORITES_KEY, MY_LOOKS_KEY, PRESETS, currentPreset, editCount, elements, filmLookById, isFilm, state, toast } from './state.js';
 // ↑ imports
@@ -124,6 +125,7 @@ async function checkFilmLooks() {
 if (new URLSearchParams(location.search).has('dev')) Object.assign(window, { pickFilmLook, checkFilmLooks });
 
 function buildMyLookTiles() {
+  lookQuery.index = null; if (lookQuery.ranks) lookQuery.ranks = computeRanks(); // My looks are searchable by name
   elements.lookGrid.querySelectorAll('[data-mine-wrap]').forEach(wrap => wrap.remove());
   for (const look of myLooks) {
     const wrap = document.createElement('div');
@@ -195,7 +197,7 @@ function buildLooks() {
     const tile = event.target.closest('[data-preset],[data-mine],[data-film]'); if (!tile) return;
     if (tile.dataset.mine) pickMyLook(tile.dataset.mine); else if (tile.dataset.film) pickFilmLook(tile.dataset.film); else pickLook(tile.dataset.preset);
   });
-  buildMyLookTiles();
+  buildMyLookTiles(); buildLookSearch();
   // Heart: shows only the favorites (tap again for All); with none yet, it says how to add one.
   $('#favoritesFilter').addEventListener('click', () => {
     if (!favorites.length) { toast('No favorites yet. Use the heart next to Strength to save a look.'); return; }
@@ -208,15 +210,84 @@ function buildLooks() {
   renderPresetPreviews();
 }
 const BASIC_FILTER = 'basic';
+// ---------- Search and tags (plan_workflow.md Task 1): on top of the style chips and Favorites ----------
+const lookQuery = { text: '', tags: new Set(), ranks: null, index: null, timer: 0 };
+/** The search index: Basic presets, film looks and My looks (rebuilt when My looks change). */
+function searchIndex() {
+  const style = Object.fromEntries(lookStyles);
+  return (lookQuery.index ||= buildIndex([...myLooks.map(look => ({ id: look.id, name: look.name, style: 'Mine' })),
+    ...presets.map(preset => ({ ...preset, style: 'Basic' })), ...filmTileLooks.map(look => ({ ...look, style: style[look.style] }))]));
+}
+/** id → rank for the current query and tags, or null when neither is set (everything matches, catalogue order). */
+function computeRanks() {
+  if (!lookQuery.text.trim() && !lookQuery.tags.size) return null;
+  const tagsOf = id => presets.find(item => item.id === id)?.tags || filmLookById(id)?.tags || [];
+  const ranks = new Map();
+  for (const { id } of searchLooks(searchIndex(), lookQuery.text)) if ([...lookQuery.tags].every(tag => tagsOf(id).includes(tag))) ranks.set(id, ranks.size);
+  return ranks;
+}
+const searchMatches = id => !lookQuery.ranks || lookQuery.ranks.has(id);
 function filterMatches(preset) {
+  if (!searchMatches(preset.id)) return false;
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(preset.id);
   return state.filter === BASIC_FILTER; // Basic presets live only in the Basic group; Film, B&W and Creative are film looks
 }
 function filmFilterMatches(look) {
+  if (!searchMatches(look.id)) return false;
   if (state.filter === 'All') return true;
   if (state.filter === 'Favorites') return favorites.includes(look.id);
   return look.style === state.filter;
+}
+function setLookSearch({ text = lookQuery.text, tags = lookQuery.tags } = {}) {
+  lookQuery.text = text; lookQuery.tags = tags; lookQuery.ranks = computeRanks();
+  syncLooks();
+  elements.lookGrid.closest('.look-grid-scroll').scrollTo({ top: 0, left: 0 });
+}
+/** After the grid is synced: ranks as CSS order, the count (announced 300 ms after typing stops), the empty state and
+ *  the "current look hidden" note. */
+function syncSearchState() {
+  const tiles = [...elements.lookGrid.querySelectorAll('[data-preset],[data-film],[data-mine]')];
+  for (const tile of tiles) {
+    const id = tile.dataset.preset || tile.dataset.film || tile.dataset.mine, holder = tile.dataset.mine ? tile.parentElement : tile;
+    holder.style.order = lookQuery.ranks?.has(id) ? lookQuery.ranks.get(id) : '';
+  }
+  const visible = tiles.filter(tile => !(tile.dataset.mine ? tile.parentElement : tile).hidden).length, searching = Boolean(lookQuery.ranks);
+  $('#lookEmpty').hidden = visible > 0;
+  $('#lookEmptyText').textContent = lookQuery.text.trim() ? `No looks match “${lookQuery.text.trim()}”${lookQuery.tags.size ? ' with these tags' : ''}.` : 'No looks have all these tags here.';
+  const current = tiles.find(tile => tile.getAttribute('aria-pressed') === 'true');
+  const hiddenCurrent = (searching || state.filter !== 'All') && Boolean(current) && (current.dataset.mine ? current.parentElement : current).hidden && visible > 0;
+  $('#lookHiddenNote').hidden = !hiddenCurrent;
+  const tagsChip = $('#lookTags');
+  tagsChip.querySelectorAll('[data-tag]').forEach(chip => chip.setAttribute('aria-pressed', lookQuery.tags.has(chip.dataset.tag)));
+  clearTimeout(lookQuery.timer);
+  const text = searching ? `${visible ? plural(visible, 'look') : 'No looks'}${hiddenCurrent ? ' · the look in use is hidden' : ''}` : '';
+  lookQuery.timer = setTimeout(() => { $('#lookSearchStatus').textContent = text; }, 300);
+  $('#lookClearSearch').hidden = !lookQuery.text;
+}
+function buildLookSearch() {
+  const input = $('#lookSearch');
+  // B&W and Creative are style chips already; as tags they stay searchable but get no second chip.
+  $('#lookTags').innerHTML = lookTags.filter(([id]) => !['bw', 'creative'].includes(id)).map(([id, label]) => `<button class="chip" type="button" data-tag="${id}" aria-pressed="false">${escapeHtml(label)}</button>`).join('');
+  input.addEventListener('input', () => setLookSearch({ text: input.value }));
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && input.value) { event.preventDefault(); event.stopPropagation(); input.value = ''; setLookSearch({ text: '' }); }
+    if (event.key === 'Enter') { // the best match comes into use
+      event.preventDefault();
+      const tiles = [...elements.lookGrid.querySelectorAll('[data-preset],[data-film],[data-mine]')].filter(tile => !(tile.dataset.mine ? tile.parentElement : tile).hidden);
+      const best = tiles.sort((a, b) => Number((a.dataset.mine ? a.parentElement : a).style.order || 0) - Number((b.dataset.mine ? b.parentElement : b).style.order || 0))[0];
+      best?.click();
+    }
+  });
+  $('#lookTags').addEventListener('click', event => {
+    const chip = event.target.closest('[data-tag]'); if (!chip) return;
+    const tags = new Set(lookQuery.tags); if (tags.has(chip.dataset.tag)) tags.delete(chip.dataset.tag); else tags.add(chip.dataset.tag);
+    setLookSearch({ tags });
+  });
+  const clear = () => { input.value = ''; state.filter = 'All'; setLookSearch({ text: '', tags: new Set() }); input.focus(); };
+  $('#lookClear').addEventListener('click', clear);
+  $('#lookShowCurrent').addEventListener('click', clear);
+  $('#lookClearSearch').addEventListener('click', () => { input.value = ''; setLookSearch({ text: '' }); input.focus(); });
 }
 /** Chip buttons (`attr` = data attribute); rebuilt only when the set changes, so keyboard focus stays on the chip. */
 function syncChips(container, attr, items, pressed) {
@@ -296,9 +367,10 @@ function syncLooks() {
     tile.setAttribute('aria-pressed', !advanced && item.id === state.presetId);
   });
   elements.lookGrid.querySelectorAll('[data-mine]').forEach(tile => {
-    tile.parentElement.hidden = !['All', 'Mine'].includes(state.filter);
+    tile.parentElement.hidden = !['All', 'Mine'].includes(state.filter) || !searchMatches(tile.dataset.mine);
     tile.setAttribute('aria-pressed', advanced && tile.dataset.mine === state.myLookId);
   });
+  syncSearchState();
   elements.lookMeta.hidden = !advanced;
   if (advanced) {
     const current = currentMyLook();
