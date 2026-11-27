@@ -22,6 +22,10 @@ export const SPACING = { gutter: { min: 0, max: .1, step: .005 }, margin: { min:
 let slotSeq = 0;
 export const FRAMING = Object.freeze({ pan: Object.freeze({ x: .5, y: .5 }), zoom: 1, rotate: 0, angle: 0, flip: false });
 export const emptySlot = (photoId = null) => ({ id: `s${++slotSeq}`, photoId, ...cloneFraming(FRAMING) });
+/** Restored documents keep their slot ids (`s1`, `s2`…): new slots continue after the highest (CollagePlan Task 10). */
+export function seedSlotIds(docs) {
+  for (const doc of docs) for (const slot of doc?.slots || []) { const n = Number(/^s(\d+)$/.exec(slot?.id)?.[1]); if (n > slotSeq) slotSeq = n; }
+}
 const cloneFraming = ({ pan, zoom, rotate, angle, flip }) => ({ pan: { ...pan }, zoom, rotate, angle, flip });
 /** Puts the default framing back on a slot (its photo stays). */
 export const resetFraming = slot => Object.assign(slot, cloneFraming(FRAMING));

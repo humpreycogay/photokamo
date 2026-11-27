@@ -385,7 +385,8 @@ Slot bitmap = the photo's unframed edit (V2), cached by `[photoId, settingsKey, 
 3. A migration path: `sanitizeCollageDoc` (`js/collage/store.js`) rejects any document whose `v !== 1`. Add `migrate(v)` steps before the version ever changes.
 4. Saved names come back from storage, so they must never be put into HTML (done in v3 Task 2: the menu is built with `textContent`).
 
-- [ ] With session recovery (`plan_workflow.md` Task 5): store collage documents in the session; missing photos → empty slots
+- [x] With session recovery (`plan_workflow.md` Task 5): store collage documents in the session; missing photos → empty slots
+  *Done 2026-11-27:* saved collages are in the session record next to the photo ids (stable across reloads); `seedSlotIds` continues slot ids after restored ones. Prerequisite 3 (`migrate(v)`) is still open: needed only when the document version changes.
 - [x] "Collages (N)" list in `#fileMenu` to reopen or delete
 - [ ] `docs/collage/PERF.md`: preview/export time and peak memory for 4, 9 and 36 photos (Basic-only and 3-film mixes) at Share/Full/Print, laptop and phone
 - [x] About dialog, README, `docs/collage/REFERENCES.md` complete; CLAUDE.md "Current redesign" updated

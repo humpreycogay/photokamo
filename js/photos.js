@@ -22,6 +22,7 @@ import { ensureTextFonts, textUi } from './panels/text.js';
 import { defaultAdjustments, defaultBorder, frames, presets } from './presets.js';
 import { adjustFull, croppedCache, dropOpticsCache, renderEditOff, scheduleRender, setHolding } from './preview.js';
 import { createRenderQueue } from './render-queue.js';
+import { beforeOpen, photoChanged, photoOpened, photosRemoved, sessionChanged } from './session/recovery.js';
 import { applyAdjustments, cropSource, defaultCrop, drawTexts, frameCanvas, isIdentityCrop, renderEdit } from './renderer.js';
 import { $, PRESETS, PREVIEW_EDGE, app, clampToRange, controlSpec, currentPreset, effectiveValue, elements, isFilm, mobileQuery, state, toast } from './state.js';
 // ↑ imports
@@ -59,6 +60,7 @@ async function addFiles(fileList, { view = true } = {}) {
   const files = [...(fileList || [])];
   elements.fileInput.value = ''; elements.cameraInput.value = '';
   if (!files.length) return [];
+  await beforeOpen(); // a saved session not yet continued comes back first, so opening a photo never drops it
   const opened = [];
   const problems = { type: 0, size: 0, decode: 0, cap: 0 };
   let added = 0;
@@ -74,7 +76,7 @@ async function addFiles(fileList, { view = true } = {}) {
     try { image = await decodeImage(file); } catch { problems.decode++; continue; }
     const photo = { id: app.nextId++, file, name: file.name, filename: file.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
       thumb: makeThumb(image), preview: null, settings: defaultSettings(), undo: [], redo: [], render: { status: 'idle' }, el: null };
-    app.photos.push(photo); addStripItem(photo); opened.push(photo);
+    app.photos.push(photo); addStripItem(photo); opened.push(photo); photoOpened(photo);
     if (!added++ && view) { app.selected = new Set([photo.id]); app.anchorId = app.focusId = photo.id; viewPhoto(photo.id, image); }
     syncStrip();
   }
@@ -84,6 +86,34 @@ async function addFiles(fileList, { view = true } = {}) {
   else if (files.length === 1) toast(problems.type ? 'Choose a JPEG, PNG, WebP, or GIF image.' : problems.size ? 'That photo is over the 40 MB limit.' : problems.cap ? `PhotoKamo keeps up to ${MAX_PHOTOS} photos open. Close some to add more.` : 'PhotoKamo could not decode that image.');
   else toast([added ? `${added} opened` : 'No photos opened', problems.cap ? `${problems.cap} over the ${MAX_PHOTOS}-photo limit` : '', problems.size ? `${problems.size} over 40 MB` : '', problems.type + problems.decode ? `${problems.type + problems.decode} not readable` : ''].filter(Boolean).join(' · ') + '.');
   return opened;
+}
+
+/** Session recovery: puts restored photos ({ id, file, sourceId, name, settings, undo, redo }) into the strip in
+ *  order and views `activeId` (else the first). Photos that no longer decode are left out. Returns the restored photos. */
+async function restorePhotos(list, { activeId, selected = [], nextId = 1 }) {
+  const loading = $('#photoLoading'), loadingText = $('#photoLoadingText'), restored = [];
+  let activeImage = null;
+  loading.hidden = !list.length;
+  try {
+    for (const [index, item] of list.entries()) {
+      loadingText.textContent = `Restoring photos… ${index + 1} of ${list.length}`;
+      let image;
+      try { image = await decodeImage(item.file); } catch { continue; }
+      const photo = { id: item.id, file: item.file, sourceId: item.sourceId, name: item.name, filename: item.name.replace(/\.[^.]+$/, '') || 'photo', width: image.naturalWidth, height: image.naturalHeight,
+        thumb: makeThumb(image), preview: null, settings: item.settings, undo: item.undo, redo: item.redo, render: { status: 'idle' }, el: null };
+      app.photos.push(photo); addStripItem(photo); restored.push(photo);
+      if (item.id === activeId) activeImage = image; // the others are decoded again when viewed
+    }
+  } finally { loading.hidden = true; }
+  app.nextId = Math.max(app.nextId, nextId, ...app.photos.map(photo => photo.id + 1));
+  if (!restored.length) { syncStrip(); return restored; }
+  const active = restored.find(photo => photo.id === activeId) || restored[0];
+  app.selected = new Set(selected.filter(id => photoById(id))); app.selected.add(active.id);
+  app.anchorId = app.focusId = active.id;
+  viewPhoto(active.id, active.id === activeId ? activeImage : null);
+  for (const photo of restored) if (photo !== active && isEdited(photo.settings)) renderQueue.add(photo.id); // C16: thumbs re-render
+  syncStrip();
+  return restored;
 }
 
 /** Brings a photo into view (decoding it from its File unless `decoded` is given). */
@@ -156,6 +186,7 @@ function removePhotos(ids) {
     renderQueue.remove(photo.id);
     app.photos.splice(app.photos.indexOf(photo), 1); app.selected.delete(photo.id); photo.el.remove();
   }
+  photosRemoved(targets.map(photo => photo.id));
   collageStore.restore(collageStore.list()); syncSavedCollages();
   toast(one ? `Removed ${targets[0].name}.` : `Removed ${targets.length} photos.`);
   if (!removingActive) {
@@ -254,6 +285,7 @@ function syncStrip() {
   const batchCount = isBatchExport() && !collage.active ? selected : 0;
   elements.exportLabel.textContent = batchCount ? `Export ${batchCount}` : 'Export';
   $('#saveButton').textContent = batchCount ? `Save ${batchCount}` : 'Save';
+  sessionChanged(); // order, selection or the photo in view may have changed (saved only if it did)
 }
 function selectRange(id) {
   const ids = app.photos.map(photo => photo.id);
@@ -354,7 +386,7 @@ function applyToPhotos(targets, parts) {
     const next = mergeSettings(target, source, parts);
     if (sameSnapshot(next, target.settings)) continue;
     target.undo.push(target.settings); if (target.undo.length > 50) target.undo.shift(); target.redo = [];
-    target.settings = next; changed++;
+    target.settings = next; changed++; photoChanged(target.id);
     renderQueue.add(target.id);
   }
   syncStrip();
@@ -508,4 +540,4 @@ const renderQueue = createRenderQueue({
 });
 
 // ↓ shared with other editor modules (generated by the v3 split)
-export { QUEUE_EDGE, activePhoto, addFiles, applyParts, applyToPhotos, buildApply, buildStrip, closePhoto, otherSelected, photoById, pickPhoto, plural, renderPhotoEdit, renderQueue, scheduleActiveThumb, settingsOf, syncStrip };
+export { QUEUE_EDGE, activePhoto, addFiles, applyParts, applyToPhotos, buildApply, buildStrip, closePhoto, otherSelected, photoById, pickPhoto, plural, renderPhotoEdit, renderQueue, restorePhotos, scheduleActiveThumb, settingsOf, syncStrip };

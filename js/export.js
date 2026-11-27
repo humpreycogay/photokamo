@@ -14,8 +14,9 @@ import { frameFor, renderFrame } from './panels/frames.js';
 import { ensureTextFonts } from './panels/text.js';
 import { plural, renderPhotoEdit, renderQueue, settingsOf } from './photos.js';
 import { frames } from './presets.js';
-import { adjustFull, croppedSize, frameBitmap, opticsSource, renderEditOff } from './preview.js';
-import { capFramed, cropGeometry, frameCanvas, isIdentityCrop } from './renderer.js';
+import { adjustFull, croppedSize, opticsSource, renderEditOff } from './preview.js';
+import { CUSTOM_BY, renderEdgeFor, sanitizeCustom, targetSize } from './export/size.js';
+import { capFramed, cropGeometry, fitToSize, frameCanvas, framedSize, isIdentityCrop } from './renderer.js';
 import { $, SHARE_WIDTH, app, currentPreset, editCount, effectiveAdjustments, elements, isFilm, state, toast } from './state.js';
 import { createZip } from './zip.js';
 // ↑ imports
@@ -44,15 +45,33 @@ function exportDimensions() {
   const device = deviceCap(engine.width, engine.height, renderFrame());
   return device.capped ? { ...device, limit: 'device' } : { ...engine, limit: engine.capped ? module.fullRenderLimit?.(advParams()) || 'engine' : null };
 }
-function exportEdge(size = state.exportSize) {
-  const { width, height } = exportDimensions();
-  const full = Math.max(width, height);
-  if (size === 'share' && width > shareWidth()) return Math.round(shareWidth() * full / width);
-  return full;
+// Size choices (Task 6): Full, For sharing, or Custom (js/export/size.js). The custom values and the batch size are
+// remembered on this device; Custom is also remembered as the choice.
+const SIZE_KEY = 'photokamo:export-size';
+const sizePrefs = (() => {
+  let value = null; try { value = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null'); } catch { /* defaults */ }
+  return { custom: sanitizeCustom(value?.custom), batch: value?.batch === 'custom' ? 'custom' : 'full', single: value?.single === 'custom' ? 'custom' : null };
+})();
+if (sizePrefs.single) state.exportSize = 'custom';
+function saveSizePrefs() { try { localStorage.setItem(SIZE_KEY, JSON.stringify({ custom: sizePrefs.custom, batch: sizePrefs.batch, single: state.exportSize === 'custom' ? 'custom' : null })); } catch { /* this visit only */ } }
+const sizeChoice = (mode = state.exportSize) => (mode === 'share' ? { mode, shareWidth: shareWidth() } : mode === 'custom' ? { mode, custom: sizePrefs.custom } : { mode: 'full' });
+/** The exported photo's exact size (before the frame): { width, height, kept, limit }. An enlargement is still held to
+ *  the device canvas limit, frame included. */
+function sizeFor(full, choice, frame) {
+  const target = targetSize(full, choice);
+  if (target.width <= full.width && target.height <= full.height) return { ...target, limit: null };
+  const cap = deviceCap(target.width, target.height, frame);
+  return cap.capped ? { ...target, width: cap.width, height: cap.height, limit: 'device' } : { ...target, limit: null };
 }
-function exportKey() { return JSON.stringify([state.imageId, snapshot(), exportEdge(), state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
+const exportTarget = (mode = state.exportSize) => sizeFor(exportDimensions(), sizeChoice(mode), renderFrame());
+/** The long edge the photo renders at: just above the target (trimmed to it after), at most the full size. */
+function exportEdge(target = exportTarget()) {
+  const full = exportDimensions(), edge = renderEdgeFor(full, target);
+  return Number.isFinite(edge) ? edge : Math.max(full.width, full.height);
+}
+function exportKey() { const target = exportTarget(); return JSON.stringify([state.imageId, snapshot(), exportEdge(target), target.width, target.height, state.exportFormat, state.exportFormat === 'image/png' ? 0 : elements.quality.value]); }
 function qualityWord(value) { return value >= 90 ? 'High' : value >= 75 ? 'Medium' : 'Low'; }
-async function renderAdvancedExport(edge) {
+async function renderAdvancedExport(edge, target) {
   const frame = renderFrame();
   const module = await activateEngine();
   const key = fullRenderKey(); const edits = engineEdits();
@@ -64,12 +83,24 @@ async function renderAdvancedExport(edge) {
   }
   const scale = Math.min(1, edge / Math.max(full.width, full.height));
   await ensureTextFonts(state.text);
-  if (scale === 1) return frameCanvas(full, frame, state.text);
-  const scaled = document.createElement('canvas');
-  scaled.width = Math.round(full.width * scale); scaled.height = Math.round(full.height * scale);
-  const ctx = scaled.getContext('2d'); ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(full, 0, 0, scaled.width, scaled.height);
-  return frameCanvas(scaled, frame, state.text);
+  let photo = full;
+  if (scale < 1) {
+    photo = document.createElement('canvas');
+    photo.width = Math.round(full.width * scale); photo.height = Math.round(full.height * scale);
+    const ctx = photo.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(full, 0, 0, photo.width, photo.height);
+  }
+  const fitted = fitToSize(photo, target.width, target.height), output = frameCanvas(fitted, frame, state.text);
+  if (fitted !== photo) fitted.width = 0;
+  if (photo !== full) photo.width = 0;
+  return output;
+}
+/** Basic: the off-thread edit brought to the exact size, then framed; the edit's bitmap is freed. */
+function fitAndFrame(bitmap, target, frame, texts) {
+  const fitted = fitToSize(bitmap, target.width, target.height), output = frameCanvas(fitted, frame, texts);
+  if (fitted !== bitmap) fitted.width = 0;
+  bitmap.close?.();
+  return output;
 }
 function exportSummary() {
   const frameName = state.frame.id === 'none' ? 'no frame' : `${frames.find(item => item.id === state.frame.id).name} frame`;
@@ -89,6 +120,11 @@ function syncExportOptions() {
   const canShrink = width > shareWidth();
   if (!canShrink && state.exportSize === 'share') state.exportSize = 'full';
   document.querySelectorAll('[data-size]').forEach(button => button.setAttribute('aria-pressed', button.dataset.size === state.exportSize));
+  $('#exportCustom').hidden = state.exportSize !== 'custom';
+  $('#customSizeDetail').textContent = customLabel();
+  syncCustomSize('exportCustom');
+  $('#sizeReadout').textContent = sizeReadout(exportTarget(), renderFrame(), exportDimensions());
+  saveSizePrefs();
   const shareButton = document.querySelector('[data-size="share"]');
   shareButton.disabled = !canShrink;
   const target = exportDimensions();
@@ -102,6 +138,44 @@ function syncExportOptions() {
   elements.shareButton.hidden = !canShareFiles;
   elements.downloadButton.className = `button button-xl ${canShareFiles ? 'button-ghost' : 'button-primary'}`;
 }
+// ---------- Custom size controls (the Save sheet and batch export share the values) ----------
+const customLabel = (custom = sizePrefs.custom) => { const by = CUSTOM_BY[custom.by]; return custom.by === 'percent' ? `${custom.percent} %` : `${by.label} ${custom[custom.by]} px`; };
+const mpLimit = () => `${Math.round((deviceLimit ||= canvasLimit()) / 1e5) / 10} MP`;
+/** What the user gets: the photo's size and, with a frame, the final size; why it isn't bigger when it isn't. */
+function sizeReadout(target, frame, full) {
+  const framed = framedSize(target.width, target.height, frame);
+  const hasFrame = framed.width !== target.width || framed.height !== target.height;
+  const parts = [hasFrame ? `Photo ${target.width} × ${target.height} px · with frame ${framed.width} × ${framed.height} px.` : `${target.width} × ${target.height} px.`];
+  if (state.exportSize === 'custom' && target.kept) parts.push(`Not enlarged: the photo is ${full.width} × ${full.height}. Turn on Allow upscaling to enlarge it.`);
+  if (target.limit === 'device') parts.push(`Limited to ${mpLimit()} on this device.`);
+  if (hasFrame && state.exportSize !== 'full') parts.push('The frame is added around the resized photo.');
+  return parts.join(' ');
+}
+function buildCustomSize(container, onChange) {
+  const id = container.id;
+  container.innerHTML = `<div class="custom-size-row"><label class="custom-field"><span>Resize by</span><select id="${id}By">${Object.entries(CUSTOM_BY).map(([key, { label }]) => `<option value="${key}">${label}</option>`).join('')}</select></label>`
+    + `<label class="custom-field"><span id="${id}Label">Long edge</span><span class="custom-input"><input id="${id}Value" type="number" inputmode="numeric" step="1" required><span id="${id}Unit" aria-hidden="true">px</span></span></label></div>`
+    + `<label class="check-row"><input type="checkbox" id="${id}Upscale"> Allow upscaling</label>`;
+  const by = $(`#${id}By`), value = $(`#${id}Value`), upscale = $(`#${id}Upscale`);
+  const changed = () => { saveSizePrefs(); document.querySelectorAll('[data-custom-size]').forEach(panel => syncCustomSize(panel.id)); onChange(); };
+  by.addEventListener('change', () => { sizePrefs.custom.by = by.value; changed(); });
+  upscale.addEventListener('change', () => { sizePrefs.custom.upscale = upscale.checked; changed(); });
+  // Typing: only whole numbers in range count; leaving the field puts back the value in use.
+  value.addEventListener('input', () => {
+    const { min, max } = CUSTOM_BY[sizePrefs.custom.by], number = Number(value.value);
+    if (!Number.isInteger(number) || number < min || number > max) return;
+    sizePrefs.custom[sizePrefs.custom.by] = number; saveSizePrefs(); onChange();
+  });
+  value.addEventListener('change', changed);
+}
+function syncCustomSize(id) {
+  const custom = sizePrefs.custom, spec = CUSTOM_BY[custom.by], value = $(`#${id}Value`); if (!value) return;
+  $(`#${id}By`).value = custom.by; $(`#${id}Label`).textContent = spec.label; $(`#${id}Unit`).textContent = spec.unit;
+  value.min = spec.min; value.max = spec.max; if (document.activeElement !== value || value.value === '') value.value = custom[custom.by];
+  value.setAttribute('aria-label', `${spec.label} in ${spec.unit === '%' ? 'percent' : 'pixels'}, ${spec.min} to ${spec.max}`);
+  $(`#${id}Upscale`).checked = custom.upscale;
+}
+
 function prepareExport() {
   const key = exportKey();
   if (preparedExport?.key === key) return preparedExport.promise;
@@ -109,10 +183,10 @@ function prepareExport() {
   job.promise = (async () => {
     await new Promise(resolve => setTimeout(resolve, 30));
     await ensureTextFonts(state.text);
-    const edge = exportEdge();
-    const canvasKey = JSON.stringify([state.imageId, snapshot(), edge]);
+    const target = exportTarget(), edge = exportEdge(target);
+    const canvasKey = JSON.stringify([state.imageId, snapshot(), edge, target.width, target.height]);
     if (exportCanvas.key !== canvasKey) { if (exportCanvas.canvas) exportCanvas.canvas.width = 0; exportCanvas = { key: canvasKey, canvas: null }; }
-    if (!exportCanvas.canvas) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge) : frameBitmap(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), renderFrame(), state.text) };
+    if (!exportCanvas.canvas) exportCanvas = { key: canvasKey, canvas: isFilm() ? await renderAdvancedExport(edge, target) : fitAndFrame(await renderEditOff(await opticsSource(edge), effectiveAdjustments(), edge), target, renderFrame(), state.text) };
     const type = state.exportFormat;
     const blob = await new Promise(resolve => exportCanvas.canvas.toBlob(resolve, type, Number(elements.quality.value) / 100));
     if (!blob) throw new Error('Encoding failed');
@@ -202,13 +276,21 @@ function photoCroppedSize(photo) {
 async function renderPhotoFull(photo, engineModules, onProgress) {
   const texts = settingsOf(photo).text || [];
   await ensureTextFonts(texts);
-  const size = photoCroppedSize(photo), cap = deviceCap(size.width, size.height, frameFor(settingsOf(photo).frame, null));
-  const { image, tint, settings } = await renderPhotoEdit(photo, { edge: cap.capped ? Math.max(cap.width, cap.height) : Infinity, onEngine: module => useEngine(engineModules, module), onProgress });
-  const output = frameCanvas(image, frameFor(settings.frame, tint), texts);
+  const frame = frameFor(settingsOf(photo).frame, null), size = photoCroppedSize(photo), cap = deviceCap(size.width, size.height, frame);
+  const full = cap.capped ? { width: cap.width, height: cap.height } : size, choice = batchChoice();
+  let target = sizeFor(full, choice, frame);
+  const edge = renderEdgeFor(full, target);
+  const { image, tint, settings } = await renderPhotoEdit(photo, { edge: Number.isFinite(edge) ? edge : cap.capped ? Math.max(cap.width, cap.height) : Infinity, onEngine: module => useEngine(engineModules, module), onProgress });
+  // Full size is what the render gives. A render smaller than planned (an engine limit) is never enlarged unasked.
+  if (choice.mode === 'full') target = { width: image.width, height: image.height };
+  else if (!sizePrefs.custom.upscale && (image.width < target.width || image.height < target.height)) target = sizeFor({ width: image.width, height: image.height }, choice, frame);
+  const fitted = fitToSize(image, target.width, target.height), output = frameCanvas(fitted, frameFor(settings.frame, tint), texts);
+  if (fitted !== image) fitted.width = 0;
   image.close?.();
   return output;
 }
-const batchKey = photos => JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, batch.format === 'image/png' ? 0 : elements.batchQuality.value]);
+const batchChoice = () => sizeChoice(sizePrefs.batch);
+const batchKey = photos => JSON.stringify([photos.map(photo => [photo.id, settingsOf(photo)]), batch.format, batch.format === 'image/png' ? 0 : elements.batchQuality.value, batchChoice()]);
 /** Renders and encodes the photos; `each(file)` gets every file as soon as it is ready. Null when cancelled. */
 async function renderBatch(photos, each = null) {
   const key = batchKey(photos);
@@ -263,6 +345,13 @@ function syncBatch() {
   const count = selectedPhotos().length, running = batch.running;
   document.querySelectorAll('[data-batch-format]').forEach(button => { button.setAttribute('aria-pressed', button.dataset.batchFormat === batch.format); button.disabled = running; });
   elements.batchQualityGroup.hidden = batch.format === 'image/png';
+  document.querySelectorAll('[data-batch-size]').forEach(button => { button.setAttribute('aria-pressed', button.dataset.batchSize === sizePrefs.batch); button.disabled = running; });
+  $('#batchCustom').hidden = sizePrefs.batch !== 'custom';
+  $('#batchCustom').querySelectorAll('input,select').forEach(input => { input.disabled = running; });
+  syncCustomSize('batchCustom');
+  const custom = sizePrefs.custom;
+  $('#batchSizeReadout').textContent = sizePrefs.batch === 'full' ? 'Each photo at its full size.'
+    : `Each photo: ${customLabel()}${custom.by === 'percent' ? ' of its size' : ''}.${custom.upscale ? ' Smaller photos are enlarged.' : ' Smaller photos aren’t enlarged.'} Frames are added around the resized photo.`;
   elements.batchQuality.disabled = running;
   $('#batchQualityOutput').value = `${elements.batchQuality.value}%`;
   elements.batchForm.querySelectorAll('[name=mode]').forEach(input => { input.disabled = running; });
@@ -316,6 +405,9 @@ async function shareBatch() {
 function buildBatch() {
   elements.batchForm.addEventListener('submit', event => { event.preventDefault(); downloadBatch(); });
   elements.batchShare.addEventListener('click', shareBatch);
+  $('#batchSizes').addEventListener('click', event => { const button = event.target.closest('[data-batch-size]'); if (!button || batch.running) return; sizePrefs.batch = button.dataset.batchSize; saveSizePrefs(); syncBatch(); });
+  buildCustomSize($('#batchCustom'), syncBatch);
+  buildCustomSize($('#exportCustom'), () => { syncExportOptions(); schedulePrepare(400); });
   $('#batchFormats').addEventListener('click', event => { const button = event.target.closest('[data-batch-format]'); if (!button || batch.running) return; batch.format = button.dataset.batchFormat; syncBatch(); });
   elements.batchQuality.addEventListener('input', syncBatch);
   // Cancel closes; while rendering it stops after the photo in progress.

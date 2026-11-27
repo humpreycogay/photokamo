@@ -1,4 +1,5 @@
 import { seededNoise, filmRandom as rnd, perforations, filmWear } from './film.js';
+import { fitPlan, halvingSteps } from './export/size.js';
 
 const clamp = value => Math.max(0, Math.min(255, value));
 const hasAdjustments = adjustments => Object.values(adjustments).some(value => value !== 0);
@@ -405,6 +406,26 @@ export function renderEdit(image, adjustments, maxEdge = 1400) {
 }
 /** `image` drawn at most `maxEdge` px on its long side: the first half of renderEdit. Drawing an <img> lets the browser
  *  decode at the smaller size, so this stays where the image is (main thread) to keep the exact same pixels. */
+/** A finished photo brought to exactly `width` × `height` (export sizes, js/export/size.js): returned as it is when it
+ *  already fits; trimmed (centre-crop, no resampling) when it is 1–2 px over; otherwise resized, halving first when it
+ *  shrinks by more than 2× so the last draw doesn't skip pixels. The caller still owns (and frees) `source`. */
+export function fitToSize(source, width, height) {
+  const from = { width: source.width, height: source.height }, to = { width, height }, plan = fitPlan(from, to);
+  if (plan === 'same') return source;
+  const draw = (image, w, h, sx = 0, sy = 0, sw = image.width, sh = image.height) => {
+    const canvas = createCanvas(w, h), ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, w, h);
+    return canvas;
+  };
+  if (plan === 'trim') return draw(source, width, height, Math.floor((from.width - width) / 2), Math.floor((from.height - height) / 2), width, height);
+  let current = source;
+  for (const step of halvingSteps(from, to)) { const next = draw(current, step.width, step.height); if (current !== source) current.width = 0; current = next; }
+  const output = draw(current, width, height);
+  if (current !== source) current.width = 0;
+  return output;
+}
+
 export function scaledCanvas(image, maxEdge = 1400) {
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;

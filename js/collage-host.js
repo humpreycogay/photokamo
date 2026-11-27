@@ -14,6 +14,7 @@ import { ensureTextFonts } from './panels/text.js';
 import { QUEUE_EDGE, activePhoto, addFiles, photoById, pickPhoto, renderPhotoEdit, renderQueue, settingsOf, syncStrip } from './photos.js';
 import { paperColors } from './presets.js';
 import { closeFullscreen, setHolding } from './preview.js';
+import { photoChanged, sessionChanged } from './session/recovery.js';
 import { textFont, textFonts } from './renderer.js';
 import { $, app, elements, mobileQuery, state, toast } from './state.js';
 // ↑ imports
@@ -39,8 +40,8 @@ const collageExport = createCollageExport({
 });
 const openExport = () => (collage.active ? collageExport.open() : openSave());
 
-function undo() { if (collage.active) { collage.undo(); return; } if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); }
-function redo() { if (collage.active) { collage.redo(); return; } if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); }
+function undo() { if (collage.active) { collage.undo(); return; } if (!state.undo.length) return; state.redo.push(snapshot()); restore(state.undo.pop()); updateButtons(); photoChanged(app.activeId); }
+function redo() { if (collage.active) { collage.redo(); return; } if (!state.redo.length) return; state.undo.push(snapshot()); restore(state.redo.pop()); updateButtons(); photoChanged(app.activeId); }
 function updateButtons() {
   elements.undo.disabled = collage.active ? !collage.canUndo : !state.undo.length;
   elements.redo.disabled = collage.active ? !collage.canRedo : !state.redo.length;
@@ -97,6 +98,7 @@ function syncSavedCollages() {
     remove.dataset.collageDelete = entry.id; remove.setAttribute('aria-label', `Delete ${entry.name}`);
     row.append(open, remove); return row;
   }));
+  sessionChanged(); // saved collages are part of the session record
 }
 function exitCollage({ keepCache = false } = {}) {
   if (!collage.active) return;

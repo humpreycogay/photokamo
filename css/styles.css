@@ -123,6 +123,8 @@ svg { flex:none; }
 .file-menu-collage-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .file-menu-delete { width:var(--tap); height:var(--tap); border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; }
 .file-menu-delete:hover,.file-menu-delete:focus-visible { background:var(--control); color:var(--text); }
+.file-menu-session { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); max-width:300px; }
+.file-menu-note { margin:4px 12px 2px; color:var(--text-muted); font-size:var(--fs-sm); line-height:1.4; }
 .history-actions { display:flex; align-items:center; gap:6px; }
 .topbar-actions { display:flex; align-items:center; gap:10px; }
 body:not(.has-image) .editing-only { display:none!important; }
@@ -178,6 +180,11 @@ body:not(.has-image) .drop-overlay { position:fixed; } /* "drop anywhere" covers
 .start-actions .button-secondary { background:transparent; }
 .start-actions .button-secondary:hover { background:var(--control); }
 .start-lede { margin:-10px 0 0; font-size:var(--fs-lg); line-height:1.4; color:var(--text-muted); }
+.start-resume { display:flex; flex-direction:column; gap:10px; padding:16px; border:1px solid var(--accent); border-radius:var(--radius-lg); background:var(--raised); }
+.start-resume[hidden] { display:none; }
+.start-resume-text { margin:0; font-size:var(--fs-base); line-height:1.45; color:var(--text); }
+.start-resume-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.start-resume-actions .button { min-height:var(--tap); }
 .start-modes { display:grid; gap:12px; }
 .start-mode { display:flex; flex-direction:column; gap:6px; padding:16px; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); cursor:pointer; transition:border-color .2s ease, background .2s ease; }
 .start-mode:hover { border-color:var(--line-strong); }
@@ -676,6 +683,21 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .size-options button { min-height:56px; padding:8px 12px; border:1px solid var(--line-strong); border-radius:12px; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
 .size-options button span { display:block; font-size:var(--fs-base); font-weight:600; }
 .size-options button .size-detail { font-size:var(--fs-sm); font-weight:400; color:var(--text-muted); }
+.size-options:has([data-size=custom]) { grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); }
+.segmented.segmented-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.custom-size { display:grid; gap:4px; margin-top:12px; }
+.custom-size[hidden] { display:none; }
+.custom-size-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.custom-field { display:grid; gap:4px; font-size:var(--fs-sm); color:var(--text-2); }
+.custom-field select,.custom-input { min-height:var(--tap); border:1px solid var(--line-strong); border-radius:var(--radius); background:var(--raised); color:var(--text); }
+.custom-field select { width:100%; padding:0 10px; }
+.custom-input { display:flex; align-items:center; padding-right:10px; }
+.custom-input:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+.custom-input input { flex:1; min-width:0; height:100%; min-height:42px; padding:0 10px; border:0; background:transparent; color:var(--text); }
+.custom-input input:focus-visible { outline:none; }
+.custom-input span { color:var(--text-muted); }
+.size-readout { margin:10px 0 0; font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
+.size-readout:empty { display:none; }
 .size-options button[aria-pressed=true] { border-color:transparent; background:var(--raised); box-shadow:inset 0 0 0 2px var(--accent); }
 .size-options button:disabled { cursor:not-allowed; color:var(--text-muted); }
 .quality-label { display:flex; justify-content:space-between; margin:0; }
@@ -1188,7 +1210,7 @@ body[data-tab=text] :is(.view-pill,.view-pill *,.fullscreen-button,.engine-wait,
      exceptions: their full option lists must own the scroll area, especially in iOS Safari. */
   #textPanel,#framePanel,#cropPanel,#lensPanel { height:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:12px 16px max(36px,env(safe-area-inset-bottom)); }
   #framePanel { padding:14px 0 max(36px,env(safe-area-inset-bottom)); }
-  .text-panel textarea,.crop-platform select,.adv-select select { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
+  .text-panel textarea,.crop-platform select,.adv-select select,.custom-field select,.custom-input input { font-size:16px; } /* 16px: iOS doesn't zoom in on focus */
   /* Typing in any tab: the app is pinned to the area above the keyboard (syncKeyboard in app.js),
      photo and editor split it, so iOS has nothing to pan and the page can't drift. */
   body.keyboard-open { position:fixed; left:0; right:0; top:var(--vv-top,0); height:var(--vv-h,100dvh); }

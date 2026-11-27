@@ -70,6 +70,10 @@
           <p class="file-menu-heading" id="collageMenuHeading">Collages (0)</p>
           <div id="collageMenuList" role="group" aria-labelledby="collageMenuHeading"></div>
         </div>
+        <div class="file-menu-session" id="sessionMenu">
+          <p class="file-menu-note" id="sessionStatus" role="status">Kept in this browser as you edit.</p>
+          <button class="file-menu-item" role="menuitem" type="button" id="sessionToggle">Stop keeping and clear…</button>
+        </div>
       </div>
     </div>
 
@@ -107,6 +111,13 @@
             <a class="brand start-brand" href="#" aria-label="PhotoKamo home"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></a>
             <h1>Give your photos some character.</h1>
             <p class="start-lede">A little darkroom magic, right in your browser.</p>
+            <div class="start-resume" id="startResume" role="region" aria-labelledby="startResumeText" hidden>
+              <p class="start-resume-text" id="startResumeText">You have photos from last time.</p>
+              <div class="start-resume-actions">
+                <button class="button button-primary" id="resumeButton" type="button">Continue where you left off</button>
+                <button class="button button-quiet" id="freshButton" type="button">Start fresh</button>
+              </div>
+            </div>
             <div class="start-modes" id="startModes">
               <section class="start-mode is-selected" data-mode="edit" aria-labelledby="startEditTitle">
                 <button class="start-mode-pick" type="button" aria-pressed="true" aria-controls="startCompare" aria-describedby="startEditText"><span class="start-mode-title" id="startEditTitle">Photo Editor</span></button>
@@ -704,7 +715,10 @@
         <div class="size-options" id="sizeOptions">
           <button type="button" data-size="full" aria-pressed="true"><span>Full size</span><span class="size-detail" id="fullSizeDetail"></span></button>
           <button type="button" data-size="share" aria-pressed="false"><span>For sharing</span><span class="size-detail" id="shareSizeDetail">1080 px wide</span></button>
+          <button type="button" data-size="custom" aria-pressed="false" aria-controls="exportCustom"><span>Custom</span><span class="size-detail" id="customSizeDetail">Long edge 2048 px</span></button>
         </div>
+        <div class="custom-size" id="exportCustom" data-custom-size="export" hidden></div>
+        <p class="size-readout" id="sizeReadout" aria-live="polite"></p>
       </fieldset>
       <div class="quality-group" id="qualityGroup">
         <label class="quality-label" for="exportQuality"><span>Quality</span><output id="qualityOutput" for="exportQuality">High · 92%</output></label>
@@ -785,6 +799,15 @@
         <legend>Download as</legend>
         <label class="batch-mode"><input type="radio" name="mode" value="zip"><span><strong>One ZIP file</strong><small id="batchZipName"></small></span></label>
         <label class="batch-mode"><input type="radio" name="mode" value="separate"><span><strong>Separate files</strong><small>Your browser may ask to allow several downloads</small></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Size</legend>
+        <div class="segmented segmented-2" id="batchSizes">
+          <button type="button" data-batch-size="full" aria-pressed="true">Full size</button>
+          <button type="button" data-batch-size="custom" aria-pressed="false" aria-controls="batchCustom">Custom</button>
+        </div>
+        <div class="custom-size" id="batchCustom" data-custom-size="batch" hidden></div>
+        <p class="size-readout" id="batchSizeReadout" aria-live="polite"></p>
       </fieldset>
       <fieldset>
         <legend>Format</legend>
@@ -871,7 +894,7 @@
       <button class="dialog-close" id="aboutClose" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.9"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <p class="about-brand"><img class="brand-mark" src="images/logo.svg" alt=""><span>Photo<span>Kamo</span></span></p>
       <p class="eyebrow">About</p><h2>A darkroom in your browser.</h2>
-      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, or arrange them as grids, shaped stickers, contact sheets and scrapbook collages. Export one photo, a batch or a finished collage. Images and edits stay on your device; there is no upload, account, analytics, or backend.</p>
+      <p>PhotoKamo is a privacy-first photo playground. Open one photo or many, give them a look, adjust, crop and frame them, or arrange them as grids, shaped stickers, contact sheets and scrapbook collages. Export one photo, a batch or a finished collage. Images and edits stay on your device; there is no upload, account, analytics, or backend. Open photos, their edits and collages are kept in this browser so a reload doesn’t lose them, until you clear them below or close every photo.</p>
       <p>The Basic looks are creative approximations, not exact reproductions. Film looks use Kamo, PhotoKamo’s calibrated spectral engine, and run entirely in your browser. Kamo’s calibration assets download only when you choose a film look.</p>
       <p>The Lens tab’s camera effects (distortion, colour fringing, light falloff, diffusion, bloom, lens flare, simulated depth of field and bokeh, diffraction) are PhotoKamo’s own code, written from the textbook optics below. Lens profiles are illustrative, not measurements of real lenses, and depth of field comes from the focus area you draw, because a photo holds no depth.</p>
       <p>PhotoKamo is free software under the GNU General Public License v3, except the Kamo film engine code, which is proprietary: all rights reserved, not covered by the GPL, and included only so PhotoKamo can run. Kamo’s licence and credits are behind the ⓘ button beside the engine controls.</p>
@@ -893,6 +916,7 @@
       </ul>
       <p>Collage layouts, masks, film markings, paper fibres, tape and the drawn stickers are original PhotoKamo code and generated geometry. Emoji stickers use Twemoji graphics, bundled with the app and loaded only from it. <a href="docs/collage/REFERENCES.md" target="_blank" rel="noopener noreferrer">Collage references and asset register<span class="visually-hidden"> (opens in a new tab)</span></a>.</p>
       <p class="engine-storage" id="engineStorage" hidden><span id="engineStorageText"></span> <button class="text-button" id="engineStorageRemove" type="button">Remove</button></p>
+      <p class="engine-storage" id="sessionStorage"><span id="sessionStorageText" role="status"></span> <button class="text-button" id="sessionStorageToggle" type="button">Stop keeping and clear…</button></p>
       <p class="about-links"><a href="https://github.com/andreavolpato/spektrafilm" target="_blank" rel="noopener noreferrer">spektrafilm <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://github.com/humpreycogay/photokamo" target="_blank" rel="noopener noreferrer">PhotoKamo source code <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a><a href="https://humpreycogay.github.io/" target="_blank" rel="noopener noreferrer">humpreycogay.github.io <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="1.8"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M18 14v5H5V6h5"/></svg><span class="visually-hidden"> (opens in a new tab)</span></a></p>
       <p class="about-version">rel. 11222026</p>
     </article>

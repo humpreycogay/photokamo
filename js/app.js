@@ -18,6 +18,7 @@ import { scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './previ
 import { defaultCrop } from './renderer.js';
 import { loadSample, renderStartCollage } from './start-screen.js';
 import { $, PRESETS, app, elements, filmLookById, isFilm, mobileQuery, sheetQuery, state, toast } from './state.js';
+import { initRecovery } from './session/recovery.js';
 import { initTheme } from './theme.js';
 // ↑ imports
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
@@ -28,7 +29,7 @@ import { initTheme } from './theme.js';
 
 
 // ---------- Wiring ----------
-initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons();
+initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); syncControls(); updateButtons(); initRecovery();
 // Saved engines once the page is idle (Cache Storage names only; badge sizes wait for the film tiles).
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges({ sizes: false }), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
@@ -119,7 +120,7 @@ elements.fileMenu.addEventListener('toggle', event => {
 });
 elements.fileMenu.addEventListener('keydown', event => {
   if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden]),[data-collage-open],[data-collage-delete]')];
+  const items = [...elements.fileMenu.querySelectorAll('[data-action]:not([hidden]),[data-collage-open],[data-collage-delete],#sessionToggle:not([hidden])')];
   const next = items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
   event.preventDefault(); next.focus();
 });
