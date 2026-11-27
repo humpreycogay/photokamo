@@ -158,15 +158,45 @@ export async function checkExportSize() {
   return failures;
 }
 
+/** Task 7 (target file size): the quality search against fake encoders. Returns failures. */
+export async function checkTargetSize() {
+  const t = await import(`${repo}/js/export/target.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`target size: ${name}`); };
+  const encoder = size => { const calls = []; return { calls, encode: async q => { calls.push(q); return { size: Math.round(size(q)), blob: { q } }; } }; };
+  const smooth = q => 200e3 + 25e3 * q + 400 * q * q; // ~0.7 MB at 20, ~6.5 MB at 98
+  for (const target of [1e6, 2e6, 3.5e6, 5e6]) {
+    const e = encoder(smooth), r = await t.searchQuality(e.encode, target);
+    expect(`smooth ${target}: fits, within 5 %, ≤ 12 encodes (${r.size}, q ${r.quality}, ${r.encodes})`, r.fits && r.size <= target && (r.size >= target * .95 || smooth(r.quality + 1) > target) && e.calls.length <= 12);
+    expect(`smooth ${target}: the blob is the reported quality`, r.blob.q === r.quality);
+  }
+  let e = encoder(smooth), r = await t.searchQuality(e.encode, 9e6);
+  expect('fits at the top: one encode', r.status === 'max' && r.quality === 98 && e.calls.length === 1);
+  e = encoder(smooth); r = await t.searchQuality(e.encode, 300e3);
+  expect('too big at the bottom: reported, two encodes', r.status === 'too-big' && !r.fits && r.quality === 20 && e.calls.length === 2 && r.smallest > 300e3);
+  // Non-monotonic: a dip around 60-70 (some encoders change chroma subsampling at a quality step).
+  const bumpy = q => smooth(q) * (q >= 60 && q <= 70 ? .8 : 1);
+  e = encoder(bumpy); r = await t.searchQuality(e.encode, 2.2e6);
+  expect(`bumpy: never over, ≤ 12 encodes (${r.size}, q ${r.quality}, ${e.calls.length})`, r.fits && r.size <= 2.2e6 && e.calls.length <= 12);
+  e = encoder(q => 1e6 + (q * 7919 % 13) * 1e4); r = await t.searchQuality(e.encode, 1.05e6);
+  expect('noise: never over, ≤ 12 encodes', r.fits && r.size <= 1.05e6 && e.calls.length <= 12);
+  let stale = false; e = encoder(q => { if (q === 20) stale = true; return smooth(q); });
+  const aborted = await t.searchQuality(e.encode, 1e6, { isStale: () => stale }).then(() => false, error => error.name === 'AbortError');
+  expect('a superseded search stops', aborted && e.calls.length === 2);
+  expect('suggested edge shrinks with the square root', t.suggestEdge(4000, 2e6, 500e3) === 1800 && t.suggestEdge(1000, 1.01e6, 1e6) === 800);
+  expect('targets: presets and repairs', t.sanitizeTarget('') === null && t.sanitizeTarget(0) === null && t.sanitizeTarget('512.4') === 512 && t.sanitizeTarget(1e9) === 50000 && t.sanitizeTarget(3) === 20);
+  expect('formats', t.formatBytes(1_940_000) === '1.94 MB' && t.formatBytes(480_400) === '480 KB' && t.formatTarget(2000) === '2 MB' && t.formatTarget(500) === '500 KB');
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = await checkExportSize();
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()];
   for (const failure of [...failures, ...sessionFailures, ...sizeFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
   console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
-  console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size checks, ${sizeFailures.length} failed`);
+  console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
   process.exit(failed || sessionFailures.length || sizeFailures.length ? 1 : 0);
 }

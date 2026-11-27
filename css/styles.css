@@ -698,6 +698,8 @@ dialog::backdrop { background:rgba(12,12,11,.75); backdrop-filter:blur(4px); }
 .custom-input span { color:var(--text-muted); }
 .size-readout { margin:10px 0 0; font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
 .size-readout:empty { display:none; }
+.target-size { margin:14px 0 0; }
+.target-size .custom-size-row { margin-top:6px; }
 .size-options button[aria-pressed=true] { border-color:transparent; background:var(--raised); box-shadow:inset 0 0 0 2px var(--accent); }
 .size-options button:disabled { cursor:not-allowed; color:var(--text-muted); }
 .quality-label { display:flex; justify-content:space-between; margin:0; }
