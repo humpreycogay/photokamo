@@ -1,0 +1,6 @@
+shutter.wav
+  Source:  "Auslösegeräusch SLR Serienaufnahme mit AF Schärfepriorität.ogg" by Smial, Wikimedia Commons
+           https://commons.wikimedia.org/wiki/File:Ausl%C3%B6seger%C3%A4usch_SLR_Serienaufnahme_mit_AF_Sch%C3%A4rfepriorit%C3%A4t.ogg
+  Licence: CC0 1.0 (public domain dedication)
+  Changes: one shot cut from the burst (3.965–4.300 s), mixed to mono, 3 ms fade-in / 45 ms fade-out,
+           loudness-normalised, saved as 16-bit 44.1 kHz WAV.

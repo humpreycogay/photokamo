@@ -1,6 +1,6 @@
 // Light/dark theme. The choice is saved; with none saved the theme follows the system. index.html sets
 // data-theme before first paint, so this module only handles switching: a six-blade iris closes over the
-// screen, the theme swaps while it is shut, then it opens, to a synthesised camera shutter sound.
+// screen, the theme swaps while it is shut, then it opens, to a camera shutter sound.
 import { $ } from './state.js';
 
 const THEME_KEY = 'photokamo:theme';
@@ -19,40 +19,17 @@ function apply(theme) {
   $('meta[name=theme-color]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim());
 }
 
-// ---------- Sound: an SLR shutter, synthesised once (no audio files). Two clusters, "ka-chick": mirror up + first
-// curtain, then second curtain + mirror down. Each is a few sub-millisecond clicks, a short metal ring and a body thump.
-const CLUSTERS = [
-  { at: 0,    hits: [[0, 1], [4, .55], [9, .35]],            ring: [2300, 3700, 5300], thump: 140 },
-  { at: .095, hits: [[0, .9], [3, .7], [11, .35], [19, .2]], ring: [1900, 3100, 4700], thump: 105, rattle: true }
-];
-let shutterBuffer = null;
-function buildShutter(ctx) {
-  const rate = ctx.sampleRate, buffer = ctx.createBuffer(1, Math.round(rate * .3), rate), out = buffer.getChannelData(0);
-  const add = (from, length, sample) => { const start = Math.round(from * rate); for (let i = 0; i < length && start + i < out.length; i++) out[start + i] += sample(i / rate); };
-  for (const cluster of CLUSTERS) {
-    for (const [ms, level] of cluster.hits) { // clicks: high-passed noise, ~1.5 ms decay
-      let last = 0, high = 0;
-      add(cluster.at + ms / 1000, Math.round(rate * .012), t => { const x = (Math.random() * 2 - 1) * Math.exp(-t / .0015); high = .86 * (high + x - last); last = x; return high * level; });
-    }
-    for (const [index, hz] of cluster.ring.entries()) { // metal ring: damped partials
-      const phase = Math.random() * 6.28, decay = .012 + index * .004;
-      add(cluster.at, Math.round(rate * .08), t => .22 * Math.sin(6.283 * hz * t + phase) * Math.exp(-t / decay));
-    }
-    add(cluster.at, Math.round(rate * .06), t => .7 * Math.sin(6.283 * cluster.thump * t * (1 - t * 4)) * Math.exp(-t / .012)); // body thump, falling pitch
-    if (cluster.rattle) { let low = 0; add(cluster.at + .004, Math.round(rate * .1), t => (low += .25 * ((Math.random() * 2 - 1) - low)) * .35 * Math.exp(-t / .022)); } // spring settle
-  }
-  let peak = 0; for (const value of out) peak = Math.max(peak, Math.abs(value));
-  for (let i = 0; i < out.length; i++) out[i] *= .8 / peak;
-  return buffer;
-}
-function shutterSound() {
+// ---------- Sound: a real SLR shutter (sounds/shutter.wav, CC0, see sounds/CREDITS.txt). The bytes are fetched from
+// this site when the page is idle; they are decoded on the first switch, so no AudioContext exists before a click.
+let shutterBytes = null, shutterBuffer = null;
+const loadShutter = () => shutterBytes ||= fetch('sounds/shutter.wav').then(response => response.ok ? response.arrayBuffer() : null).catch(() => null);
+async function shutterSound() {
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audio.state === 'suspended') audio.resume();
-    shutterBuffer ||= buildShutter(audio);
-    const source = audio.createBufferSource(), gain = audio.createGain();
-    source.buffer = shutterBuffer; gain.gain.value = .75;
-    source.connect(gain).connect(audio.destination); source.start(audio.currentTime + .005);
+    if (!shutterBuffer) { const bytes = await loadShutter(); if (!bytes) return; shutterBuffer = await audio.decodeAudioData(bytes.slice(0)); }
+    const source = audio.createBufferSource();
+    source.buffer = shutterBuffer; source.connect(audio.destination); source.start();
   } catch { /* no audio: the switch still works */ }
 }
 
@@ -104,5 +81,6 @@ async function toggle() {
 export function initTheme() {
   apply(saved() || current());
   for (const button of document.querySelectorAll('.theme-toggle')) button.addEventListener('click', toggle);
+  (window.requestIdleCallback || (callback => setTimeout(callback, 2000)))(loadShutter);
   systemLight.addEventListener('change', () => { if (!saved() && !busy) apply(systemLight.matches ? 'light' : 'dark'); });
 }
