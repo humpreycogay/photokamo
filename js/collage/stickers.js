@@ -59,13 +59,48 @@ function emoji(char) {
   };
 }
 
-/** @typedef {{ id: string, name: string, group: string, tags: string, w: number, h: number, outline: boolean, emoji?: string, draw: (ctx: CanvasRenderingContext2D) => void }} StickerDef
- *  tags: extra search words. */
-const def = (group, id, name, draw, { w = 100, h = 100, outline = true, tags = '' } = {}) => ({ id, name, group, tags, w, h, outline, draw });
+/** A pointed leaf `len` long along +x from (0, 0): filled, with a paler middle vein. */
+function leaf(ctx, x, y, len, angle, fill, vein = 'rgba(255,255,255,.35)', wide = .32) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  const path = new Path2D(`M0 0 C${len * .3} ${-len * wide} ${len * .75} ${-len * wide * .9} ${len} 0 C${len * .75} ${len * wide * .9} ${len * .3} ${len * wide} 0 0 Z`);
+  ctx.fillStyle = fill; ctx.fill(path); ctx.strokeStyle = vein; ctx.lineWidth = Math.max(.6, len * .04); ctx.beginPath(); ctx.moveTo(len * .08, 0); ctx.lineTo(len * .85, 0); ctx.stroke();
+  ctx.restore();
+}
+/** The same leaf as an outline only (line art). */
+function leafLine(ctx, x, y, len, angle, wide = .3) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  ctx.stroke(new Path2D(`M0 0 C${len * .3} ${-len * wide} ${len * .75} ${-len * wide * .9} ${len} 0 C${len * .75} ${len * wide * .9} ${len * .3} ${len * wide} 0 0 Z M${len * .1} 0 L${len * .7} 0`));
+  ctx.restore();
+}
+/** Points along a cubic stem (p0..p3), `n` of them from t0 to t1, each { x, y, a } with a = the stem's direction. */
+function along([x0, y0, x1, y1, x2, y2, x3, y3], n, t0 = .12, t1 = .96) {
+  return Array.from({ length: n }, (_, i) => {
+    const t = t0 + (t1 - t0) * i / Math.max(1, n - 1), u = 1 - t;
+    const x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3, y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+    const dx = 3 * u * u * (x1 - x0) + 6 * u * t * (x2 - x1) + 3 * t * t * (x3 - x2), dy = 3 * u * u * (y1 - y0) + 6 * u * t * (y2 - y1) + 3 * t * t * (y3 - y2);
+    return { x, y, a: Math.atan2(dy, dx) };
+  });
+}
+const stemPath = ([x0, y0, x1, y1, x2, y2, x3, y3]) => new Path2D(`M${x0} ${y0} C${x1} ${y1} ${x2} ${y2} ${x3} ${y3}`);
+/** Dried flower heads: tiny five-petal florets at the tips of thin branching stems from (base). */
+function driedSpray(ctx, base, tips, stem, petal, centre, r) {
+  ctx.strokeStyle = stem; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
+  for (const [x, y, bend = 0] of tips) { ctx.beginPath(); ctx.moveTo(base[0], base[1]); ctx.quadraticCurveTo((base[0] + x) / 2 + bend, (base[1] + y) / 2, x, y); ctx.stroke(); }
+  for (const [x, y] of tips) for (let k = 0; k < 5; k++) {
+    const a = k * TAU / 5 + x, fx = x + Math.cos(a) * r * 1.4, fy = y + Math.sin(a) * r * 1.4;
+    ctx.strokeStyle = stem; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(fx, fy); ctx.stroke();
+    for (let q = 0; q < 5; q++) { ctx.fillStyle = petal; ctx.fill(circle(fx + Math.cos(q * TAU / 5) * r * .55, fy + Math.sin(q * TAU / 5) * r * .55, r * .5)); }
+    ctx.fillStyle = centre; ctx.fill(circle(fx, fy, r * .32));
+  }
+}
+
+/** @typedef {{ id: string, name: string, group: string, tags: string, w: number, h: number, outline: boolean, flat?: boolean, emoji?: string, draw: (ctx: CanvasRenderingContext2D) => void }} StickerDef
+ *  tags: extra search words. flat: drawn without a shadow (line art and ink, which sit in the paper). */
+const def = (group, id, name, draw, { w = 100, h = 100, outline = true, flat = false, tags = '' } = {}) => ({ id, name, group, tags, w, h, outline, ...(flat ? { flat } : {}), draw });
 
 /** Sticker groups, in the order the picker shows them. */
 export const STICKER_GROUPS = [['faces', 'Faces'], ['love', 'Love'], ['words', 'Words'], ['doodles', 'Doodles'], ['hands', 'Hands'], ['animals', 'Animals'],
-  ['food', 'Food & drink'], ['nature', 'Nature & weather'], ['party', 'Party & wins'], ['travel', 'Travel'], ['fun', 'School & fun'], ['scrapbook', 'Scrapbook']];
+  ['food', 'Food & drink'], ['nature', 'Nature & weather'], ['party', 'Party & wins'], ['travel', 'Travel'], ['fun', 'School & fun'], ['scrapbook', 'Scrapbook'], ['vintage', 'Pressed & vintage']];
 
 // Emoji stickers: "char name|extra tags", grouped. Names are what search and screen readers use. Each draws its
 // Twemoji SVG (vector, crisp at any size) once loaded, else the system emoji font.
@@ -261,6 +296,87 @@ export const stickers = [
     paint(ctx, new Path2D('M14 6 H86 A10 10 0 0 1 96 16 V52 A10 10 0 0 1 86 62 H40 L22 78 L26 62 H14 A10 10 0 0 1 4 52 V16 A10 10 0 0 1 14 6 Z'), '#ffffff', '#222222', 3);
     label(ctx, 'Hi!', 50, 35, 70, 30, '#222222');
   }, { h: 82 }),
+  // Pressed & vintage: muted botanicals, line art and paper ephemera for the scrapbook kits (no die-cut outline).
+  def('vintage', 'eucalyptus', 'Eucalyptus sprig', ctx => {
+    const stem = [32, 99, 26, 70, 40, 38, 30, 2]; ctx.strokeStyle = '#7d8b6b'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.stroke(stemPath(stem));
+    along(stem, 9, .1, .97).forEach(({ x, y, a }, i) => { const size = 17 - i * 1.2, side = i % 2 ? 1 : -1;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a + side * 1.25); ctx.fillStyle = i % 3 ? '#9fb19a' : '#8ea38a'; ctx.beginPath(); ctx.ellipse(size * .55, 0, size * .55, size * .36, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(1, 0); ctx.lineTo(size * .9, 0); ctx.stroke(); ctx.restore(); });
+  }, { w: 64, outline: false, tags: 'leaf leaves plant green botanical pressed' }),
+  def('vintage', 'olive-sprig', 'Leafy sprig', ctx => {
+    const stem = [30, 99, 34, 66, 24, 36, 34, 3]; ctx.strokeStyle = '#6f7b55'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.stroke(stemPath(stem));
+    along(stem, 10, .08, .98).forEach(({ x, y, a }, i) => leaf(ctx, x, y, 22 - i * 1.3, a + (i % 2 ? 1 : -1) * .75, i % 2 ? '#7f8d5e' : '#8b9968'));
+  }, { w: 60, outline: false, tags: 'leaf leaves plant green botanical olive' }),
+  def('vintage', 'fern', 'Fern', ctx => {
+    const stem = [26, 99, 28, 66, 22, 34, 27, 2]; ctx.strokeStyle = '#6b7a4c'; ctx.lineWidth = 1.4; ctx.stroke(stemPath(stem));
+    along(stem, 16, .1, .98).forEach(({ x, y, a }, i) => { const len = 19 * (1 - i / 19); leaf(ctx, x, y, len, a + .95, '#7c8b57', 'rgba(255,255,255,.2)', .22); leaf(ctx, x, y, len, a - .95, '#86955f', 'rgba(255,255,255,.2)', .22); });
+  }, { w: 52, outline: false, tags: 'leaf plant green botanical pressed' }),
+  def('vintage', 'babys-breath', 'Dried flowers', ctx => driedSpray(ctx, [34, 99],
+    [[20, 22, -6], [30, 12, 2], [44, 18, 6], [52, 30, 8], [14, 38, -8], [40, 34, 2], [26, 30, -2], [58, 44, 10]], '#a08a6a', '#f6efe1', '#d8c49e', 2.6),
+  { w: 70, outline: false, tags: 'flower flowers dried pressed white gypsophila botanical' }),
+  def('vintage', 'golden-flowers', 'Golden dried flowers', ctx => driedSpray(ctx, [36, 99],
+    [[18, 20, -6], [34, 10, 0], [50, 22, 6], [24, 40, -4], [46, 40, 6], [60, 34, 10]], '#9a8358', '#e2b552', '#b07b2c', 3),
+  { w: 72, outline: false, tags: 'flower flowers dried pressed yellow botanical' }),
+  def('vintage', 'blossom', 'Blossom branch', ctx => {
+    ctx.strokeStyle = '#7a5a46'; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.stroke(new Path2D('M4 76 C30 64 52 52 96 18 M44 56 C50 40 62 34 70 30 M64 40 C74 46 84 46 92 44'));
+    for (const [x, y, r] of [[30, 62, 8], [52, 48, 9], [70, 28, 8], [90, 20, 7], [88, 44, 7], [16, 70, 6], [60, 38, 5]]) {
+      for (let k = 0; k < 5; k++) { const a = k * TAU / 5 + x; ctx.fillStyle = k % 2 ? '#efbcc5' : '#e8a9b6'; ctx.fill(circle(x + Math.cos(a) * r * .55, y + Math.sin(a) * r * .55, r * .52)); }
+      ctx.fillStyle = '#c4687a'; ctx.fill(circle(x, y, r * .22));
+    }
+  }, { h: 84, outline: false, tags: 'flower cherry blossom pink spring sakura' }),
+  def('vintage', 'line-flower', 'Line-art flower', ctx => {
+    ctx.strokeStyle = '#6b5846'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.stroke(new Path2D('M36 99 C34 76 40 56 36 34 M36 34 C24 30 18 18 22 6 C30 12 34 20 36 30 C38 20 44 10 54 6 C56 18 50 30 36 34 M36 34 C30 24 30 14 36 4 C42 14 42 24 36 34'));
+    leafLine(ctx, 36, 78, 26, -2.3, .3); leafLine(ctx, 37, 62, 22, -.75, .3);
+  }, { w: 70, outline: false, flat: true, tags: 'line art drawing flower tulip minimal outline botanical' }),
+  def('vintage', 'line-branch', 'Line-art branch', ctx => {
+    ctx.strokeStyle = '#6b5846'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const stem = [22, 99, 30, 70, 20, 40, 34, 4]; ctx.stroke(stemPath(stem));
+    along(stem, 6, .15, .95).forEach(({ x, y, a }, i) => leafLine(ctx, x, y, 24 - i * 2, a + (i % 2 ? .8 : -.8), .32));
+  }, { w: 56, outline: false, flat: true, tags: 'line art drawing leaf leaves minimal outline botanical' }),
+  def('vintage', 'swatches', 'Colour palette', ctx => {
+    ['#8b8a7c', '#cdb8aa', '#d39f86', '#b9a17d', '#6e6444'].forEach((color, i) => { ctx.fillStyle = '#ffffff'; ctx.fill(circle(14, 12 + i * 19, 9.6)); ctx.fillStyle = color; ctx.fill(circle(14, 12 + i * 19, 8)); });
+  }, { w: 28, outline: false, tags: 'palette colours colors swatch moodboard' }),
+  def('vintage', 'postmark', 'Postmark', ctx => {
+    ctx.strokeStyle = 'rgba(70,66,62,.7)'; ctx.fillStyle = 'rgba(70,66,62,.7)'; ctx.lineWidth = 1.6;
+    ctx.stroke(circle(24, 30, 21)); ctx.stroke(circle(24, 30, 15)); label(ctx, 'POST', 24, 30, 20, 9, 'rgba(70,66,62,.75)', STICKER_FONT.replace('800', '700'));
+    for (let k = 0; k < 4; k++) { ctx.beginPath(); for (let x = 48; x <= 100; x += 2) ctx.lineTo(x, 15 + k * 10 + Math.sin(x / 5) * 2.4); ctx.stroke(); }
+  }, { h: 60, outline: false, flat: true, tags: 'post mail stamp letter travel ink' }),
+  def('vintage', 'vintage-stamp', 'Vintage stamp', ctx => {
+    ctx.fillStyle = '#f4ead6'; ctx.fillRect(0, 0, 80, 100);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let x = 0; x <= 80; x += 8) { ctx.fill(circle(x, 0, 3)); ctx.fill(circle(x, 100, 3)); } for (let y = 0; y <= 100; y += 8) { ctx.fill(circle(0, y, 3)); ctx.fill(circle(80, y, 3)); }
+    ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#b8846d'; ctx.fillRect(9, 9, 62, 66);
+    ctx.fillStyle = '#efe1c6'; ctx.fill(new Path2D('M9 75 L28 46 L40 58 L54 36 L71 62 V75 Z')); ctx.fill(circle(56, 24, 7));
+    label(ctx, '5 CENTS', 40, 88, 58, 10, '#6e4a3a', STICKER_FONT.replace('800', '700'));
+  }, { w: 80, outline: false, tags: 'post mail stamp letter travel' }),
+  def('vintage', 'wax-seal', 'Wax seal', ctx => {
+    const blob = new Path2D(); for (let k = 0; k <= 24; k++) { const a = k * TAU / 24, r = 45 + Math.sin(k * 2.7) * 3; blob[k ? 'lineTo' : 'moveTo'](50 + Math.cos(a) * r, 50 + Math.sin(a) * r); } blob.closePath();
+    paint(ctx, blob, '#b48a3c'); paint(ctx, circle(50, 50, 31), '#c59a4a', '#97702c', 2.5);
+    ctx.strokeStyle = '#8b6526'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.stroke(new Path2D('M50 30 V70 M36 40 C44 46 56 46 64 40 M36 60 C44 54 56 54 64 60'));
+    ctx.strokeStyle = 'rgba(255,240,200,.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(50, 50, 38, 3.6, 4.6); ctx.stroke();
+  }, { outline: false, tags: 'seal letter envelope gold vintage' }),
+  def('vintage', 'compass', 'Compass', ctx => {
+    paint(ctx, circle(50, 50, 46), '#b48a4a', '#8a6630', 2); paint(ctx, circle(50, 50, 38), '#f3ead6', '#8a6630', 1.5);
+    paint(ctx, star(50, 50, 34, 6, 4), '#5c4a36'); paint(ctx, star(50, 50, 22, 5, 4, -Math.PI / 4), '#a08c6c');
+    ctx.fillStyle = '#b04a38'; ctx.fill(new Path2D('M50 16 L56 50 L44 50 Z')); paint(ctx, circle(50, 50, 4), '#b48a4a');
+  }, { outline: false, tags: 'compass travel map adventure navigation' }),
+  def('vintage', 'binder-clip', 'Binder clip', ctx => {
+    ctx.strokeStyle = '#a9adb1'; ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.stroke(new Path2D('M18 40 L10 6 H50 L42 40'));
+    paint(ctx, new Path2D('M4 40 H56 L52 92 H8 Z'), '#262422'); ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(8, 44, 44, 6);
+  }, { w: 60, outline: false, tags: 'clip office paper' }),
+  def('vintage', 'twine', 'Twine bow', ctx => {
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [color, width, dash] of [['#9c7b52', 3.2, []], ['rgba(230,206,160,.7)', 1.2, [3, 4]]]) {
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash);
+      ctx.stroke(new Path2D('M50 30 C30 4 6 12 14 28 C20 40 40 36 50 30 C60 24 80 20 86 30 C94 44 70 50 50 30 M50 30 C44 44 34 52 22 58 M50 30 C58 44 70 50 84 56'));
+    }
+    ctx.setLineDash([]);
+  }, { h: 62, outline: false, tags: 'string bow ribbon rope' }),
+  def('vintage', 'admit-one', 'Admit one', ctx => {
+    ctx.fillStyle = '#efe3c7'; ctx.fillRect(0, 0, 100, 50); ctx.strokeStyle = '#3e342a'; ctx.lineWidth = 1.6; ctx.strokeRect(5, 5, 90, 40);
+    label(ctx, 'ADMIT ONE', 50, 25, 76, 15, '#3e342a', '700 40px "Courier New", Courier, monospace');
+  }, { h: 50, outline: false, tags: 'ticket cinema movie retro' }),
   // Words
   def('words', 'love', 'Love', badge('Love', '#ff5d8f'), { h: 40 }),
   def('words', 'hello', 'Hello!', badge('Hello!', '#4cc9f0'), { h: 40 }),
@@ -398,7 +514,7 @@ export function drawStickers(ctx, doc, layout) {
     const { canvas, pad } = stickerCanvas(box.sticker, box.w), k = box.w / (canvas.width - 2 * pad);
     ctx.save(); ctx.translate(box.cx, box.cy); ctx.rotate(box.rotate * Math.PI / 180); if (item.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = box.w * .035; ctx.shadowOffsetY = box.w * .015;
+    if (!box.sticker.flat) { ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = box.w * .035; ctx.shadowOffsetY = box.w * .015; }
     ctx.drawImage(canvas, -canvas.width * k / 2, -canvas.height * k / 2, canvas.width * k, canvas.height * k);
     ctx.restore();
   }

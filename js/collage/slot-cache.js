@@ -12,10 +12,11 @@ export function createSlotCache(c) {
 
   const imageOf = index => cache.get(c.doc.slots[index]?.photoId)?.image || null;
 
-  /** Long edge (device px) a slot photo may need on this stage: independent of the layout and aspect, so switching
-   *  them never renders a photo again. */
+  /** Long edge (device px) a slot photo may need on this stage (the window, in full screen): independent of the layout
+   *  and aspect, so switching them never renders a photo again. */
   function needEdge() {
-    const long = Math.max(stage.clientWidth, stage.clientHeight) * Math.min(2, devicePixelRatio || 1);
+    const box = c.fullscreen ? { w: innerWidth, h: innerHeight } : { w: stage.clientWidth, h: stage.clientHeight };
+    const long = Math.max(box.w, box.h) * Math.min(2, devicePixelRatio || 1);
     return Math.min(MAX_SLOT_EDGE, Math.max(400, Math.ceil(long / 200) * 200));
   }
 

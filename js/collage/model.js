@@ -6,9 +6,10 @@
  *  zoom 1–5 (1 = cover); rotate in 90° steps; angle −45…45° on top; flip mirrors it. `id` stays with the slot. */
 /** @typedef {{ v: 1, templateId: string, aspect: { w: number, h: number }, aspectAuto: boolean,
  *   sheet: { shape: object, background: 'paper'|'transparent', outline: object|null, shadow: boolean },
- *   gutter: number, margin: number, radius: number, paper: { color: string, texture: string },
+ *   gutter: number, margin: number, radius: number, evenLines?: boolean, paper: { color: string, texture: string },
  *   border: object|null, splits: number[]|null, captionSpace: boolean, slots: SlotFill[], text: object[], stickers: object[], film: object|null, flatten: string }} CollageDoc
- *  gutter, margin and radius are fractions of the sheet's short edge. aspectAuto: the sheet follows the template's
+ *  gutter, margin and radius are fractions of the sheet's short edge; evenLines: grids and shapes work the margin out
+ *  from the spacing (and grid borders) so every line is the same width (older documents: off, margin as set). aspectAuto: the sheet follows the template's
  *  aspect until the user picks one. splits: divider positions of a one-row/one-column grid (js/collage/layout.js),
  *  null = the template's; captionSpace: a band of paper under each photo for its caption (grids). stickers:
  *  { id, kind (js/collage/stickers.js), x, y (centre, 0–1 of the sheet), size (width, fraction of the short edge), rotate (°), flip }. */
@@ -19,6 +20,8 @@ export const ASPECTS = [['1:1', 1, 1], ['4:5', 4, 5], ['3:2', 3, 2], ['2:3', 2, 
 export const COLLAGE_PAPERS = [{ id: 'taupe', name: 'Taupe', hex: '#a89a78' }, { id: 'clay', name: 'Clay', hex: '#a69480' }];
 export const SPACING = { gutter: { min: 0, max: .1, step: .005 }, margin: { min: 0, max: .15, step: .005 }, radius: { min: 0, max: .1, step: .005 } };
 
+/** Spacing a new collage starts with, and that comes back when leaving a look the user hasn't changed. */
+export const DEFAULT_SPACING = Object.freeze({ gutter: .02, margin: .04, radius: 0 });
 let slotSeq = 0;
 export const FRAMING = Object.freeze({ pan: Object.freeze({ x: .5, y: .5 }), zoom: 1, rotate: 0, angle: 0, flip: false });
 export const emptySlot = (photoId = null) => ({ id: `s${++slotSeq}`, photoId, ...cloneFraming(FRAMING) });
@@ -53,7 +56,7 @@ export function createDoc(photoIds, template, paperColor) {
   return {
     v: 1, templateId: template.id, aspect: { w: template.aspect[0], h: template.aspect[1] }, aspectAuto: true,
     sheet: { shape: { kind: 'rect' }, background: 'paper', outline: null, shadow: false },
-    gutter: .02, margin: .04, radius: 0, paper: { color: paperColor, texture: 'none' },
+    ...DEFAULT_SPACING, evenLines: true, paper: { color: paperColor, texture: 'none' },
     border: null, splits: null, captionSpace: false, slots: photoIds.map(id => emptySlot(id)), text: [], stickers: [], film: null, flatten: '#ffffff'
   };
 }

@@ -7,7 +7,8 @@ import { stripTransform } from './contact.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect  integer px */
 /** @typedef {Rect & { index: number, rotate: number, z: number, radius: number, shape: object|null, shadow: boolean }} SlotRect */
-/** @typedef {{ gutter?: number, margin?: number, radius?: number }} Spacing */
+/** @typedef {{ gutter?: number, margin?: number, radius?: number, evenLines?: boolean }} Spacing
+ *  evenLines: the margin is worked out so the paper around the edge is as wide as the lines between photos. */
 
 /** Splits `length` px into tracks proportional to `weights`, `gap` px apart, starting at `start`. */
 export function splitTracks(start, length, weights, gap) {
@@ -48,6 +49,8 @@ export function moveSplit(splits, i, value) {
   const lo = (i ? splits[i - 1] : 0) + MIN_SPLIT, hi = (i < splits.length - 1 ? splits[i + 1] : 1) - MIN_SPLIT;
   const out = [...splits]; out[i] = Math.round(Math.min(hi, Math.max(lo, value)) * 1e4) / 1e4; return out;
 }
+/** Grid margin in px matching the inner lines: gutter `g` px plus half the photo border's width (px). */
+export const evenMargin = (g, lineWidth = 0) => g + Math.round((lineWidth || 0) / 2);
 const toWeights = splits => [...splits, 1].map((v, i) => v - (i ? splits[i - 1] : 0));
 // Caption space under each photo (gallery style): this fraction of the short edge, at most this share of a cell.
 export const CAPTION_SPACE = .07, CAPTION_MAX = .35;
@@ -55,13 +58,16 @@ export const CAPTION_SPACE = .07, CAPTION_MAX = .35;
 /** Grid: `cols`/`rows` are relative track sizes; `cells` are [col, row, colSpan = 1, rowSpan = 1]. One-row and
  *  one-column grids take their track sizes from `splits` when set (dividers). `captionSpace` keeps a band of paper
  *  under each photo (slot.caption); `border` { width (fraction of the short edge), color } outlines each photo. */
-export function layoutGrid(template, width, height, { gutter = 0, margin = 0, radius = 0, splits = null, captionSpace = false, border = null } = {}) {
-  const short = Math.min(width, height), m = px(margin, short), g = px(gutter, short), r = px(radius, short);
+export function layoutGrid(template, width, height, { gutter = 0, margin = 0, radius = 0, splits = null, captionSpace = false, border = null, evenLines = false } = {}) {
+  const short = Math.min(width, height), g = px(gutter, short), r = px(radius, short);
+  const line = border?.width > 0 ? { width: Math.max(1, border.width * short), color: border.color } : null;
+  // Even lines: a border is stroked centred on each photo, so between photos it shows twice (half on each side of the
+  // gap, line + gutter in all) but only once at the edge: the margin gets the other half (edge = gutter + line).
+  const m = evenLines ? evenMargin(g, line?.width) : px(margin, short);
   const axis = splitAxis(template), tracks = axis === 'x' ? template.cols.length : template.rows.length;
   const valid = axis ? clampSplits(splits, tracks) : null;
   const colWeights = valid && axis === 'x' ? toWeights(valid) : template.cols, rowWeights = valid && axis === 'y' ? toWeights(valid) : template.rows;
   const cols = splitTracks(m, width - 2 * m, colWeights, g), rows = splitTracks(m, height - 2 * m, rowWeights, g);
-  const line = border?.width > 0 ? { width: Math.max(1, border.width * short), color: border.color } : null;
   const slots = template.cells.map(([col, row, colSpan = 1, rowSpan = 1], index) => {
     const first = cols[col], last = cols[col + colSpan - 1], top = rows[row], bottom = rows[row + rowSpan - 1];
     const rect = { x: first.start, y: top.start, w: last.start + last.size - first.start, h: bottom.start + bottom.size - top.start };
@@ -146,12 +152,13 @@ const rectPolygon = r => [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r
  *  so only with paper).
  *  Each slot carries `outline` (its own straight-edged polygon, px), `clip` (the sheet shape it is cut by), `visible`
  *  (outline ∩ shape, flat polygon) and `holeVisible` (the hole's part in it); its x, y, w, h bound `visible`. */
-export function layoutShaped(template, width, height, { gutter = 0, margin = 0, sheet = null } = {}) {
+export function layoutShaped(template, width, height, { gutter = 0, margin = 0, sheet = null, evenLines = false } = {}) {
   const short = Math.min(width, height), pad = px(stickerPad(sheet), short), g = px(gutter, short);
   const shape = template.sheet.shape, outer = { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
   // Margin is a paper rim inside the shape; on a transparent sheet it would only part the photos from the outline.
-  const rim = sheet?.background === 'transparent' ? 0 : margin;
-  const m = Math.min(px(rim, short), Math.floor(Math.min(outer.w, outer.h) / 2) - 1);
+  // Even lines: the rim is as wide as the gaps between photos.
+  const rim = sheet?.background === 'transparent' ? 0 : evenLines ? null : margin;
+  const m = Math.min(rim == null ? g : px(rim, short), Math.floor(Math.min(outer.w, outer.h) / 2) - 1);
   const inner = scaled(outer, (Math.min(outer.w, outer.h) - 2 * m) / Math.min(outer.w, outer.h));
   const [cx, cy] = shapeCenter(shape, inner), holeFor = (rect, grow) => template.sheet.hole
     ? { shape, rect: centred(cx, cy, rect.w * template.sheet.hole + 2 * grow, rect.h * template.sheet.hole + 2 * grow) } : null;

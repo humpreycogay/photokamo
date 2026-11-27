@@ -5,18 +5,19 @@ import { templates, templateById, slotCount } from './templates.js';
 import { layoutTemplate, paddedAspect, stickerPad } from './layout.js';
 import { drawPaper, drawCollageTexts, sheetPath, slotPath, drawOrder, mountRects } from './render.js';
 import { drawStickers } from './stickers.js';
-import { ASPECTS, SPACING, COLLAGE_PAPERS, fitSlots, resetTransforms } from './model.js';
+import { ASPECTS, SPACING, COLLAGE_PAPERS, DEFAULT_SPACING, fitSlots, resetTransforms } from './model.js';
 import { DEFAULT_FILM, filmSettings } from './contact.js';
 import { PICKER, clamp, liveRange, percent, plural, radioGroup, syncRadios, visiblePath } from './ui.js';
 
 export function createPanel(c) {
   const { deps, byId, canvas, change, say, template, draw } = c, panel = c.panelEl;
   const BACKDROP_KEY = 'photokamo:collage-backdrop';
-  const lists = [byId('collageDiptychs'), byId('collageTemplates'), byId('collageStyles'), byId('collageKits')], aspects = byId('collageAspects'), paper = byId('collagePaper');
+  const lists = [byId('collageDiptychs'), byId('collageTemplates'), byId('collageStyles'), byId('collageKits'), byId('collageLooks')], aspects = byId('collageAspects'), paper = byId('collagePaper');
   const sliders = Object.fromEntries(Object.keys(SPACING).map(key => [key, panel.querySelector(`[data-collage="${key}"]`)]));
   const sticker = { box: byId('collageSticker'), outline: byId('collageOutline'), output: byId('collageOutlineOutput'), colors: byId('collageOutlineColor'), shadow: byId('collageShadow') };
   const prints = { box: byId('collagePrints'), title: byId('collagePrintsTitle'), border: byId('collageBorder'), output: byId('collageBorderOutput'), colors: byId('collageBorderColor'),
     captionRow: byId('collageCaptionRow'), captionHint: byId('collageCaptionHint'), caption: byId('collageCaptionSpace') };
+  const evenRow = byId('collageEvenRow'), even = byId('collageEvenLines');
   const radiusRow = byId('collageRadiusRow'), marginRow = byId('collageMarginRow'), gutterRow = byId('collageGutterRow'), aspectHint = byId('collageAspectHint');
   const backdrops = byId('collageBackdrops'), backdropRow = byId('collageBackdropRow'), sheetEl = byId('collageSheet');
   const filmUi = { box: byId('collageFilm'), base: byId('collageFilmBase'), stock: byId('collageFilmStock'), date: byId('collageFilmDate'), start: byId('collageFilmStart'), mark: byId('collageFilmMark'), frame: byId('collageFilmMarkFrame') };
@@ -34,7 +35,8 @@ export function createPanel(c) {
   let showLayoutTab = () => {};
   function buildPanel() {
     const optionHtml = t => `<div class="collage-template" role="option" id="collage-${t.id}" data-template="${t.id}" tabindex="-1" aria-selected="false" aria-label="${t.name}, ${plural(slotCount(t), 'photo')}"><canvas aria-hidden="true"></canvas><span class="collage-template-name" aria-hidden="true">${t.name}</span></div>`;
-    const byCount = category => templates.filter(t => t.category === category).sort((a, b) => slotCount(a) - slotCount(b));
+    // Looks stay in their families, in the order written (js/collage/templates.js); the rest by photo count.
+    const byCount = category => templates.filter(t => t.category === category).sort((a, b) => category === 'look' ? 0 : slotCount(a) - slotCount(b));
     PICKER.forEach((category, i) => { lists[i].innerHTML = byCount(category).map(optionHtml).join(''); });
     const kitFonts = new Set(templates.flatMap(t => (t.text || []).map(text => deps.textFont({ bold: false, ...text }, 32))));
     Promise.all([...kitFonts].map(font => document.fonts.load(font).catch(() => {}))).then(() => { if (c.doc) drawThumbs(); }); // kit titles in the thumbnails
@@ -74,6 +76,11 @@ export function createPanel(c) {
       Object.assign(input, { min: spec.min * 100, max: spec.max * 100, step: spec.step * 100 });
       liveRange(c, input, () => { c.doc[key] = Number(input.value) / 100; syncSliders(); draw(); });
     }
+    even.addEventListener('change', () => {
+      const on = even.checked;
+      change(d => { if (!on) d.margin = evenMarginOf(d); d.evenLines = on; }); // off: the margin starts where the lines left it
+      say(on ? 'Even lines: the edge matches the lines between photos' : 'Even lines off: set the margin yourself');
+    });
     buildSticker();
     buildPrints();
     buildSlotPanel();
@@ -131,6 +138,7 @@ export function createPanel(c) {
       swapKitLayers(d, was, next);
     }
     if (was && was.kind !== next.kind) d.border = null; // grid borders and print borders don't carry over
+    if (was?.id !== next.id) applyLook(d, was?.look, next.look);
     d.templateId = next.id;
     if (next.kind === 'contact') d.film = filmSettings(d.film);
     if (shaped && d.sheet.background === 'paper' && !d.sheet.autoTransparent) { d.sheet.background = 'transparent'; d.sheet.autoTransparent = true; }
@@ -140,6 +148,15 @@ export function createPanel(c) {
     fitAspect(d, next);
     fitSlots(d, slotCount(next));
     d.paper.texture = next.texture || 'none';
+  }
+  /** Picking a look sets its spacing, corners and photo border, with even lines; leaving one for a plain layout puts
+   *  back the defaults the user hasn't changed since. */
+  function applyLook(d, old, look) {
+    if (look) { d.gutter = look.gutter; d.radius = look.radius || 0; d.border = look.border ? { ...look.border } : null; d.evenLines = true; return; }
+    if (!old) return;
+    if (d.gutter === old.gutter) d.gutter = DEFAULT_SPACING.gutter;
+    if (d.radius === (old.radius || 0)) d.radius = DEFAULT_SPACING.radius;
+    if (JSON.stringify(d.border) === JSON.stringify(old.border || null)) d.border = null;
   }
   /** A kit's stickers and captions as layers, each tagged `kit: "<template>:<index>"` (without ids). */
   const kitLayers = t => ({
@@ -171,7 +188,7 @@ export function createPanel(c) {
   function buildPrints() {
     prints.colors.innerHTML = outlineColors.map(([hex, name]) => `<button type="button" role="radio" class="paper-swatch" data-border="${hex}" aria-checked="false" aria-label="${name}" title="${name}" style="--swatch:${hex}"></button>`).join('');
     const input = prints.border;
-    liveRange(c, input, () => { c.doc.border = { ...borderOf(c.doc), width: Number(input.value) / 100 }; syncPrints(); draw(); },
+    liveRange(c, input, () => { c.doc.border = { ...borderOf(c.doc), width: Number(input.value) / 100 }; syncPrints(); syncSliders(); draw(); },
       () => say(c.doc.border.width ? `Border ${input.value}%` : 'Border off'));
     radioGroup(prints.colors, '[data-border]', button => {
       change(d => { d.border = { ...borderOf(d), color: button.dataset.border }; if (!d.border.width) d.border.width = .005; });
@@ -222,11 +239,16 @@ export function createPanel(c) {
     syncRadios(backdrops, 'data-backdrop', backdrop);
     sheetEl.dataset.backdrop = transparent ? backdrop : '';
   }
+  /** The margin even lines give (fraction of the short edge): the spacing, plus half a grid's photo border. */
+  const evenMarginOf = d => Math.min(SPACING.margin.max, d.gutter + (templateById(d.templateId)?.kind === 'grid' ? borderOf(d).width / 2 : 0));
+  const evenOn = () => Boolean(c.doc.evenLines) && ['grid', 'shaped'].includes(template().kind);
   function syncSliders() {
     for (const [key, input] of Object.entries(sliders)) {
-      input.value = Math.round(c.doc[key] * 1000) / 10;
-      panel.querySelector(`output[for="${input.id}"]`).value = percent(c.doc[key]);
+      const value = key === 'margin' && evenOn() ? evenMarginOf(c.doc) : c.doc[key];
+      input.value = Math.round(value * 1000) / 10;
+      panel.querySelector(`output[for="${input.id}"]`).value = percent(value);
     }
+    sliders.margin.disabled = evenOn(); even.checked = Boolean(c.doc.evenLines);
   }
   function syncPanel() {
     const t = template(), aspect = ASPECTS.find(([, w, h]) => w === c.doc.aspect.w && h === c.doc.aspect.h);
@@ -245,6 +267,7 @@ export function createPanel(c) {
     sticker.box.hidden = !shaped; filmUi.box.hidden = !contact; radiusRow.hidden = shaped || free || contact; prints.box.hidden = shaped || contact; gutterRow.hidden = free;
     prints.title.textContent = free ? 'Prints' : 'Borders'; prints.captionRow.hidden = prints.captionHint.hidden = free;
     marginRow.hidden = free || (shaped && c.doc.sheet.background === 'transparent'); // a shape's margin is a paper rim
+    evenRow.hidden = marginRow.hidden || contact;
     if (shaped) syncSticker();
     if (!shaped) syncPrints();
     if (contact) syncFilmPanel();
@@ -266,11 +289,12 @@ export function createPanel(c) {
     const checkerLight = style.getPropertyValue('--raised').trim(), transparent = c.doc.sheet.background === 'transparent';
     const dpr = Math.min(2, devicePixelRatio || 1), box = 52;
     for (const list of lists) for (const option of list.querySelectorAll('[data-template]')) {
-      const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', kit = t.category === 'kit', a = shaped || kit ? t.aspect[0] / t.aspect[1] : c.doc.aspect.w / c.doc.aspect.h;
+      const t = templateById(option.dataset.template), shaped = t.kind === 'shaped', kit = t.category === 'kit', a = shaped || kit || t.look ? t.aspect[0] / t.aspect[1] : c.doc.aspect.w / c.doc.aspect.h;
       const w = Math.round((a >= 1 ? box : box * a) * dpr), h = Math.round((a >= 1 ? box / a : box) * dpr);
       const thumb = option.querySelector('canvas'), layout = layoutTemplate(t, w, h, { gutter: .06, margin: shaped ? 0 : .06, border: t.kind === 'free' ? { width: 1.5 * dpr / Math.min(w, h), color: checkerLight } : null });
       thumb.width = w; thumb.height = h; thumb.style.width = `${w / dpr}px`; thumb.style.height = `${h / dpr}px`;
       const ctx = thumb.getContext('2d');
+      if (t.look) { drawLookThumb(ctx, t, w, h, dpr, slotColor); continue; }
       if (kit) { drawKitThumb(ctx, t, layout, slotColor); continue; }
       if (transparent || shaped) {
         const cell = Math.max(2, Math.round(4 * dpr));
@@ -286,6 +310,13 @@ export function createPanel(c) {
         if (s.border) { ctx.strokeStyle = s.border.color; ctx.lineWidth = s.border.width; ctx.stroke(path); } // overlapping prints stay apart
       }
     }
+  }
+  /** A look's thumbnail in its own paper, spacing and corners (lines at least a hairline, so seamless cells show), grey photos. */
+  function drawLookThumb(ctx, t, w, h, dpr, slotColor) {
+    const short = Math.min(w, h), hair = dpr / short, { gutter, radius = 0, border = null } = t.look;
+    const layout = layoutTemplate(t, w, h, { gutter: Math.max(gutter, hair), radius, evenLines: true, border: border && { ...border, width: Math.max(border.width, hair) } });
+    ctx.fillStyle = t.paper; ctx.fillRect(0, 0, w, h); ctx.fillStyle = slotColor;
+    for (const s of layout.slots) { const path = slotPath(s); ctx.fill(path); if (s.border) { ctx.strokeStyle = s.border.color; ctx.lineWidth = s.border.width; ctx.stroke(path); } }
   }
   /** A kit's thumbnail in its own colours: paper and scraps, mounts, grey photos, stickers and titles. */
   function drawKitThumb(ctx, t, layout, slotColor) {
