@@ -50,7 +50,34 @@
   --track-exposure: linear-gradient(90deg,#f1efe8,#1a1a18);
   --track-warmth: linear-gradient(90deg,#6aa3ff,#9a9a94,#ffb15e);
 
+  /* Theme shutter (iris blades stay graphite in both themes, like real ones) */
+  --shutter-blade: #1b1b19;
+  --shutter-edge:  #3a3a35;
+
   color-scheme: dark;
+}
+
+/* Light theme: same roles, daylight values. The stage stays a neutral mid-grey so colour is judged fairly
+   and Paper/Instant frames keep an edge. All text pairs pass 4.5:1. */
+:root[data-theme=light] {
+  --bg:            #e8e6e0;
+  --stage:         #cfcdc6;
+  --stage-print:   #9a9993;
+  --surface:       #f5f4f0;
+  --raised:        #ffffff;
+  --control:       #e2e0d9;
+  --line:          #dcdad3;
+  --line-strong:   #c2c0b8;
+  --text:          #1b1b19;
+  --text-2:        #3b3a36;
+  --text-muted:    #5c5b55;  /* 6.2:1 on --surface */
+  --text-disabled: #a3a198;
+  --accent:        #0b6b63;  /* 5.8:1 on --surface */
+  --accent-hover:  #08524c;
+  --accent-tint:   #d3ece8;
+  --ok:            #3d6e35;
+  --shadow-photo:  0 16px 44px rgba(0,0,0,.28);
+  color-scheme: light;
 }
 
 /* Self-hosted fonts (SIL OFL 1.1, see fonts/OFL-*.txt). No third-party requests. */
@@ -842,7 +869,7 @@ body.is-film .render-divider { display:block; }
   .icon-button { width:var(--tap); height:var(--tap); }
   .button { min-height:var(--tap); }
   .topbar-divider,.file-chip,#revertButton,#exportButton { display:none!important; }
-  body.has-image .brand,body.has-image #aboutButton { display:none; }
+  body.has-image .brand,body.has-image #aboutButton,body.has-image #themeButton { display:none; }
   .topbar-start { gap:10px; }
   .brand { font-size:17px; gap:8px; }
   .brand-mark { height:26px; }
@@ -1038,7 +1065,9 @@ body.is-film .render-divider { display:block; }
 
   /* Start screen (Task 3 finishes the mobile layout) */
   body:not(.has-image) .stage { padding:0 0 env(safe-area-inset-bottom); }
-  .start-header { justify-content:space-between; }
+  .start-header { justify-content:space-between; flex-wrap:wrap; column-gap:8px; } /* links drop to their own row below ~370 px */
+  .start-links { gap:0; margin-left:auto; }
+  .start-link { padding:0 6px; white-space:nowrap; }
   .start-brand-mobile { display:flex; } .start-brand { display:none; }
   /* one column: headline, buttons, print, then the small print under it */
   .start-hero { gap:20px; padding-top:8px; }
@@ -1523,3 +1552,12 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
   .strip-collage { width:52px; height:var(--tap); margin:0; padding:0; }
   .strip-collage-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 }
+
+/* Theme switch: the button shows the theme you will switch to; an iris closes, the theme swaps behind it, then it opens */
+.theme-icon-light { display:none; }
+:root[data-theme=light] .theme-icon-light { display:block; }
+:root[data-theme=light] .theme-icon-dark { display:none; }
+.start-link.theme-toggle { width:var(--tap); justify-content:center; padding:0; }
+.theme-shutter { position:fixed; inset:0; z-index:2000; width:100%; height:100%; pointer-events:none; }
+.theme-shutter-blades { fill:var(--shutter-blade); fill-rule:evenodd; }
+.theme-shutter-edges { fill:none; stroke:var(--shutter-edge); stroke-width:1.5; }
