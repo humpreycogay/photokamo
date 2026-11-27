@@ -91,7 +91,12 @@ function drawHealOverlay() {
   const circle = (x, y, r, stroke, fill, dash = []) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.setLineDash(dash); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); } };
   if (ui.marks) state.healing.strokes.forEach((stroke, index) => {
     const geo = strokeGeometry(stroke, v.width, v.height), selected = index === ui.selected;
-    for (const c of geo.centres) { const p = v.toPreview(c.x, c.y); circle(p.x, p.y, geo.radius * v.scale, null, selected ? 'rgba(255,255,255,.28)' : 'rgba(255,255,255,.14)'); }
+    // Outlines only (light over dark), so the healed result itself stays visible under the marks.
+    ctx.lineWidth = (selected ? 1.5 : 1) * px;
+    for (const c of geo.centres) { const p = v.toPreview(c.x, c.y); circle(p.x, p.y, geo.radius * v.scale, 'rgba(0,0,0,.45)', null, selected ? [] : [3 * px, 3 * px]); }
+    ctx.lineWidth = (selected ? 1 : .75) * px;
+    for (const c of geo.centres) { const p = v.toPreview(c.x, c.y); circle(p.x, p.y, geo.radius * v.scale, selected ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.7)', null, selected ? [] : [3 * px, 3 * px]); }
+    ctx.lineWidth = 1.5 * px;
     if (selected) {
       const first = v.toPreview(geo.centres[0].x, geo.centres[0].y), src = v.toPreview(geo.centres[0].x + geo.dx, geo.centres[0].y + geo.dy);
       circle(first.x, first.y, geo.radius * v.scale, 'rgba(255,255,255,.95)'); circle(src.x, src.y, geo.radius * v.scale, 'rgba(255,255,255,.95)', null, [4 * px, 3 * px]);
@@ -100,7 +105,7 @@ function drawHealOverlay() {
   });
   // The live stroke, the source (moving with the brush while painting) and the brush itself.
   const radius = Math.min(ui.size, Math.max(v.width, v.height) / 4) * v.scale;
-  if (ui.drag) for (const point of ui.drag.path) { const p = v.toPreview(point.x, point.y); circle(p.x, p.y, radius, null, 'rgba(255,255,255,.22)'); }
+  if (ui.drag) for (const point of ui.drag.path) { const p = v.toPreview(point.x, point.y); circle(p.x, p.y, radius, null, 'rgba(255,255,255,.22)'); } // only while painting
   const brush = ui.hover || cursorPreview(v);
   if (ui.source) {
     const start = ui.drag?.path[0], at = ui.drag?.path.at(-1), s = start ? v.toPreview(ui.source.x + at.x - start.x, ui.source.y + at.y - start.y) : v.toPreview(ui.source.x, ui.source.y);

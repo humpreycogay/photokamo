@@ -20,7 +20,7 @@ import { syncLens } from './panels/lens.js';
 import { syncText } from './panels/text.js';
 import { renderQueue, scheduleActiveThumb } from './photos.js';
 import { defaultAdjustments } from './presets.js';
-import { adjustFull, applyZoom, croppedSource, drawPreview, opticsSource, scheduleRender } from './preview.js';
+import { adjustFull, applyZoom, croppedSource, originalSource, drawPreview, opticsSource, scheduleRender } from './preview.js';
 import { fullRenderKeyOf } from './render-keys.js';
 import { applyAdjustments, frameCanvas, renderImage } from './renderer.js';
 import { $, ADVANCED_DEBOUNCE, PREVIEW_EDGE, app, editCount, effectiveAdjustments, elements, isFilm, mobileQuery, sheetQuery, state, toast } from './state.js';
@@ -418,7 +418,7 @@ function presentAdvanced(bitmap, frame) {
   state.editedCanvas = frameCanvas(bitmap, frame);
   const edge = activeModule()?.engineInfo.previewEdge ?? PREVIEW_EDGE;
   const originalKey = JSON.stringify([frame, edge, cropKey()]);
-  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(croppedSource(edge), defaultAdjustments, frame, edge); state.originalKey = originalKey; }
+  if (state.originalKey !== originalKey) { state.originalCanvas = renderImage(originalSource(edge), defaultAdjustments, frame, edge); state.originalKey = originalKey; }
   elements.canvas.width = state.editedCanvas.width; elements.canvas.height = state.editedCanvas.height;
   applyZoom();
   drawPreview(); scheduleActiveThumb();
