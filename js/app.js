@@ -14,6 +14,7 @@ import { setTab } from './panels/tabs.js';
 import { buildText } from './panels/text.js';
 import { buildHistogram } from './panels/histogram.js';
 import { buildAuto } from './panels/auto.js';
+import { buildHeal } from './panels/heal.js';
 import { addFiles, buildApply, buildStrip, closePhoto, syncStrip } from './photos.js';
 import { defaultBorder, presets } from './presets.js';
 import { drawPreview, scheduleRender, setHolding, setSplit, setZoom, stepZoom } from './preview.js';
@@ -21,6 +22,7 @@ import { defaultCrop } from './renderer.js';
 import { loadSample, renderStartCollage } from './start-screen.js';
 import { $, PRESETS, app, elements, filmLookById, isFilm, mobileQuery, sheetQuery, state, toast } from './state.js';
 import { initRecovery } from './session/recovery.js';
+import { emptyHealing } from './heal/model.js';
 import { initTheme } from './theme.js';
 // ↑ imports
 // Film engines are NOT imported here: registry.js is a tiny list, and an engine's code,
@@ -31,7 +33,7 @@ import { initTheme } from './theme.js';
 
 
 // ---------- Wiring ----------
-initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); buildHistogram({ redraw: drawPreview }); buildAuto(); syncControls(); updateButtons(); initRecovery();
+initTheme(); buildLooks(); buildAdjustments(); buildMobileAdjust(); buildLens(); buildFrames(); buildCrop(); buildText(); buildAdvancedPanel(); buildStrip(); buildApply(); buildApplyRows(); buildBatch(); buildHistogram({ redraw: drawPreview }); buildAuto(); buildHeal(); syncControls(); updateButtons(); initRecovery();
 // Saved engines once the page is idle (Cache Storage names only; badge sizes wait for the film tiles).
 (window.requestIdleCallback || (callback => setTimeout(callback, 1500)))(() => syncDownloadBadges({ sizes: false }), { timeout: 3000 });
 document.body.dataset.tab = 'looks';
@@ -196,7 +198,7 @@ document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListen
 $('#zoomIn').addEventListener('click', () => stepZoom(1)); $('#zoomOut').addEventListener('click', () => stepZoom(-1));
 
 elements.undo.addEventListener('click', undo); elements.redo.addEventListener('click', redo);
-elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; state.text = []; state.optics = defaultOptics(); }));
+elements.revert.addEventListener('click', () => change(() => { state.engine = PRESETS; state.myLookId = null; state.presetId = 'original'; state.strength = 100; state.edits = {}; state.crop = { ...defaultCrop }; state.frame = { id: 'none', border: { ...defaultBorder } }; state.text = []; state.optics = defaultOptics(); state.healing = emptyHealing(); }));
 $('#resetAdjustments').addEventListener('click', () => change(() => { state.edits = {}; }));
 $('#surpriseButton').addEventListener('click', async () => {
   // Film looks only when their engine needs no download: Surprise me never starts one.

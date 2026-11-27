@@ -6,6 +6,7 @@ import { syncControls } from '../engine-host.js';
 import { setHistoryHooks } from '../history.js';
 import { cropUi, syncCrop } from './crop.js';
 import { syncText } from './text.js';
+import { syncHeal } from './heal.js';
 import { applyParts, applyToPhotos, otherSelected } from '../photos.js';
 import { scheduleRender } from '../preview.js';
 import { photoChanged } from '../session/recovery.js';
@@ -24,6 +25,7 @@ function setTab(tabButton) {
   elements.cropStage.hidden = tabButton.id !== 'cropTab' || !state.image;
   if (!elements.cropStage.hidden) { cropUi.key = ''; syncCrop(); }
   syncText(); // the selection box shows only in the Text tab
+  syncHeal(); // the brush and marks show only in the Heal tab
 }
 
 // History calls back into the editor through these (js/history.js sits below the panels and the preview).

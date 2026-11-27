@@ -84,7 +84,7 @@ export async function checkSession() {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const known = { engines: new Set(['kamo-film-engine']), presets: new Set(['original', 'golden-hour']), controls: { exposure: { min: -2, max: 2 }, contrast: { min: -100, max: 100 } } };
   const snap = { look: { engine: 'presets', presetId: 'golden-hour', strength: 60, engineParams: { 'kamo-film-engine': { iso: 400, curve: [1, 2] } }, myLookId: null },
-    edits: { exposure: .35, contrast: -12 }, crop: { ratio: 'orig', zoom: 1 }, optics: { lens: 'x' }, frame: { id: 'paper', border: { width: 4 }, color: null }, text: [{ content: 'hi', x: .5 }] };
+    edits: { exposure: .35, contrast: -12 }, crop: { ratio: 'orig', zoom: 1 }, optics: { lens: 'x' }, frame: { id: 'paper', border: { width: 4 }, color: null }, text: [{ content: 'hi', x: .5 }], healing: { rev: 'r1', strokes: [{ m: 'heal', p: [100, 200], r: .01, h: .5, o: 1, d: [300, -40] }] } };
   expect('a real snapshot is kept as it is', same(v.sanitizeSettings(snap, known), snap));
   const odd = v.sanitizeSettings({ ...snap, look: { ...snap.look, engine: 'gone', presetId: 'gone' }, edits: { exposure: 0, contrast: 'x', bogus: 3, }, text: [{}], frame: 7 }, known);
   expect('unknown engine/preset/keys fall back', odd.look.engine === 'presets' && odd.look.presetId === 'original' && same(odd.edits, {}) && odd.text.length === 0 && odd.frame === 'none');
@@ -424,11 +424,86 @@ export async function checkAutoWB() {
   return failures;
 }
 
+/** Task 9–10 (healing): model, search and blend on synthetic scenes with known clean pixels. Returns failures. */
+export async function checkHealing() {
+  const model = await import(`${repo}/js/heal/model.js`), { blendPatch } = await import(`${repo}/js/heal/blend.js`), { searchSource } = await import(`${repo}/js/heal/search.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`healing: ${name}`); };
+  // Model: RDP, stamps, mask, compact strokes.
+  const line = Array.from({ length: 50 }, (_, i) => ({ x: i, y: i % 2 ? .1 : 0 }));
+  expect('RDP drops points on a straight line', model.simplify(line, .25).length === 2);
+  expect('stamps every 2 px along 10 px', model.stamps([{ x: 0, y: 0 }, { x: 10, y: 0 }], 2).length === 6);
+  const geo = model.strokeGeometry({ p: [32768, 32768], r: .05, d: [0, 0] }, 200, 100);
+  const mask = model.strokeMask(geo, geo.bounds, .5, 1), centre = Math.floor(geo.bounds.height / 2) * geo.bounds.width + Math.floor(geo.bounds.width / 2);
+  expect('mask: full at the centre, zero at the corner', mask[centre] === 1 && mask[0] === 0);
+  const twice = model.strokeMask({ ...geo, centres: [...geo.centres, ...geo.centres] }, geo.bounds, 1, .5);
+  expect('overlapping stamps combine as coverage (0.5, 0.5 → 0.75)', Math.abs(twice[centre] - .75) < 1e-6);
+  const stroke = model.makeStroke({ mode: 'heal', path: Array.from({ length: 2000 }, (_, i) => ({ x: i, y: 500 + 100 * Math.sin(i / 50) })), radius: 10, hardness: .5, opacity: 1, offset: { x: 30, y: -20 }, width: 4000, height: 3000 });
+  expect(`stroke capped at 512 points (${stroke.p.length / 2}) and compact (${JSON.stringify(stroke).length} chars)`, stroke.p.length / 2 <= 512 && JSON.stringify(stroke).length < 6000);
+  expect('sanitize keeps a good stroke, drops a bad one', model.sanitizeHealing({ rev: 'x', strokes: [stroke, { m: 'heal', p: [1], r: 1, h: 0, o: 1, d: [0, 0] }] }).strokes.length === 1);
+
+  // Scenes: W × H RGBA from f(x, y) → [r, g, b]; a defect painted over a copy.
+  const W = 160, H = 160, scene = f => { const d = new Uint8ClampedArray(W * H * 4); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const [r, g, b] = f(x, y); d.set([r, g, b, 255], (y * W + x) * 4); } return d; };
+  const rnd = (x, y) => { let n = Math.imul(x * 73856093 ^ y * 19349663, 2654435761); n ^= n >>> 15; return (n >>> 0) / 4294967296; };
+  const heal = ({ clean, cx, cy, radius, defect, mode = 'heal' }) => {
+    const dirty = clean.slice();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (Math.hypot(x - cx, y - cy) < radius * .6) dirty.set(defect(x, y), (y * W + x) * 4);
+    const g = model.strokeGeometry({ p: [Math.round(cx / W * 65535), Math.round(cy / H * 65535)], r: radius / Math.max(W, H), d: [0, 0] }, W, H);
+    const full = model.strokeMask(g, { x: 0, y: 0, width: W, height: H }, .6, 1);
+    const t0 = performance.now(), found = searchSource({ data: dirty, width: W, height: H, mask: full, radius: g.radius }), searchMs = performance.now() - t0;
+    if (!found) return { found };
+    const r = { ...g.bounds }; r.x = Math.max(0, r.x); r.y = Math.max(0, r.y); r.width = Math.min(W - r.x, r.width); r.height = Math.min(H - r.y, r.height);
+    const D = new Uint8ClampedArray(r.width * r.height * 4), S = D.slice(), A = model.strokeMask(g, r, .6, 1);
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const i = (y * r.width + x) * 4, dst = ((r.y + y) * W + r.x + x) * 4, sx = r.x + x + found.x, sy = r.y + y + found.y;
+      D.set(dirty.subarray(dst, dst + 4), i);
+      if (sx >= 0 && sy >= 0 && sx < W && sy < H) S.set(dirty.subarray((sy * W + sx) * 4, (sy * W + sx) * 4 + 4), i);
+    }
+    const t1 = performance.now(), patch = blendPatch(D, S, A, mode), blendMs = performance.now() - t1;
+    const out = dirty.slice();
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) { const i = (y * r.width + x) * 4; if (patch[i + 3]) out.set(patch.subarray(i, i + 3), ((r.y + y) * W + r.x + x) * 4); }
+    // Error against the clean scene: mean over the healed area, and the seam (a 3 × 3 blur of both, on the mask edge).
+    const blur = (img, x, y, c) => { let s = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) s += img[((Math.min(H - 1, Math.max(0, y + j))) * W + Math.min(W - 1, Math.max(0, x + i))) * 4 + c]; return s / 9; };
+    let area = 0, areaN = 0, seam = 0, seamN = 0;
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const a = A[y * r.width + x], X = r.x + x, Y = r.y + y; if (!a) continue;
+      for (let c = 0; c < 3; c++) {
+        const e = Math.abs(blur(out, X, Y, c) - blur(clean, X, Y, c));
+        if (a > .99) { area += e; areaN++; } else { seam += e; seamN++; }
+      }
+    }
+    return { found, area: area / Math.max(1, areaN), seam: seam / Math.max(1, seamN), searchMs, blendMs };
+  };
+  const cases = {
+    'flat sky, dust': { clean: scene((x, y) => [70 + y * .3, 120 + y * .3, 200 + y * .2]), cx: 80, cy: 80, radius: 9, defect: () => [30, 35, 40, 255] },
+    'skin blemish': { clean: scene((x, y) => [205 + 4 * rnd(x, y), 160 + 4 * rnd(y, x), 135 + 4 * rnd(x + 7, y)]), cx: 70, cy: 90, radius: 8, defect: () => [170, 70, 70, 255] },
+    'diagonal edge': { clean: scene((x, y) => (x + y < 160 ? [40, 45, 50] : [220, 215, 205])), cx: 80, cy: 80, radius: 7, defect: () => [255, 0, 0, 255] },
+    'brick': { clean: scene((x, y) => ((y % 16 < 2) || ((x + (Math.floor(y / 16) % 2) * 16) % 32 < 2) ? [200, 200, 195] : [150, 70, 50])), cx: 75, cy: 72, radius: 6, defect: () => [20, 20, 20, 255] },
+    'source near the edge': { clean: scene((x, y) => [60 + x * .2, 140, 90]), cx: 8, cy: 80, radius: 6, defect: () => [250, 250, 250, 255] },
+    'clone (no match)': { clean: scene((x, y) => [70 + y * .3, 120 + y * .3, 200 + y * .2]), cx: 80, cy: 80, radius: 9, defect: () => [30, 35, 40, 255], mode: 'clone' }
+  };
+  for (const [name, c] of Object.entries(cases)) {
+    const r = heal(c);
+    if (!r.found) { expect(`${name}: a source is found`, false); continue; }
+    console.log(`  heal ${name}: offset (${r.found.x}, ${r.found.y}), area error ${r.area.toFixed(2)}/255, seam ${r.seam.toFixed(2)}/255, search ${r.searchMs.toFixed(1)} ms, blend ${r.blendMs.toFixed(1)} ms`);
+    expect(`${name}: seam step < 3/255 (${r.seam.toFixed(2)})`, r.seam < 3);
+    expect(`${name}: healed area within 3/255 of the clean scene (${r.area.toFixed(2)})`, r.area < 3);
+  }
+  // Impossible: a tiny photo where no source fits around the stroke.
+  const tiny = new Uint8ClampedArray(24 * 24 * 4).fill(128), tinyGeo = model.strokeGeometry({ p: [32768, 32768], r: .4, d: [0, 0] }, 24, 24);
+  expect('impossible search returns null', searchSource({ data: tiny, width: 24, height: 24, mask: model.strokeMask(tinyGeo, { x: 0, y: 0, width: 24, height: 24 }, .5, 1), radius: tinyGeo.radius }) === null);
+  // Speed: a 100 px radius heal blend (the search runs on a proxy where R is 8–32 px).
+  const big = 260, bigD = new Uint8ClampedArray(big * big * 4).fill(140), bigA = model.strokeMask(model.strokeGeometry({ p: [32768, 32768], r: 100 / big, d: [0, 0] }, big, big), { x: 0, y: 0, width: big, height: big }, .5, 1);
+  const t0 = performance.now(); blendPatch(bigD, bigD.slice(), bigA, 'heal'); const ms = performance.now() - t0;
+  console.log(`  heal 100 px radius blend: ${ms.toFixed(1)} ms`);
+  expect(`100 px radius blend < 100 ms (${ms.toFixed(1)})`, ms < 100);
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()], autoFailures = await checkAutoWB();
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()], autoFailures = [...await checkAutoWB(), ...await checkHealing()];
   for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures, ...autoFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
@@ -436,6 +511,6 @@ if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`)
   console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
   console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
   console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search and histogram checks, ${searchFailures.length} failed`);
-  console.log(`${autoFailures.length ? 'FAIL' : 'OK'}: auto checks, ${autoFailures.length} failed`);
+  console.log(`${autoFailures.length ? 'FAIL' : 'OK'}: auto and healing checks, ${autoFailures.length} failed`);
   process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length || autoFailures.length ? 1 : 0);
 }

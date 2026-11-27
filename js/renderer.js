@@ -460,17 +460,19 @@ export function cropExtents(width, height, degrees) {
   const angle = degrees * Math.PI / 180, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
   return { ex: (width * cos + height * sin) / 2, ey: (width * sin + height * cos) / 2 };
 }
-/** Draws the source in its orientation (rotate clockwise in 90° steps, then flip horizontally). */
-export function drawOriented(ctx, image, crop, W, H) {
+/** Draws the source in its orientation (rotate clockwise in 90° steps, then flip horizontally). `patches`: healing
+ *  patches in the source's own pixels (js/heal/render.js), drawn over it under the same transform. */
+export function drawOriented(ctx, image, crop, W, H, patches = null) {
   if (crop.flip) { ctx.translate(W, 0); ctx.scale(-1, 1); }
   const turns = ((crop.rotate / 90) % 4 + 4) % 4;
   if (turns === 1) { ctx.translate(W, 0); ctx.rotate(Math.PI / 2); }
   else if (turns === 2) { ctx.translate(W, H); ctx.rotate(Math.PI); }
   else if (turns === 3) { ctx.translate(0, H); ctx.rotate(-Math.PI / 2); }
   ctx.drawImage(image, 0, 0);
+  if (patches) for (const patch of patches) ctx.drawImage(patch.canvas, patch.x, patch.y, patch.width, patch.height);
 }
-/** The cropped photo as a canvas, at most maxEdge px on its long side. */
-export function cropSource(image, crop, maxEdge = Infinity) {
+/** The cropped photo as a canvas, at most maxEdge px on its long side (with healing `patches`, if any). */
+export function cropSource(image, crop, maxEdge = Infinity, patches = null) {
   const sourceWidth = image.naturalWidth || image.width, sourceHeight = image.naturalHeight || image.height;
   const g = cropGeometry(sourceWidth, sourceHeight, crop);
   const scale = Math.min(1, maxEdge / Math.max(g.width, g.height));
@@ -481,7 +483,7 @@ export function cropSource(image, crop, maxEdge = Infinity) {
   ctx.translate(g.width / 2, g.height / 2);
   ctx.rotate(crop.straighten * Math.PI / 180);
   ctx.translate(-g.cx, -g.cy);
-  drawOriented(ctx, image, crop, g.W, g.H);
+  drawOriented(ctx, image, crop, g.W, g.H, patches);
   return output;
 }
 

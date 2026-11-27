@@ -334,7 +334,7 @@ let advancedDirty = false;
 let enginePreview = { key: '', bitmap: null };
 /** Frees the last engine preview (another photo comes into view). */
 function dropEnginePreview() { enginePreview.bitmap?.close?.(); enginePreview = { key: '', bitmap: null }; }
-const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, opticsRenderKey(state.optics), state.engine, advParams()]);
+const enginePreviewKey = () => JSON.stringify([state.imageId, state.crop, state.healing.rev, opticsRenderKey(state.optics), state.engine, advParams()]);
 /** The film engine's preview before Adjust (what Adjust receives, plan_workflow.md Task 3 C1), if it is current. */
 const engineInputPreview = () => (enginePreview.key === enginePreviewKey() ? enginePreview.bitmap : null);
 const engineEdits = () => (editCount() ? effectiveAdjustments() : null);
@@ -435,7 +435,7 @@ function setRenderProgress(value) {
   }
 }
 // The full render holds the engine output with Adjust edits applied.
-const fullRenderKey = () => fullRenderKeyOf({ imageId: state.imageId, crop: state.crop, optics: state.optics, engine: state.engine, params: advParams(), edits: state.edits });
+const fullRenderKey = () => fullRenderKeyOf({ imageId: state.imageId, crop: [state.crop, state.healing.rev], optics: state.optics, engine: state.engine, params: advParams(), edits: state.edits });
 async function renderFullQuality() {
   const module = activeModule();
   if (!isFilm() || !state.image || !module) return;

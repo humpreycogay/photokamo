@@ -1,5 +1,6 @@
 // Session recovery (plan_workflow.md Task 5): pure checks on records read back from IndexedDB, the history budget
 // (A§6.4) and the source fingerprint (A§6.2). No DOM and no app imports, so tools/workflow-fixtures.mjs can test it.
+import { sanitizeHealing } from '../heal/model.js';
 
 /** Version of the stored settings ({ v, settings }, C17); in-memory snapshots carry no version. */
 export const SETTINGS_VERSION = 1;
@@ -30,7 +31,8 @@ export function sanitizeSettings(value, known) {
     crop: isObject(value.crop) ? value.crop : {},
     optics: isObject(value.optics) ? value.optics : {},
     frame: typeof value.frame === 'string' || (isObject(value.frame) && typeof value.frame.id === 'string') ? value.frame : 'none',
-    text: Array.isArray(value.text) ? value.text.filter(text => isObject(text) && typeof text.content === 'string') : []
+    text: Array.isArray(value.text) ? value.text.filter(text => isObject(text) && typeof text.content === 'string') : [],
+    healing: sanitizeHealing(value.healing)
   };
 }
 

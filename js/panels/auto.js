@@ -6,6 +6,7 @@ import { engineInputPreview, releaseEngines, useEngine } from '../engine-host.js
 import { change } from '../history.js';
 import { activePhoto, adjustmentsFor, editPhotoSettings, renderPhotoEdit, settingsOf } from '../photos.js';
 import { croppedSize, opticsSource } from '../preview.js';
+import { canvasPoint } from './heal.js';
 import { $, PREVIEW_EDGE, app, clampToRange, elements, isFilm, roundToStep, state, toast } from '../state.js';
 
 const PROXY_EDGE = 256;
@@ -132,7 +133,9 @@ function setPicking(on) {
 /** Screen position of a point given as a fraction of the photo (inside any frame) on the preview canvas. */
 function photoPoint(u, v) {
   const canvas = elements.canvas, rect = canvas.getBoundingClientRect(), photo = state.editedCanvas?.photoRect || { x: 0, y: 0, width: canvas.width, height: canvas.height };
-  return { x: rect.left + (photo.x + u * photo.width) / canvas.width * rect.width, y: rect.top + (photo.y + v * photo.height) / canvas.height * rect.height };
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height); // object-fit: contain on phones
+  const left = rect.left + (rect.width - canvas.width * scale) / 2, top = rect.top + (rect.height - canvas.height * scale) / 2;
+  return { x: left + (photo.x + u * photo.width) * scale, y: top + (photo.y + v * photo.height) * scale };
 }
 function placeReticle() {
   const reticle = $('#neutralReticle'), { x, y } = photoPoint(picker.u, picker.v);
@@ -161,8 +164,8 @@ function buildAuto() {
   elements.canvasWrap.addEventListener('pointerdown', event => {
     if (!picker.on || event.button !== 0) return;
     event.preventDefault(); event.stopPropagation();
-    const canvas = elements.canvas, rect = canvas.getBoundingClientRect(), photo = state.editedCanvas?.photoRect || { x: 0, y: 0, width: canvas.width, height: canvas.height };
-    const cx = (event.clientX - rect.left) / rect.width * canvas.width, cy = (event.clientY - rect.top) / rect.height * canvas.height;
+    const canvas = elements.canvas, photo = state.editedCanvas?.photoRect || { x: 0, y: 0, width: canvas.width, height: canvas.height };
+    const { x: cx, y: cy } = canvasPoint(canvas, event.clientX, event.clientY);
     const u = (cx - photo.x) / photo.width, v = (cy - photo.y) / photo.height;
     if (u < 0 || u > 1 || v < 0 || v > 1) { toast('Pick a spot on the photo.'); return; }
     pickAt(u, v);
@@ -177,4 +180,4 @@ function buildAuto() {
   elements.viewport.addEventListener('scroll', () => { if (picker.on) placeReticle(); }, true);
 }
 
-export { buildAuto, syncAutoChip };
+export { analyse, buildAuto, syncAutoChip };

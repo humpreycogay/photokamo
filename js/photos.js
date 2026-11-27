@@ -22,6 +22,8 @@ import { ensureTextFonts, textUi } from './panels/text.js';
 import { defaultAdjustments, defaultBorder, frames, presets } from './presets.js';
 import { adjustFull, croppedCache, dropOpticsCache, renderEditOff, scheduleRender, setHolding } from './preview.js';
 import { createRenderQueue } from './render-queue.js';
+import { emptyHealing, hasHealing } from './heal/model.js';
+import { patchesFor } from './heal/render.js';
 import { beforeOpen, photoChanged, photoOpened, photosRemoved, sessionChanged } from './session/recovery.js';
 import { applyAdjustments, cropSource, defaultCrop, drawTexts, frameCanvas, isIdentityCrop, renderEdit } from './renderer.js';
 import { $, PRESETS, PREVIEW_EDGE, app, clampToRange, controlSpec, currentPreset, effectiveValue, elements, isFilm, mobileQuery, state, toast } from './state.js';
@@ -30,10 +32,10 @@ const MAX_PHOTOS = 50, THUMB_EDGE = 256, MAX_FILE_BYTES = 40 * 1024 * 1024;
 const photoById = id => app.photos.find(photo => photo.id === id) || null;
 const activePhoto = () => photoById(app.activeId);
 const photoSize = photo => ({ naturalWidth: photo.width, naturalHeight: photo.height });
-const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, optics: defaultOptics(), frame: { id: 'none', border: { ...defaultBorder } }, text: [] });
+const defaultSettings = () => ({ look: { engine: PRESETS, presetId: 'original', strength: 100, engineParams: {}, myLookId: null }, edits: {}, crop: { ...defaultCrop }, optics: defaultOptics(), frame: { id: 'none', border: { ...defaultBorder } }, text: [], healing: emptyHealing() });
 const settingsOf = photo => (photo.id === app.activeId && state.image ? snapshot() : photo.settings);
 const isEdited = settings => settings.look.engine !== PRESETS || settings.look.presetId !== 'original' || Object.keys(settings.edits).length > 0
-  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length) || !opticsNeutral(settings.optics);
+  || settings.crop.ratio !== 'orig' || !isIdentityCrop(settings.crop) || settings.frame.id !== 'none' || Boolean(settings.text?.length) || !opticsNeutral(settings.optics) || hasHealing(settings.healing);
 const otherSelected = () => app.photos.filter(photo => app.selected.has(photo.id) && photo.id !== app.activeId);
 
 async function decodeImage(file) {
@@ -491,7 +493,7 @@ async function renderPhotoEdit(photo, { edge = Infinity, quality = 'full', from 
   const image = thumb ? photo.thumb : inView ? state.image : await decodeImage(photo.file);
   if (job?.stale) return null;
   const workEdge = thumb || look.engine === PRESETS ? edge : Infinity;
-  const cropped = isIdentityCrop(crop) ? image : cropSource(image, crop, workEdge);
+  const cropped = isIdentityCrop(crop) && !hasHealing(settings.healing) ? image : cropSource(image, crop, workEdge, patchesFor(image, settings.healing, crop, workEdge));
   const source = await renderOptics(cropped, settings.optics, workEdge);
   if (job?.stale) return null;
   // `raw`: the image Adjust receives (Auto, plan_workflow.md Task 3 C1): the optics output on Basic, the engine output on film.
