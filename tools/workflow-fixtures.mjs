@@ -321,17 +321,47 @@ export async function checkLookSearch() {
   return failures;
 }
 
+/** Task 2 (histogram): bins, clipping and percentiles against counts done by hand. Returns failures. */
+export async function checkHistogram() {
+  const h = await import(`${repo}/js/analysis/histogram.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`histogram: ${name}`); };
+  const px = list => new Uint8ClampedArray(list.flat());
+  // 10 pixels by hand: 2 black, 1 near-black (2,1,0), 1 dark not clipped (3,0,0), 3 white, 1 red-clipped (253,10,10), 1 mid grey, 1 transparent white
+  const data = px([[0, 0, 0, 255], [0, 0, 0, 255], [2, 1, 0, 255], [3, 0, 0, 255], [255, 255, 255, 255], [255, 255, 255, 255], [255, 255, 255, 255], [253, 10, 10, 255], [128, 128, 128, 255], [255, 255, 255, 0]]);
+  const r = h.histogram(data);
+  expect(`total ${r.total} = 9 (transparent pixel ignored)`, r.total === 9);
+  expect(`shadows ${r.shadows} = 3/9`, Math.abs(r.shadows - 3 / 9) < 1e-12);
+  expect(`highlights ${r.highlights} = 4/9`, Math.abs(r.highlights - 4 / 9) < 1e-12);
+  expect('red bins: 0 ×2, 2, 3, 255 ×3, 253, 128', r.r[0] === 2 && r.r[2] === 1 && r.r[3] === 1 && r.r[255] === 3 && r.r[253] === 1 && r.r[128] === 1);
+  expect('luma bins: 0 ×2; (2,1,0) → 1.14 and (3,0,0) → 0.64 both 1; (253,10,10) → 61.7 = 62', r.luma[0] === 2 && r.luma[1] === 2 && r.luma[255] === 3 && r.luma[128] === 1 && r.luma[62] === 1);
+  const half = h.histogram(px([[255, 255, 255, 128], [0, 0, 0, 255]]));
+  expect('alpha weights: half-transparent white counts 128/255', Math.abs(half.total - (1 + 128 / 255)) < 1e-12 && Math.abs(half.r[255] - 128 / 255) < 1e-12);
+  const ramp = h.histogram(new Uint8ClampedArray(Array.from({ length: 256 }, (_, v) => [v, v, v, 255]).flat()));
+  expect('ramp: one per bin, percentiles 25/50/99', ramp.luma.every(n => n === 1) && h.percentile(ramp.luma, ramp.total, .25) === 63 && h.percentile(ramp.luma, ramp.total, .5) === 127 && h.percentile(ramp.luma, ramp.total, .99) === 253);
+  expect('ramp clipping: 3 shadow values, 3 highlight values', Math.abs(ramp.shadows - 3 / 256) < 1e-12 && Math.abs(ramp.highlights - 3 / 256) < 1e-12);
+  const mask = h.clipMask(data);
+  expect('mask matches the hand labels ((3,0,0) is not clipped)', mask.join('') === '1110222200');
+  const hatch = h.hatchPixels(new Uint8Array([2, 1, 0, 0]), 2, 2);
+  expect('hatch: clipped pixels painted, others clear', hatch[3] > 0 && hatch[7] > 0 && hatch[11] === 0 && hatch[15] === 0);
+  expect('summary', h.clipSummary({ shadows: .004, highlights: .0213 }) === 'Shadows clipped 0.4 %, highlights 2.1 %' && h.clipSummary({ shadows: 0, highlights: .0004 }) === 'Shadows clipped 0 %, highlights < 0.1 %');
+  const big = new Uint8ClampedArray(1000 * 1000 * 4).map((_, i) => (i * 2654435761) >>> 24);
+  const t0 = performance.now(); h.histogram(big); h.clipMask(big); const ms = performance.now() - t0;
+  console.log(`  histogram + mask of 1 MP: ${ms.toFixed(1)} ms`);
+  expect(`1 MP in < 20 ms (${ms.toFixed(1)})`, ms < 20);
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = await checkLookSearch();
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata(), searchFailures = [...await checkLookSearch(), ...await checkHistogram()];
   for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures, ...searchFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
   console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
   console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
   console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
-  console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search checks, ${searchFailures.length} failed`);
+  console.log(`${searchFailures.length ? 'FAIL' : 'OK'}: look search and histogram checks, ${searchFailures.length} failed`);
   process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length || searchFailures.length ? 1 : 0);
 }

@@ -394,6 +394,11 @@
         <section class="tab-panel scroll-panel" id="adjustPanel" role="tabpanel" aria-labelledby="adjustTab" hidden>
           <div class="panel-heading"><h2>Adjustments</h2><button class="text-button" id="resetAdjustments" type="button">Reset my edits</button></div>
           <p class="engine-wait-note" data-engine-wait hidden></p>
+          <details class="histogram" id="histogram" open>
+            <summary>Histogram</summary>
+            <canvas class="histogram-graph" id="histogramCanvas" width="512" height="120" role="img" aria-label="Histogram of the edited photo: brightness and red, green and blue" aria-describedby="histogramText"></canvas>
+            <div class="histogram-foot"><p class="histogram-text" id="histogramText"></p><button class="chip" id="clipToggle" type="button" aria-pressed="false" title="Hatch clipped shadows and highlights on the photo">Show clipping</button></div>
+          </details>
           <p class="slider-hint" id="adjustResetHint">Double-click a slider, or press Delete while it has focus, to reset it.</p>
           <div id="adjustmentControls"></div>
           <div class="mobile-adjust" id="mobileAdjust">

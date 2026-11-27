@@ -11,6 +11,7 @@ import { renderQueue, scheduleActiveThumb } from './photos.js';
 import { defaultAdjustments } from './presets.js';
 import { cropSource, drawTexts, frameCanvas, isIdentityCrop, renderImage, scaledCanvas } from './renderer.js';
 import { $, PREVIEW_EDGE, ZOOM_MAX_EDGE, effectiveAdjustments, elements, isFilm, state, toast } from './state.js';
+import { drawClipOverlay, scheduleHistogram } from './panels/histogram.js';
 // ↑ imports
 const croppedCache = { key: '', sizes: new Map() };
 function croppedSource(maxEdge = Infinity) {
@@ -106,7 +107,9 @@ function drawPreview() {
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, Math.round(width * state.split), height); ctx.clip();
     ctx.drawImage(state.originalCanvas, 0, 0, width, height); ctx.restore();
   }
+  drawClipOverlay(ctx, state.split);
   drawTextOverlay();
+  scheduleHistogram(); // display only: reads this preview once it settles
 }
 
 
