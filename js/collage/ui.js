@@ -3,7 +3,7 @@
 import { cloneDoc } from './model.js';
 
 /** Template categories the Layout picker lists; a new collage only ever starts on one of these. */
-export const PICKER = ['diptych', 'layout', 'collage', 'kit'];
+export const PICKER = ['diptych', 'layout', 'collage', 'kit', 'look'];
 export const percent = value => `${Math.round(value * 1000) / 10}%`;
 export const escapeHtml = text => String(text).replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
 export const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;

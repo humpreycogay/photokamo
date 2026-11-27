@@ -44,7 +44,7 @@ for (const t of templates) {
     check(['grid', 'radial', 'free'].includes(t.fill?.kind), `${t.id} bad fill`);
     check(!t.sheet.hole || (t.sheet.hole > 0 && t.sheet.hole < .8), `${t.id} bad hole`);
   } else if (t.kind === 'free') {
-    check(['diptych', 'layout', 'collage', 'kit'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
+    check(['diptych', 'layout', 'collage', 'kit', 'kit-classic'].includes(t.category) && /^#[0-9a-f]{6}$/i.test(t.paper || ''), `${t.id} free layout needs a paper colour`);
     check(slotCount(t) >= 2 && slotCount(t) <= 9, `${t.id} holds ${slotCount(t)} photos (styles hold 2–9)`);
     for (const [i, s] of t.slots.entries()) check(s.w > 0 && s.h > 0 && s.x >= -1e-9 && s.y >= -1e-9 && s.x + s.w <= 1 + 1e-9 && s.y + s.h <= 1 + 1e-9, `${t.id} slot ${i} leaves the sheet`);
     // Mounts (frames, polaroid cards) stay on the sheet at the template's own aspect (rotation aside, ±1 %).
@@ -112,6 +112,9 @@ golden('grid-9 1000² g.01 m.03', rects(layoutTemplate(byId('grid-9'), 1000, 100
   [[30, 30, 307, 307], [347, 30, 307, 307], [664, 30, 306, 307]]);
 golden('grid-3-left 1500×1000 g.02', rects(layoutTemplate(byId('grid-3-left'), 1500, 1000, { gutter: .02 })),
   [[0, 0, 987, 1000], [1007, 0, 493, 490], [1007, 510, 493, 490]]);
+// Even lines: edge = gutter, plus half the border (stroked centred, so it shows once at the edge, twice between photos).
+golden('grid-4 even lines', layoutTemplate(byId('grid-4'), 1000, 1000, { gutter: .02, margin: .09, evenLines: true }).margin, 20);
+golden('grid-4 even lines + border', layoutTemplate(byId('grid-4'), 1000, 1000, { gutter: .02, margin: .09, evenLines: true, border: { width: .01, color: '#fff' } }).margin, 25);
 golden('grid-4 radius', layoutTemplate(byId('grid-4'), 1000, 1000, { gutter: .02, radius: .5 }).slots.map(s => s.radius), [245, 245, 245, 245]);
 
 // ---------- Layout: exact at 3 sizes, every template and spacing ----------
@@ -189,7 +192,7 @@ for (const t of templates.filter(t => t.kind === 'grid')) {
 {
   const { splitAxis, defaultSplits, clampSplits, moveSplit, MIN_SPLIT } = await import(`${repo}/js/collage/layout.js`);
   const axes = Object.fromEntries(templates.filter(t => splitAxis(t)).map(t => [t.id, splitAxis(t)]));
-  golden('split axes', axes, { 'grid-2-side': 'x', 'grid-2-stack': 'y', 'grid-3-cols': 'x', 'grid-3-rows': 'y', 'bands-3': 'y', 'bands-4': 'y', 'grid-4-cols': 'x' });
+  golden('split axes', axes, { 'grid-2-side': 'x', 'grid-2-stack': 'y', 'grid-3-cols': 'x', 'grid-3-rows': 'y', 'bands-3': 'y', 'bands-4': 'y', 'grid-4-cols': 'x', 'look-night-2': 'y', 'look-night-3': 'y', 'look-seamless-2-side': 'x', 'look-seamless-2-stack': 'y', 'look-seamless-3-cols': 'x', 'look-seamless-3-rows': 'y' });
   golden('default splits', [defaultSplits(byId('grid-2-side')), defaultSplits(byId('grid-3-cols')).map(v => +v.toFixed(4))], [[.5], [.3333, .6667]]);
   golden('clampSplits', [clampSplits([.05], 2), clampSplits([.5, .55], 3), clampSplits([.9, .95], 3), clampSplits([.5], 3)], [[MIN_SPLIT], [.5, .65], [.7, .85], null]);
   golden('moveSplit', [moveSplit([.3, .6], 0, .5), moveSplit([.3, .6], 1, .2), moveSplit([.5], 0, 2)], [[.45, .6], [.3, .45], [.85]]);

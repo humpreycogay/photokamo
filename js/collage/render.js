@@ -5,7 +5,7 @@ import { fillGeometry } from './fill.js';
 import { drawOriented, drawTexts } from '../renderer.js';
 import { perforations, filmWear } from '../film.js';
 import { filmSettings, frameNumber } from './contact.js';
-import { fibres, tapeRect, scrapPath } from './scrapbook.js';
+import { fibres, tapeRect, scrapPath, scrapPath4, noise } from './scrapbook.js';
 import { drawStickers } from './stickers.js';
 
 /** Draws a photo to cover `rect` with its fill (js/collage/fill.js). The cover is computed for the rect grown by
@@ -86,17 +86,36 @@ function drawSheetPaper(ctx, doc, layout) {
     ctx.restore();
   }
 }
-// Paper scraps under scrapbook prints: presets by kind; a decor item's own color / pattern / ink / edge / shadow win.
-// Patterns: graph, lined (with a margin rule), dots, stripes (diagonal), gingham. Edges: torn (top and bottom) or straight.
+// Paper scraps under scrapbook prints: presets by kind; a decor item's own color / pattern / ink / edge / shadow /
+// shape / aged / rim win. Patterns: graph, lined (with a margin rule), dots, stripes (diagonal), gingham, map, script
+// (handwriting), news (newsprint columns). Edges: torn (top and bottom), torn4 (all four sides) or straight. Shapes:
+// rect, circle, arch (round top). aged: a warm tint deepening towards the edges; rim: the pale fibres of a torn edge.
+// kind 'film': a black film strip with sprocket holes along its long sides (photos are slots laid over its frames).
+const MUTED = { edge: 'torn4', aged: true, rim: true };
 const SCRAPS = { graph: { color: '#f2efe6', pattern: 'graph', ink: 'rgba(84,112,140,.2)' }, lined: { color: '#f6f1e2', pattern: 'lined', ink: 'rgba(70,96,150,.24)' },
-  kraft: { color: '#c9b48c' }, paper: { color: '#ffffff' } };
+  kraft: { color: '#c9b48c' }, paper: { color: '#ffffff' },
+  cream: { color: '#f5eedf', ...MUTED }, aged: { color: '#e8d9b9', ...MUTED }, tan: { color: '#d3b98f', ...MUTED }, sage: { color: '#b7bea5', ...MUTED },
+  blush: { color: '#e5c6b8', ...MUTED }, rose: { color: '#c99a8c', ...MUTED }, peach: { color: '#e9b877', edge: 'straight', shadow: false },
+  map: { color: '#ece0c3', pattern: 'map', ink: 'rgba(120,92,60,.32)', ...MUTED }, letter: { color: '#f1e7d2', pattern: 'script', ink: 'rgba(70,52,34,.5)', ...MUTED },
+  news: { color: '#ebe4d3', pattern: 'news', ink: 'rgba(60,54,46,.42)', ...MUTED }, note: { color: '#f8f3e8', pattern: 'lined', ink: 'rgba(120,130,150,.28)', ...MUTED },
+  grid: { color: '#f4efe3', pattern: 'graph', ink: 'rgba(120,110,90,.22)', ...MUTED }, check: { color: '#f3e9e4', pattern: 'gingham', ink: 'rgba(176,92,78,.42)', ...MUTED },
+  card: { color: '#fbf8f2', edge: 'straight' }, tape: { color: 'rgba(222,204,166,.86)', edge: 'straight', shadow: false }, film: { color: '#1c1a18', edge: 'straight', pattern: 'film' } };
+function decorPath(box, style, seed, tear) {
+  const { x, y, w, h } = box, path = new Path2D();
+  if (style.shape === 'circle') { path.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); return path; }
+  if (style.shape === 'arch') { const r = w / 2; path.moveTo(x, y + h); path.lineTo(x, y + r); path.arc(x + r, y + r, r, Math.PI, 0); path.lineTo(x + w, y + h); path.closePath(); return path; }
+  if (style.edge === 'torn') return scrapPath(box, seed, tear);
+  if (style.edge === 'torn4') return scrapPath4(box, seed, tear);
+  if (style.pattern === 'film') { path.roundRect(x, y, w, h, Math.min(w, h) * .03); return path; }
+  path.rect(x, y, w, h); return path;
+}
 function drawDecor(ctx, layout) {
   const short = Math.min(layout.width, layout.height), hair = Math.max(.5, short * .0009);
   layout.decor.forEach((d, i) => {
     const style = { edge: 'torn', shadow: true, ...(SCRAPS[d.kind] || SCRAPS.kraft) };
-    for (const key of ['color', 'pattern', 'ink', 'edge', 'shadow']) if (d[key] !== undefined) style[key] = d[key];
-    const box = { x: -d.w / 2, y: -d.h / 2, w: d.w, h: d.h };
-    const path = style.edge === 'torn' ? scrapPath(box, 211 + i, short * .004) : new Path2D(); if (style.edge !== 'torn') path.rect(box.x, box.y, box.w, box.h);
+    for (const key of ['color', 'pattern', 'ink', 'edge', 'shadow', 'shape', 'aged', 'rim']) if (d[key] !== undefined) style[key] = d[key];
+    const box = { x: -d.w / 2, y: -d.h / 2, w: d.w, h: d.h }, tear = short * .004;
+    const path = decorPath(box, style, 211 + i, tear);
     ctx.save(); ctx.translate(d.x + d.w / 2, d.y + d.h / 2); ctx.rotate(d.rotate * Math.PI / 180);
     if (style.shadow) { ctx.shadowColor = 'rgba(40,30,18,.18)'; ctx.shadowBlur = short * .008; ctx.shadowOffsetY = short * .003; }
     ctx.fillStyle = style.color; ctx.fill(path); ctx.shadowColor = 'transparent'; ctx.clip(path);
@@ -116,12 +135,56 @@ function drawDecor(ctx, layout) {
       for (let x = left - h; x < left + w + h; x += step) { ctx.moveTo(x, top + h); ctx.lineTo(x + h, top); }
       ctx.stroke();
     } else if (p === 'gingham') {
-      const step = short * .05; ctx.fillStyle = ink;
+      const step = short * (d.kind === 'check' ? .022 : .05); ctx.fillStyle = ink;
       for (let x = left; x < left + w; x += step * 2) ctx.fillRect(x, top, step, h);
       for (let y = top; y < top + h; y += step * 2) ctx.fillRect(left, y, w, step);
+    } else if (p) drawPattern(ctx, p, box, ink, short, hair, 211 + i);
+    if (style.aged) { // warm and darker towards the edges, like paper that has been handled
+      const g = ctx.createRadialGradient(0, 0, Math.min(w, h) * .2, 0, 0, Math.hypot(w, h) / 2);
+      g.addColorStop(0, 'rgba(120,84,40,0)'); g.addColorStop(1, 'rgba(120,84,40,.2)'); ctx.fillStyle = g; ctx.fillRect(left, top, w, h);
     }
+    if (style.rim && style.edge !== 'straight' && !style.shape) { ctx.strokeStyle = 'rgba(255,252,244,.75)'; ctx.lineWidth = tear * 1.3; ctx.stroke(path); }
     ctx.restore();
   });
+}
+/** Map, handwriting, newsprint and film patterns inside a decor box (centred on 0, 0), seeded so preview and export match. */
+function drawPattern(ctx, p, { x: left, y: top, w, h }, ink, short, hair, seed) {
+  const rnd = (i, salt) => noise(seed, i, salt);
+  if (p === 'map') {
+    ctx.fillStyle = 'rgba(132,168,186,.28)'; ctx.beginPath(); // a stretch of water along one side
+    ctx.moveTo(left + w, top); for (let i = 0; i <= 12; i++) ctx.lineTo(left + w * (.72 + rnd(i, 1) * .12 - i * .012), top + i / 12 * h); ctx.lineTo(left + w, top + h); ctx.fill();
+    ctx.strokeStyle = ink; ctx.lineWidth = hair;
+    for (let k = 0; k < 9; k++) { // roads and contour lines
+      ctx.beginPath(); const y0 = top + rnd(k, 2) * h; ctx.moveTo(left, y0);
+      ctx.bezierCurveTo(left + w * .3, y0 + (rnd(k, 3) - .5) * h * .6, left + w * .6, y0 + (rnd(k, 4) - .5) * h * .6, left + w, top + rnd(k, 5) * h); ctx.stroke();
+    }
+    for (let k = 0; k < 4; k++) { const cx = left + rnd(k, 6) * w * .7, cy = top + rnd(k, 7) * h, r = short * (.02 + rnd(k, 8) * .03);
+      for (let ring = 1; ring <= 3; ring++) { ctx.beginPath(); ctx.ellipse(cx, cy, r * ring * .7, r * ring * .45, rnd(k, 9) * 3, 0, Math.PI * 2); ctx.stroke(); } }
+    ctx.strokeStyle = 'rgba(170,60,48,.55)'; ctx.lineWidth = hair * 2; ctx.setLineDash([short * .008, short * .006]); ctx.beginPath(); // a dashed route
+    ctx.moveTo(left + w * .1, top + h * .85); ctx.bezierCurveTo(left + w * .35, top + h * .4, left + w * .55, top + h * .95, left + w * .85, top + h * .2); ctx.stroke(); ctx.setLineDash([]);
+  } else if (p === 'script') {
+    const step = short * .02, margin = w * .08; ctx.strokeStyle = ink; ctx.lineWidth = hair * 1.1; ctx.lineCap = 'round';
+    for (let row = 0, y = top + step * 1.5; y < top + h - step * .5; row++, y += step) {
+      let x = left + margin + (row % 5 === 0 ? w * .08 : 0); const end = left + w - margin - rnd(row, 1) * w * (row % 5 === 4 ? .5 : .1);
+      while (x < end) { // a word: small loops along the line, then a gap
+        const len = short * (.012 + rnd(row * 31 + Math.round(x), 2) * .03), stop = Math.min(end, x + len); ctx.beginPath(); ctx.moveTo(x, y);
+        for (let t = x; t < stop; t += step * .18) ctx.lineTo(t, y - Math.abs(Math.sin((t - x) / step * 9)) * step * (.22 + rnd(Math.round(t), 3) * .2));
+        ctx.stroke(); x = stop + step * .35;
+      }
+    }
+  } else if (p === 'news') {
+    const pad = w * .07, cols = w > short * .25 ? 2 : 1, gap = w * .05, colW = (w - 2 * pad - gap * (cols - 1)) / cols, line = short * .011;
+    ctx.fillStyle = ink; ctx.fillRect(left + pad, top + pad, w - 2 * pad, short * .018); // headline
+    for (let c = 0; c < cols; c++) for (let i = 0, y = top + pad + short * .035; y < top + h - pad; i++, y += line) {
+      const end = i % 7 === 6 ? .4 + rnd(i, c) * .4 : .92 + rnd(i, c + 5) * .08; ctx.fillRect(left + pad + c * (colW + gap), y, colW * end, line * .38);
+    }
+  } else if (p === 'film') { // sprocket holes along both long sides
+    const across = w >= h, len = across ? w : h, thick = across ? h : w, hole = thick * .055, stepLen = hole * 2.2;
+    ctx.fillStyle = '#ece4d4';
+    for (let t = stepLen * .6; t < len - hole; t += stepLen) for (const side of [thick * .045, thick - thick * .045 - hole * 1.3]) {
+      const r = new Path2D(); if (across) r.roundRect(left + t, top + side, hole, hole * 1.3, hole * .25); else r.roundRect(left + side, top + t, hole * 1.3, hole, hole * .25); ctx.fill(r);
+    }
+  }
 }
 /** The mat (or polaroid card) and the frame's outer edge around a mounted print, in its unrotated space. */
 export function mountRects(slot) {

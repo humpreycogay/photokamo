@@ -231,6 +231,7 @@
           <div class="collage-sticker-handles" id="collageStickerHandles" role="group" aria-label="Stickers in the collage" aria-describedby="collageStickerKeys"></div>
           <div class="collage-text-handles" id="collageTextHandles" role="group" aria-label="Text in the collage" aria-describedby="collageTextKeys"></div>
         </div>
+        <button class="fullscreen-button" id="collageFullscreenButton" type="button" aria-label="Show collage full screen" title="Full screen"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
         <div class="collage-stage-tools" id="collageStageTools" hidden>
           <span id="collageDragModeLabel">Drag</span>
           <div class="segmented collage-drag-mode" id="collageDragMode" role="radiogroup" aria-labelledby="collageDragModeLabel">
@@ -626,6 +627,8 @@
           <div class="collage-templates" id="collageStyles" role="listbox" aria-labelledby="collageLayoutTitle collageStylesTitle" aria-orientation="horizontal"></div>
           <p class="collage-sublabel" id="collageDiptychsTitle">Diptychs <span>· framed prints on a wall</span></p>
           <div class="collage-templates" id="collageDiptychs" role="listbox" aria-labelledby="collageLayoutTitle collageDiptychsTitle" aria-orientation="horizontal"></div>
+          <p class="collage-sublabel" id="collageLooksTitle">Looks <span>· ready-made paper, spacing and corners</span></p>
+          <div class="collage-templates" id="collageLooks" role="listbox" aria-labelledby="collageLayoutTitle collageLooksTitle" aria-orientation="horizontal"></div>
           <p class="collage-sublabel" id="collageGridsTitle">Layouts <span>· grids, bands and masks</span></p>
           <div class="collage-templates" id="collageTemplates" role="listbox" aria-labelledby="collageLayoutTitle collageGridsTitle" aria-orientation="horizontal"></div>
           <h3 class="collage-label" id="collageAspectTitle">Sheet</h3>
@@ -660,6 +663,8 @@
           <section class="collage-tab-panel" id="collageBorderPanel" role="tabpanel" aria-labelledby="collageBorderTab" hidden>
           <div class="slider-row" id="collageGutterRow"><label class="slider-label" for="collageGutter"><span>Spacing</span><output id="collageGutterOutput" for="collageGutter">2%</output></label><input id="collageGutter" data-collage="gutter" type="range"></div>
           <div class="slider-row" id="collageMarginRow"><label class="slider-label" for="collageMargin"><span>Margin</span><output id="collageMarginOutput" for="collageMargin">4%</output></label><input id="collageMargin" data-collage="margin" type="range"></div>
+          <div id="collageEvenRow"><label class="check-row"><input type="checkbox" id="collageEvenLines" aria-describedby="collageEvenHint"> Even lines</label>
+          <p class="collage-hint" id="collageEvenHint">The edge matches the lines between photos; the margin follows Spacing and Border.</p></div>
           <div class="slider-row" id="collageRadiusRow"><label class="slider-label" for="collageRadius"><span>Corners</span><output id="collageRadiusOutput" for="collageRadius">0%</output></label><input id="collageRadius" data-collage="radius" type="range"></div>
           <div class="collage-sticker" id="collagePrints" hidden>
             <h3 class="collage-label" id="collagePrintsTitle">Prints</h3>
@@ -946,6 +951,11 @@
       <span>Hold to compare</span>
     </button>
     <button class="fullscreen-close" id="fullscreenClose" type="button" aria-label="Close full screen" title="Close (Esc)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </dialog>
+
+  <dialog class="fullscreen-dialog" id="collageFullscreen" aria-label="Full screen collage">
+    <canvas id="collageFullscreenCanvas" role="img" aria-label="Collage"></canvas>
+    <button class="fullscreen-close" id="collageFullscreenClose" type="button" aria-label="Close full screen" title="Close (Esc)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </dialog>
 
   <dialog id="aboutDialog">

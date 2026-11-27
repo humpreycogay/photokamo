@@ -268,7 +268,7 @@ body:not(.has-image) .drop-overlay { position:fixed; } /* "drop anywhere" covers
 .fullscreen-button { position:absolute; top:12px; right:12px; z-index:3; display:grid; place-items:center; width:var(--tap); height:var(--tap); padding:0; border:0; border-radius:22px; background:rgba(12,12,11,.78); color:var(--text); cursor:pointer; }
 .fullscreen-button:hover { background:rgba(12,12,11,.9); }
 .fullscreen-button:focus-visible,.fullscreen-close:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-body[data-tab=crop] .fullscreen-button { display:none; }
+body[data-tab=crop] #fullscreenButton { display:none; }
 .fullscreen-dialog { width:100vw; height:100vh; height:100dvh; max-width:none; max-height:none; margin:0; padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); background:var(--stage); }
 .fullscreen-dialog[open] { display:block; }
 .fullscreen-dialog::backdrop { background:var(--stage); backdrop-filter:none; }
@@ -629,6 +629,7 @@ body[data-tab=crop] .view-pill,body[data-tab=crop] .engine-wait,body[data-tab=cr
 .check-row { display:flex; align-items:center; gap:10px; min-height:var(--tap); font-size:var(--fs-md); color:var(--text-2); cursor:pointer; }
 .check-row input { width:18px; height:18px; margin:0; accent-color:var(--accent); }
 .check-row:has(input:disabled) { color:var(--text-muted); cursor:default; }
+.slider-row:has(input[type=range]:disabled) input { opacity:.45; cursor:default; }
 .border-hint { margin:0; font-size:var(--fs-sm); color:var(--text-muted); }
 #frameColorPanel .text-colors { margin-top:4px; }
 .frame-default-swatch { display:grid; place-items:center; color:var(--text-muted); }
@@ -1599,6 +1600,7 @@ body.collage-mode .panel-body > .tab-panel { display:none!important; }
 .collage-slot-panel { margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid var(--line); }
 .collage-hint { margin:0 0 4px; color:var(--text-muted); font-size:var(--fs-md); line-height:1.45; }
 .collage-photo-tools .collage-hint { margin-top:10px; }
+#collageEvenRow { margin-bottom:12px; }
 .collage-move { margin:14px 0 16px; }
 .collage-photos-label { margin-top:0; }
 .collage-photos { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }

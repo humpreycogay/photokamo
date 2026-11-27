@@ -6,11 +6,16 @@ import { naturalAspect } from './shapes.js';
 /** @typedef {{ id: string, name: string, category: 'diptych'|'layout'|'collage'|'kit'|'shape'|'contact', aspect: [number, number],
  *   kind: 'grid'|'free'|'shaped'|'contact', cols?: number[], rows?: number[], cells?: number[][], slots?: object[],
  *   strips?: number, frames?: number, frame?: [number, number], sheet?: { shape: object, hole?: number },
- *   fill?: object, lockAspect?: boolean, paper?: string, border?: { width: number, color: string } }} Template
+ *   fill?: object, lockAspect?: boolean, paper?: string, border?: { width: number, color: string },
+ *   look?: { gutter: number, radius?: number, border?: { width: number, color: string } } }} Template
  *  Free slots: { x, y, w, h (sheet fractions), z, shape?, border? (false: no print border), mount? (js/collage/layout.js) }.
- *  The picker lists Diptychs, Layouts, Collage and Scrapbook kits; shapes and contact sheets stay available to code (templateFor). */
+ *  Looks are grids that bring their own paper, spacing, corners and photo border (even lines on) when picked.
+ *  The picker lists Diptychs, Layouts, Collage, Scrapbook kits and Looks; shapes and contact sheets stay available to code (templateFor). */
 
 const grid = (id, name, aspect, cols, rows, cells) => ({ id, name, category: 'layout', aspect, kind: 'grid', cols, rows, cells });
+// Looks use the frame papers (js/presets.js paperColors): black, bright white, warm.
+const BLACK = '#161614', BRIGHT = '#fbfbf9', WARM = '#f4efe4';
+const look = (id, name, aspect, cols, rows, cells, paper, spacing) => ({ ...grid(id, name, aspect, cols, rows, cells), category: 'look', paper, look: spacing });
 const gridFill = (cols, rows, cells) => ({ kind: 'grid', cols, rows, cells });
 const radial = (slices, rotate = -90) => ({ kind: 'radial', slices, rotate });
 /** A shaped template: proportional shapes lock the sheet aspect to their own; others start at `aspect`. */
@@ -65,11 +70,12 @@ function onPrint(slot, content, style = {}) {
   const dy = (slot.y + slot.h) * KIT_H + bottom / 2 - cy, a = slot.rotate * Math.PI / 180;
   return kitText(content, cx - dy * Math.sin(a), cy + dy * Math.cos(a), { rotate: slot.rotate, size: Math.min(.07, bottom * .72), ...style });
 }
-const kit = (id, name, { paper, texture = 'fibre', decor = [], prints, stickers = [], text = [] }) =>
-  ({ id, name, category: 'kit', kind: 'free', aspect: [3, 4], paper, texture, border: { width: .018, color: '#fffdfa' }, slots: prints, decor, stickers, text });
+const kit = (id, name, { paper, texture = 'fibre', decor = [], prints, stickers = [], text = [] }, category = 'kit-classic') =>
+  ({ id, name, category, kind: 'free', aspect: [3, 4], paper, texture, border: { width: .018, color: '#fffdfa' }, slots: prints, decor, stickers, text });
 const flat = { edge: 'straight', shadow: false };
 
-const kits = [
+// The first kits (bright themed pages): no longer in the picker, kept so collages saved with them still open.
+const classicKits = [
   (() => { // Summer days: the home screen's sample page
     const tape = 'rgba(240,214,150,.72)', p = [kp(.094, .124, .492, 4 / 5, -3, kitPolaroid(.1), { z: 3, tapeColor: tape }), kp(.554, .064, .392, 3 / 2, 4, kitPrint(), { z: 2, tapeColor: tape }),
       kp(.624, .395, .292, 1, 5, kitPolaroid(.065), { z: 2, tape: [] }), kp(.054, .896, .372, 4 / 3, 6, kitPrint(), { tapeColor: tape }), kp(.544, .827, .352, 1, -5, kitPolaroid(.07), { z: 4, tapeColor: tape })];
@@ -154,6 +160,128 @@ const kits = [
   })()
 ];
 
+
+// Scrapbook kits (the picker's row): layered, muted pages of torn paper, polaroids, film strips and pressed flowers.
+// Scraps are decor kinds from js/collage/render.js (cream, aged, tan, sage, blush, rose, peach, map, letter, news, note,
+// grid, check, card, tape, film); stickers from the 'vintage' group of js/collage/stickers.js.
+const SHEET = '#ede5d5', CARD = '#fbf8f1', PEN = '#3f342a';
+const TAPES = { cream: 'rgba(236,224,196,.86)', kraft: 'rgba(214,192,150,.86)', sage: 'rgba(188,198,172,.86)', blush: 'rgba(228,192,180,.86)' };
+const pol = (bottom = .075) => kitPolaroid(bottom, CARD), prt = (pad = .014) => ({ pad, color: CARD });
+const scrapOf = (kind, x, y, w, h, rotate = 0, style = {}) => kd(x, y, w, h, rotate, { kind, ...style });
+/** A photo without a card (inside a grid card or a film strip). Top-left (x, y), width w, w:h `ratio`, in sheet widths. */
+const bare = (x, y, w, ratio, rotate = 0, z = 1) => ({ x, y: y / KIT_H, w, h: w / ratio / KIT_H, rotate, z, shadow: false, border: false });
+/** A film strip: decor plus `n` photo frames as slots (rotated with it). Top-left (x, y), `len` along it, `thick`
+ *  across, in sheet widths; `across`: horizontal. */
+function film(x, y, len, thick, n, across, rotate = 0, z = 1) {
+  const w = across ? len : thick, h = across ? thick : len, edge = thick * .17, gap = thick * .06, frame = (len - gap * (n + 1)) / n;
+  const cx = x + w / 2, cy = y + h / 2, a = rotate * Math.PI / 180, slots = [];
+  for (let i = 0; i < n; i++) {
+    const along = -len / 2 + gap + frame / 2 + i * (frame + gap), dx = across ? along : 0, dy = across ? 0 : along;
+    const fx = cx + dx * Math.cos(a) - dy * Math.sin(a), fy = cy + dx * Math.sin(a) + dy * Math.cos(a), fw = across ? frame : thick - 2 * edge, fh = across ? thick - 2 * edge : frame;
+    slots.push(bare(fx - fw / 2, fy - fh / 2, fw, fw / fh, rotate, z));
+  }
+  return { decor: kd(x, y, w, h, rotate, { kind: 'film' }), slots };
+}
+const pkit = (id, name, page) => kit(id, name, { paper: SHEET, ...page }, 'kit');
+const note = (content, x, y, style = {}) => kitText(content, x, y, { color: PEN, ...style });
+const list = (content, x, y, rotate) => note(content, x, y, { size: .034, align: 'left', rotate });
+
+const kits = [
+  (() => { // Layered memories: newsprint, letters and a film strip under a pile of prints
+    const strip = film(.67, .3, .5, .2, 2, false, 5, 6);
+    return pkit('kit-layered-6', 'Layered memories · 6', {
+      decor: [scrapOf('news', .03, .1, .3, .52, -3), scrapOf('aged', .22, .03, .58, .46, 2), scrapOf('grid', .6, .01, .34, .22, -5), scrapOf('tan', .64, .44, .33, .36, 5),
+        scrapOf('letter', .05, .86, .52, .4, -2), scrapOf('cream', .5, .96, .47, .32, 3), strip.decor],
+      prints: [kp(.09, .05, .22, 1, -4, pol(), { z: 2, tapeColor: TAPES.cream }), kp(.31, .26, .34, 4 / 5, -2, prt(), { z: 4, tape: [] }), kp(.07, .4, .2, 3 / 4, 3, prt(), { z: 3, tape: [] }),
+        kp(.1, .86, .3, 1, -5, pol(), { z: 5, tapeColor: TAPES.kraft }), ...strip.slots],
+      stickers: [kitSticker('babys-breath', .56, .15, .2, 8), kitSticker('binder-clip', .19, .85, .07, -8), kitSticker('golden-flowers', .86, 1.13, .2, -10)],
+      text: [note('little moments', .73, 1.22, { size: .05, rotate: 3, font: 'handwritten' })] });
+  })(),
+  pkit('kit-travel-journal-3', 'Travel journal · 3', {
+    decor: [scrapOf('map', .03, .03, .94, .66, -1), scrapOf('aged', .04, .82, .44, .44, -3), scrapOf('tan', .47, .76, .5, .52, 2), scrapOf('note', .08, .98, .38, .27, -4),
+      scrapOf('cream', .1, .64, .3, .13, 4)],
+    prints: [kp(.07, .11, .42, 1, -3, pol(), { z: 2, tapeColor: TAPES.cream }), kp(.53, .3, .4, 4 / 3, 4, prt(), { z: 2, tape: ['tr'], tapeColor: TAPES.kraft }),
+      kp(.52, .78, .36, 1, -2, pol(), { z: 3, tapeColor: TAPES.sage })],
+    stickers: [kitSticker('vintage-stamp', .66, .11, .11, 6), kitSticker('postmark', .84, .17, .2, -6), kitSticker('eucalyptus', .07, 1.08, .14, -14), kitSticker('wax-seal', .44, 1.24, .08)],
+    text: [note('Amalfi Coast', .25, .705, { size: .052, rotate: 4, font: 'handwritten' }), list('☐ Explore the town\n☐ Local food\n☐ Beach walk\n☑ Take photos', .27, 1.115, -4)] }),
+  pkit('kit-polaroid-wall-4', 'Polaroid wall · 4', {
+    decor: [scrapOf('aged', .04, .04, .92, 1.25, 0), scrapOf('tan', 0, .3, .48, .52, -3), scrapOf('letter', .58, 0, .38, .3, 3), scrapOf('cream', .55, .76, .45, .52, 4)],
+    prints: [kp(.08, .1, .38, 1, -3, pol(), { tapeColor: TAPES.cream }), kp(.54, .14, .36, 1, 3, pol(), { z: 2, tapeColor: TAPES.kraft }),
+      kp(.1, .68, .36, 1, 2, pol(), { z: 2, tapeColor: TAPES.kraft }), kp(.53, .7, .38, 1, -2, pol(), { z: 3, tapeColor: TAPES.cream })],
+    stickers: [kitSticker('babys-breath', .87, .1, .2, 10), kitSticker('golden-flowers', .09, 1.21, .18, -8)] }),
+  (() => { // Film & notes: a film strip down the page over letters, a grid scrap and a ticket
+    const strip = film(.3, .08, 1.14, .32, 3, false, -2, 2);
+    return pkit('kit-film-notes-3', 'Film & notes · 3', {
+      decor: [scrapOf('letter', .04, .05, .5, .62, -2), scrapOf('aged', .55, .1, .4, .46, 3), scrapOf('rose', .02, .62, .38, .4, -4), scrapOf('grid', .07, .88, .3, .38, 3),
+        scrapOf('news', .6, .8, .36, .32, -3), strip.decor],
+      prints: strip.slots,
+      stickers: [kitSticker('golden-flowers', .82, .46, .26, 8), kitSticker('admit-one', .79, 1.2, .26, -4), kitSticker('postmark', .79, .1, .22, 6), kitSticker('babys-breath', .14, .5, .16, -10)] });
+  })(),
+  pkit('kit-botanical-2', 'Botanical journal · 2', {
+    decor: [scrapOf('aged', .1, .06, .8, 1.2, 1), scrapOf('tan', .56, .08, .38, .42, 4), scrapOf('cream', .52, .74, .42, .5, -3), scrapOf('letter', .1, .95, .42, .32, -2),
+      scrapOf('cream', .62, .6, .33, .13, -3)],
+    prints: [kp(.19, .1, .44, 4 / 5, -3, pol(), { tape: ['tl', 'tr'], tapeColor: TAPES.sage }), kp(.56, .76, .32, 1, 3, prt(), { z: 2, tapeColor: TAPES.cream })],
+    stickers: [kitSticker('eucalyptus', .12, .62, .24, -12), kitSticker('babys-breath', .3, 1.14, .2, 8), kitSticker('fern', .82, .3, .18, 10), kitSticker('line-branch', .44, 1.06, .11, 12)],
+    text: [note('Field Notes', .785, .665, { size: .056, rotate: -3, font: 'handwritten' })] }),
+  (() => { // Grid scrapbook: six photos on a white card, taped down over torn paper
+    const cols = [.115, .3767, .6384], rows = [.195, .63], w = .2466;
+    return pkit('kit-grid-6', 'Grid scrapbook · 6', {
+      decor: [scrapOf('tan', .04, .08, .5, .52, -4), scrapOf('aged', .46, .84, .5, .44, 3), scrapOf('sage', 0, .98, .32, .28, 2), scrapOf('card', .08, .16, .84, 1.0, 0, { shadow: true }),
+        scrapOf('tape', .4, .13, .2, .06, -2)],
+      prints: rows.flatMap(y => cols.map(x => bare(x, y, w, w / .41))),
+      stickers: [kitSticker('eucalyptus', .9, 1.14, .16, 18)] });
+  })(),
+  pkit('kit-cluster-3', 'Polaroid cluster · 3', {
+    decor: [scrapOf('aged', .08, .08, .84, 1.16, -1), scrapOf('check', .03, .72, .34, .38, -6), scrapOf('letter', .6, .05, .32, .28, 4), scrapOf('tan', .6, .9, .36, .36, 3)],
+    prints: [kp(.1, .12, .4, 1, -4, pol(), { tapeColor: TAPES.cream }), kp(.47, .3, .42, 4 / 5, 4, pol(), { z: 2, tape: ['tr'], tapeColor: TAPES.kraft }),
+      kp(.3, .86, .3, 1, 2, pol(), { z: 3, tapeColor: TAPES.blush })],
+    stickers: [kitSticker('twine', .2, 1.24, .2, -6), kitSticker('babys-breath', .86, 1.1, .2, 10), kitSticker('heart', .86, .13, .07, 12)] }),
+  pkit('kit-good-times-2', 'Good times · 2', {
+    decor: [scrapOf('aged', .06, .06, .88, 1.22, 1), scrapOf('blush', .58, .04, .38, .32, 4), scrapOf('cream', .06, .9, .42, .36, -3), scrapOf('cream', .08, .55, .28, .2, -5)],
+    prints: [kp(.12, .1, .44, 1, -3, pol(), { tapeColor: TAPES.cream }), kp(.46, .52, .42, 4 / 5, 4, pol(), { z: 2, tapeColor: TAPES.blush })],
+    stickers: [kitSticker('heart', .84, .12, .09, 12), kitSticker('ice-cream', .13, .44, .1, -12), kitSticker('star', .18, .86, .07, -10), kitSticker('camera', .3, 1.12, .16, -6), kitSticker('smiley', .88, .44, .08, 8), kitSticker('heart', .86, 1.22, .08, -8)],
+    text: [note('Good\nTimes', .22, .65, { size: .065, rotate: -5, font: 'handwritten', bold: true })] }),
+  pkit('kit-daily-2', 'Daily life · 2', {
+    decor: [scrapOf('aged', .06, .05, .86, 1.2, 1), scrapOf('news', 0, .02, .3, .3, -4), scrapOf('tan', .62, .2, .34, .42, 4), scrapOf('note', .05, .82, .4, .46, -4)],
+    prints: [kp(.1, .08, .48, 1, -3, pol(), { tapeColor: TAPES.cream }), kp(.47, .6, .44, 1, 4, pol(), { z: 2, tape: ['tr'], tapeColor: TAPES.kraft })],
+    stickers: [kitSticker('eucalyptus', .82, .2, .22, 16), kitSticker('twine', .25, 1.25, .2, -4)],
+    text: [note('Coffee Time', .25, .91, { size: .055, rotate: -4, font: 'handwritten' }), list('☐ Espresso\n☐ Latte\n☐ Croissant\n☑ Good mood', .24, 1.06, -4)] }),
+  pkit('kit-travel-map-3', 'Travel map · 3', {
+    decor: [scrapOf('map', .03, .03, .94, 1.27, 1), scrapOf('cream', .06, .37, .36, .14, -6)],
+    prints: [kp(.46, .06, .44, 4 / 5, 4, pol(), { tapeColor: TAPES.cream }), kp(.06, .72, .4, 1, -4, pol(), { z: 2, tapeColor: TAPES.kraft }),
+      kp(.52, .82, .36, 4 / 3, 3, prt(), { z: 2, tape: ['tr'], tapeColor: TAPES.cream })],
+    stickers: [kitSticker('map-pin', .9, .74, .08), kitSticker('compass', .88, 1.24, .13, 10), kitSticker('vintage-stamp', .14, .13, .1, -6)],
+    text: [note('Road Trip', .24, .44, { size: .06, rotate: -6, font: 'handwritten' })] }),
+  pkit('kit-minimal-2', 'Minimal · 2', {
+    decor: [scrapOf('peach', .62, .06, .3, .3, 0, { shape: 'circle' }), scrapOf('sage', .04, .58, .34, .58, 0, { shape: 'arch', shadow: false }), scrapOf('tan', .08, 1.17, .42, .08, -2)],
+    prints: [kp(.12, .12, .48, 3 / 4, -2, prt(), { tapeColor: TAPES.cream }), kp(.44, .6, .45, 4 / 5, 3, prt(), { z: 2, tape: ['tr'], tapeColor: TAPES.cream })],
+    stickers: [kitSticker('babys-breath', .88, .5, .18, 10)] }),
+  (() => { // Film contact: three strips of three frames, a date in the corner
+    const strips = [film(.07, .2, .86, .28, 3, true, -2, 2), film(.08, .49, .86, .28, 3, true, -.8, 3), film(.07, .78, .86, .28, 3, true, -1.8, 4)];
+    return pkit('kit-film-contact-9', 'Film contact · 9', {
+      decor: [scrapOf('tan', .02, .08, .6, .5, -4), scrapOf('letter', .42, .02, .54, .34, 5), scrapOf('aged', 0, .82, .6, .48, 3), scrapOf('grid', .5, .88, .48, .42, -3), ...strips.map(s => s.decor)],
+      prints: strips.flatMap(s => s.slots),
+      stickers: [kitSticker('babys-breath', .12, 1.2, .2, -10)],
+      text: [note("'25 04 18", .8, 1.11, { size: .032, font: 'typewriter', bold: true, color: '#e0782e' })] });
+  })(),
+  (() => { // Moodboard: white polaroids on sand, line-art florals and a colour palette
+    const card = kitPolaroid(.07, '#f8f7f4');
+    return pkit('kit-moodboard-7', 'Moodboard · 7', { paper: '#e2d5c4', texture: 'none',
+      // Laid nearly square, each a hair off (under 1°), overlapping like prints on a board.
+      prints: [kp(.08, .1, .26, 1, -.8, card), kp(.4, .06, .26, 4 / 3, .6, card), kp(.71, .1, .23, 4 / 5, -.5, card), kp(.14, .44, .38, 4 / 3, .4, kitPolaroid(.1, '#f8f7f4'), { z: 3 }),
+        kp(.6, .5, .32, 1, -.6, card, { z: 2 }), kp(.07, .9, .3, 1, .7, card, { z: 2 }), kp(.46, .92, .42, 4 / 3, -.4, card, { z: 4 })].map(slot => ({ ...slot, tape: [] })),
+      stickers: [kitSticker('line-flower', .08, .1, .13, -10), kitSticker('line-branch', .67, .33, .1, 18), kitSticker('line-flower', .9, .87, .13, 12), kitSticker('line-branch', .07, .82, .1, -14),
+        kitSticker('swatches', .33, .776, .05, 90)] });
+  })(),
+  pkit('kit-sun-sage-4', 'Sun & sage · 4', {
+    decor: [scrapOf('peach', .58, .06, .3, .3, 0, { shape: 'circle' }), scrapOf('sage', .76, .24, .2, .4, 0, { edge: 'straight', shadow: false }), scrapOf('aged', .36, 1.14, .5, .1, -2)],
+    prints: [kp(.14, .18, .7, 3 / 2, 0, prt(), { tape: [] }), kp(.12, .76, .23, 3 / 4, 0, prt(), { tape: [] }), kp(.385, .76, .23, 3 / 4, 0, prt(), { tape: [] }), kp(.65, .76, .23, 3 / 4, 0, prt(), { tape: [] })],
+    stickers: [kitSticker('eucalyptus', .1, .4, .22, -12)] }),
+  pkit('kit-panorama-3', 'Panorama · 3', {
+    decor: [scrapOf('peach', .62, .1, .26, .26, 0, { shape: 'circle' }), scrapOf('tan', .28, 1.06, .52, .1, -2)],
+    prints: [.12, .39, .66].map(x => kp(x, .28, .23, .34, 0, prt(.01), { tape: [] })) })
+];
+
 /** @type {Template[]} */
 export const templates = [
   // Diptychs
@@ -186,6 +314,24 @@ export const templates = [
   grid('grid-5-top', '1 wide + 4', [4, 5], [1, 1, 1, 1], [3, 2], [[0, 0, 4, 1], [0, 1], [1, 1], [2, 1], [3, 1]]),
   grid('grid-5-centre', '1 centre + 4', [3, 2], [1, 2, 1], [1, 1], [[0, 0], [1, 0, 1, 2], [2, 0], [0, 1], [2, 1]]),
   grid('grid-6-hero', '1 large + 5', [1, 1], [1, 1, 1], [1, 1, 1], [[0, 0, 2, 2], [2, 0], [2, 1], [0, 2], [1, 2], [2, 2]]),
+  // Looks: the same grids, styled. Night story: a phone story, hairline black lines all round.
+  look('look-night-2', 'Night story · 2', [9, 16], [1], [1, 1], fill(1, 2), BLACK, { gutter: .008 }),
+  look('look-night-3', 'Night story · 3', [9, 16], [1], [1, 1, 1], fill(1, 3), BLACK, { gutter: .008 }),
+  look('look-night-4', 'Night story · 4', [9, 16], [1, 1], [1, 1], fill(2, 2), BLACK, { gutter: .008 }),
+  // Seamless: no lines at all, photos edge to edge (names: columns × rows, kept on one line).
+  look('look-seamless-2-side', 'Seamless · 2\u00a0×\u00a01', [3, 2], [1, 1], [1], fill(2, 1), BRIGHT, { gutter: 0 }),
+  look('look-seamless-2-stack', 'Seamless · 1\u00a0×\u00a02', [2, 3], [1], [1, 1], fill(1, 2), BRIGHT, { gutter: 0 }),
+  look('look-seamless-3-cols', 'Seamless · 3\u00a0×\u00a01', [3, 2], [1, 1, 1], [1], fill(3, 1), BRIGHT, { gutter: 0 }),
+  look('look-seamless-3-rows', 'Seamless · 1\u00a0×\u00a03', [9, 16], [1], [1, 1, 1], fill(1, 3), BRIGHT, { gutter: 0 }),
+  look('look-seamless-3-left', 'Seamless · 1\u00a0+\u00a02', [3, 2], [2, 1], [1, 1], [[0, 0, 1, 2], [1, 0], [1, 1]], BRIGHT, { gutter: 0 }),
+  look('look-seamless-4', 'Seamless · 2\u00a0×\u00a02', [1, 1], [1, 1], [1, 1], fill(2, 2), BRIGHT, { gutter: 0 }),
+  look('look-seamless-4-top', 'Seamless · 1\u00a0+\u00a03', [4, 5], [1, 1, 1], [2, 1], [[0, 0, 3, 1], [0, 1], [1, 1], [2, 1]], BRIGHT, { gutter: 0 }),
+  look('look-seamless-6', 'Seamless · 3\u00a0×\u00a02', [3, 2], [1, 1, 1], [1, 1], fill(3, 2), BRIGHT, { gutter: 0 }),
+  look('look-seamless-6-tall', 'Seamless · 2\u00a0×\u00a03', [2, 3], [1, 1], [1, 1, 1], fill(2, 3), BRIGHT, { gutter: 0 }),
+  look('look-seamless-9', 'Seamless · 3\u00a0×\u00a03', [1, 1], [1, 1, 1], [1, 1, 1], fill(3, 3), BRIGHT, { gutter: 0 }),
+  look('look-rounded-4', 'Rounded · 4', [4, 5], [1, 1], [1, 1], fill(2, 2), BRIGHT, { gutter: .03, radius: .04 }),
+  look('look-gallery-3', 'Gallery · 3', [4, 5], [1, 1], [3, 2], [[0, 0, 2, 1], [0, 1], [1, 1]], WARM, { gutter: .05 }),
+  look('look-framed-6', 'Framed · 6', [2, 3], [1, 1], [1, 1, 1], fill(2, 3), BLACK, { gutter: .02, border: { width: .006, color: '#ffffff' } }),
   contact('contact-35', '35 mm · 36', 6, 6, [36, 24]),
   contact('contact-66', '120 6×6 · 12', 4, 3, [56, 56]),
   contact('contact-67', '120 6×7 · 9', 3, 3, [70, 56]),
@@ -237,7 +383,8 @@ export const templates = [
     polaroid(.1, .7, .32, .22, 5, 4),
     { x: .55, y: .72, w: .36, h: .22, rotate: -3, z: 3, shadow: true, tape: ['tr'] }
   ], [scrap('graph', .04, .2, .3, .35, -4), scrap('lined', .55, .02, .4, .3, 3), scrap('kraft', .45, .62, .5, .32, -2)]),
-  ...kits
+  ...kits,
+  ...classicKits
 ];
 
 export const templateById = id => templates.find(template => template.id === id) || null;

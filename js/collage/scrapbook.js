@@ -30,6 +30,19 @@ export function scrapPath(rect, seed, tear) {
   return path;
 }
 
+/** A scrap torn on all four sides: every edge jittered by up to `tear` px (seeded), corners included. */
+export function scrapPath4(rect, seed, tear) {
+  const path = new Path2D(), across = Math.max(4, Math.round(rect.w / (tear * 3))), down = Math.max(4, Math.round(rect.h / (tear * 3)));
+  const j = (i, salt) => (noise(seed, i, salt) - .5) * 2 * tear;
+  path.moveTo(rect.x + j(0, 1), rect.y + j(0, 2));
+  for (let i = 1; i <= across; i++) path.lineTo(rect.x + i / across * rect.w, rect.y + j(i, 3));
+  for (let i = 1; i <= down; i++) path.lineTo(rect.x + rect.w + j(i, 4), rect.y + i / down * rect.h);
+  for (let i = 1; i <= across; i++) path.lineTo(rect.x + rect.w - i / across * rect.w, rect.y + rect.h + j(i, 5));
+  for (let i = 1; i < down; i++) path.lineTo(rect.x + j(i, 6), rect.y + rect.h - i / down * rect.h);
+  path.closePath();
+  return path;
+}
+
 /** A point transformed into a laid-out print's rotated coordinate space. */
 export function unrotatePoint(slot, x, y) {
   const a = -(slot.rotate || 0) * Math.PI / 180, cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2, dx = x - cx, dy = y - cy;

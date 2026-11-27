@@ -22,9 +22,9 @@ const HISTORY_LIMIT = 50;
 /** Most photos a picker template holds: a collage opens with at most this many. */
 export const COLLAGE_MAX = Math.max(...templates.filter(t => PICKER.includes(t.category)).map(slotCount));
 
-/** The listed grid that fits `count` photos best, else the largest one. */
+/** The listed plain grid (not a look) that fits `count` photos best, else the largest one. */
 export function templateFor(count) {
-  const sorted = templates.filter(t => t.kind === 'grid' && PICKER.includes(t.category)).sort((a, b) => slotCount(a) - slotCount(b));
+  const sorted = templates.filter(t => t.kind === 'grid' && t.category === 'layout').sort((a, b) => slotCount(a) - slotCount(b));
   return sorted.find(t => slotCount(t) === count) || sorted.find(t => slotCount(t) >= count) || sorted[sorted.length - 1];
 }
 
@@ -70,7 +70,8 @@ export function createCollageMode(deps) {
     get view() { return view; },
     get slider() { return slider; }, set slider(value) { slider = value; },
     get wheel() { return wheel; }, set wheel(value) { wheel = value; },
-    get active() { return active; }
+    get active() { return active; },
+    get fullscreen() { return full.dialog.open; }
   };
   const ui = c.ui = {};
   ui.cache = createSlotCache(c); ui.text = createTextUi(c); ui.sticker = createStickerUi(c); ui.slots = createSlotsUi(c); ui.panel = createPanel(c);
@@ -99,7 +100,37 @@ export function createCollageMode(deps) {
     ui.slots.syncSlots();
     ui.text.syncTextHandles(ctx);
     ui.sticker.syncStickerHandles();
+    drawFullscreen();
   }
+
+  // ---------- Full screen: the collage alone (no selection, dividers or handles), at the window's size. ----------
+  // Like the photo's full screen (js/preview.js): Esc or ✕ closes; where the browser allows it, truly full screen.
+  const full = { dialog: byId('collageFullscreen'), canvas: byId('collageFullscreenCanvas'), button: byId('collageFullscreenButton') };
+  function drawFullscreen() {
+    if (!active || !full.dialog.open) return;
+    const style = getComputedStyle(full.dialog), availW = full.dialog.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const availH = full.dialog.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    if (availW <= 0 || availH <= 0) return;
+    const a = doc.aspect.w / doc.aspect.h, cssW = Math.min(availW, availH * a), scale = Math.min(devicePixelRatio || 1, 4096 / Math.max(cssW, cssW / a));
+    const width = Math.max(1, Math.round(cssW * scale)), height = Math.max(1, Math.round(cssW / a * scale));
+    if (full.canvas.width !== width || full.canvas.height !== height) { full.canvas.width = width; full.canvas.height = height; }
+    drawCollage(full.canvas.getContext('2d'), doc, layoutTemplate(template(), width, height, doc), ui.cache.imageOf);
+  }
+  function openFullscreen() {
+    if (!active || full.dialog.open) return;
+    full.dialog.showModal(); drawFullscreen(); ui.cache.pump(); // sharper slot renders for the bigger view
+    full.dialog.requestFullscreen?.().catch(() => { /* window-sized is fine (iPhone, or not allowed) */ });
+  }
+  const closeFullscreen = () => { if (full.dialog.open) full.dialog.close(); };
+  full.button.addEventListener('click', openFullscreen);
+  byId('collageFullscreenClose').addEventListener('click', closeFullscreen);
+  // In browser full screen, Esc leaves full screen first (no keydown reaches the page): close the dialog with it.
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) closeFullscreen(); });
+  addEventListener('resize', () => { if (full.dialog.open) { drawFullscreen(); ui.cache.pump(); } });
+  full.dialog.addEventListener('close', () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (active) full.button.focus();
+  });
 
   /** Shaped slots can't use the CSS box ring (their boxes are clipped to the slot's shape): the selected slot and the
    *  drop target get a 3 px accent ring inside their visible outline on the preview canvas (never exported). */
@@ -161,7 +192,7 @@ export function createCollageMode(deps) {
      *  `keepCache` (leaving to edit one photo: the others need no new render on return). */
     close({ keepCache = false } = {}) {
       if (!active) return;
-      active = false;
+      closeFullscreen(); active = false;
       cancelAnimationFrame(frame); frame = 0; slider = null; ui.slots.stop();
       ui.text.stop(); ui.sticker.stop();
       if (wheel) { clearTimeout(wheel.timer); commit(wheel.start); wheel = null; }
