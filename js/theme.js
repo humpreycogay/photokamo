@@ -1,6 +1,6 @@
 // Light/dark theme. The choice is saved; with none saved the theme follows the system. index.html sets
 // data-theme before first paint, so this module only handles switching: a six-blade iris closes over the
-// screen, the theme swaps while it is shut, then it opens; a Web Audio shutter clicks on close and open.
+// screen, the theme swaps while it is shut, then it opens, to a synthesised camera shutter sound.
 import { $ } from './state.js';
 
 const THEME_KEY = 'photokamo:theme';
@@ -19,25 +19,40 @@ function apply(theme) {
   $('meta[name=theme-color]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim());
 }
 
-// ---------- Sound: a short filtered noise burst (the blades) over a low thump (the body), no audio files ----------
-function click(at, { pitch = 1, level = 1 } = {}) {
-  const ctx = audio, rate = ctx.sampleRate, noise = ctx.createBuffer(1, Math.round(rate * .06), rate), data = noise.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 2;
-  const source = ctx.createBufferSource(), band = ctx.createBiquadFilter(), gain = ctx.createGain();
-  source.buffer = noise; band.type = 'bandpass'; band.frequency.value = 3200 * pitch; band.Q.value = .9;
-  gain.gain.setValueAtTime(.0001, at); gain.gain.exponentialRampToValueAtTime(.55 * level, at + .002); gain.gain.exponentialRampToValueAtTime(.0001, at + .055);
-  source.connect(band).connect(gain).connect(ctx.destination); source.start(at); source.stop(at + .07);
-  const body = ctx.createOscillator(), thump = ctx.createGain();
-  body.type = 'sine'; body.frequency.setValueAtTime(150 * pitch, at); body.frequency.exponentialRampToValueAtTime(55, at + .04);
-  thump.gain.setValueAtTime(.0001, at); thump.gain.exponentialRampToValueAtTime(.35 * level, at + .003); thump.gain.exponentialRampToValueAtTime(.0001, at + .05);
-  body.connect(thump).connect(ctx.destination); body.start(at); body.stop(at + .06);
+// ---------- Sound: an SLR shutter, synthesised once (no audio files). Two clusters, "ka-chick": mirror up + first
+// curtain, then second curtain + mirror down. Each is a few sub-millisecond clicks, a short metal ring and a body thump.
+const CLUSTERS = [
+  { at: 0,    hits: [[0, 1], [4, .55], [9, .35]],            ring: [2300, 3700, 5300], thump: 140 },
+  { at: .095, hits: [[0, .9], [3, .7], [11, .35], [19, .2]], ring: [1900, 3100, 4700], thump: 105, rattle: true }
+];
+let shutterBuffer = null;
+function buildShutter(ctx) {
+  const rate = ctx.sampleRate, buffer = ctx.createBuffer(1, Math.round(rate * .3), rate), out = buffer.getChannelData(0);
+  const add = (from, length, sample) => { const start = Math.round(from * rate); for (let i = 0; i < length && start + i < out.length; i++) out[start + i] += sample(i / rate); };
+  for (const cluster of CLUSTERS) {
+    for (const [ms, level] of cluster.hits) { // clicks: high-passed noise, ~1.5 ms decay
+      let last = 0, high = 0;
+      add(cluster.at + ms / 1000, Math.round(rate * .012), t => { const x = (Math.random() * 2 - 1) * Math.exp(-t / .0015); high = .86 * (high + x - last); last = x; return high * level; });
+    }
+    for (const [index, hz] of cluster.ring.entries()) { // metal ring: damped partials
+      const phase = Math.random() * 6.28, decay = .012 + index * .004;
+      add(cluster.at, Math.round(rate * .08), t => .22 * Math.sin(6.283 * hz * t + phase) * Math.exp(-t / decay));
+    }
+    add(cluster.at, Math.round(rate * .06), t => .7 * Math.sin(6.283 * cluster.thump * t * (1 - t * 4)) * Math.exp(-t / .012)); // body thump, falling pitch
+    if (cluster.rattle) { let low = 0; add(cluster.at + .004, Math.round(rate * .1), t => (low += .25 * ((Math.random() * 2 - 1) - low)) * .35 * Math.exp(-t / .022)); } // spring settle
+  }
+  let peak = 0; for (const value of out) peak = Math.max(peak, Math.abs(value));
+  for (let i = 0; i < out.length; i++) out[i] *= .8 / peak;
+  return buffer;
 }
-function shutterSound(gapMs) {
+function shutterSound() {
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     if (audio.state === 'suspended') audio.resume();
-    const now = audio.currentTime + .01;
-    click(now); click(now + gapMs / 1000, { pitch: .8, level: .8 }); // "ka-chick": closing, then opening
+    shutterBuffer ||= buildShutter(audio);
+    const source = audio.createBufferSource(), gain = audio.createGain();
+    source.buffer = shutterBuffer; gain.gain.value = .75;
+    source.connect(gain).connect(audio.destination); source.start(audio.currentTime + .005);
   } catch { /* no audio: the switch still works */ }
 }
 
@@ -74,10 +89,10 @@ async function toggle() {
   if (busy) return;
   const next = current() === 'light' ? 'dark' : 'light';
   try { localStorage.setItem(THEME_KEY, next); } catch { /* this visit only */ }
-  if (still.matches) { shutterSound(90); apply(next); return; }
+  if (still.matches) { shutterSound(); apply(next); return; }
   busy = true;
   const shutter = iris();
-  shutterSound(CLOSE_MS + HOLD_MS);
+  shutterSound();
   try {
     await shutter.close();
     apply(next);
