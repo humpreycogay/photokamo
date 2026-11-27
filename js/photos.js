@@ -343,7 +343,6 @@ function buildStrip() {
     if (event.key === 'Enter') { event.preventDefault(); pickPhoto(app.focusId); syncStrip(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); app.selected = new Set(ids); syncStrip(); }
   });
-  $('#stripAdd').addEventListener('click', () => elements.fileInput.click());
   // Phones: one toggle under the vertical strip selects all, or goes back to the photo in view.
   $('#stripSelectToggle').addEventListener('click', () => {
     const all = app.photos.every(photo => app.selected.has(photo.id));

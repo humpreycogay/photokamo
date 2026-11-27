@@ -114,6 +114,7 @@ svg { flex:none; }
 .file-chip-name { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .file-chip-size { color:var(--text-muted); font-weight:400; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .file-menu { position:fixed; inset:auto; margin:0; min-width:220px; padding:6px; background:var(--raised); color:var(--text); border:1px solid var(--line-strong); border-radius:var(--radius-lg); box-shadow:var(--shadow-photo); }
+.strip-add-menu { min-width:200px; }
 .file-menu-item { display:flex; align-items:center; gap:10px; width:100%; min-height:var(--tap); padding:0 12px; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--text); font-weight:500; text-align:left; cursor:pointer; }
 .file-menu-item:hover,.file-menu-item:focus-visible { background:var(--control); }
 .file-menu-collages { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); }

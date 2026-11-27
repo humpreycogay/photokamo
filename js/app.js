@@ -105,6 +105,36 @@ $('#chooseButton').addEventListener('click', () => elements.fileInput.click());
 $('#sampleButton').addEventListener('click', loadSample);
 $('#cameraButton').addEventListener('click', openCamera);
 $('#cameraFallback').addEventListener('click', () => elements.cameraInput.click());
+// Filmstrip "+": phones open the system picker (it offers the camera too); on a computer it offers both choices,
+// since a file picker there can't take a photo.
+{
+  const add = $('#stripAdd'), menu = $('#stripAddMenu');
+  const items = () => [...menu.querySelectorAll('[data-strip-add]')];
+  add.addEventListener('click', () => {
+    if (mobileQuery.matches) { elements.fileInput.click(); return; }
+    menu.togglePopover();
+  });
+  menu.addEventListener('toggle', event => {
+    const open = event.newState === 'open';
+    add.setAttribute('aria-expanded', open);
+    if (!open) return;
+    const rect = add.getBoundingClientRect(), height = menu.offsetHeight;
+    menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, rect.left))}px`;
+    menu.style.top = `${rect.top - height - 6 >= 8 ? rect.top - height - 6 : rect.bottom + 6}px`; // above the strip when it fits
+    items()[0].focus();
+  });
+  menu.addEventListener('click', event => {
+    const item = event.target.closest('[data-strip-add]'); if (!item) return;
+    menu.hidePopover(); add.focus();
+    if (item.dataset.stripAdd === 'camera') openCamera(); else elements.fileInput.click();
+  });
+  menu.addEventListener('keydown', event => {
+    const list = items(), index = list.indexOf(document.activeElement);
+    const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: list.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault(); list[(next + list.length) % list.length].focus();
+  });
+}
 elements.fileMenu.addEventListener('click', event => {
   const open = event.target.closest('[data-collage-open]'), remove = event.target.closest('[data-collage-delete]');
   if (open) { elements.fileMenu.hidePopover(); openSavedCollage(open.dataset.collageOpen); return; }
