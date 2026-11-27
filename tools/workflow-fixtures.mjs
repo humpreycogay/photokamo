@@ -188,15 +188,114 @@ export async function checkTargetSize() {
   return failures;
 }
 
+// ---------- Task 8: metadata files built by hand (also used by the browser export check) ----------
+const bytesOf = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const text = value => new TextEncoder().encode(value);
+/** A TIFF block. `ifds`: { ifd0: [[tag, type, count, value|bytes]], exif, gps, ifd1 }; pointers are filled in. */
+export function buildTiff({ little = true, camera = true, date = true, gps = true, owner = false, thumbnail = false, orientation = 0 } = {}) {
+  const ifd0 = [], exif = [], gpsIfd = [];
+  if (camera) ifd0.push([0x010f, 2, 'TestCam\0'], [0x0110, 2, 'Model 9\0']);
+  if (orientation) ifd0.push([0x0112, 3, orientation]);
+  if (owner) ifd0.push([0x013b, 2, 'Someone\0']);
+  if (date) exif.push([0x9003, 2, '2026:11:27 10:00:00\0']);
+  if (gps) gpsIfd.push([0x0001, 2, 'N\0'], [0x0002, 5, new Uint8Array(24)], [0x0003, 2, 'E\0'], [0x0004, 5, new Uint8Array(24)]);
+  const tables = [['ifd0', ifd0], ...(exif.length ? [['exif', exif]] : []), ...(gpsIfd.length ? [['gps', gpsIfd]] : []), ...(thumbnail ? [['ifd1', [[0x0201, 4, 0], [0x0202, 4, 0]]]] : [])];
+  if (exif.length) ifd0.push([0x8769, 4, 'exif']);
+  if (gpsIfd.length) ifd0.push([0x8825, 4, 'gps']);
+  for (const [, list] of tables) list.sort((a, b) => a[0] - b[0]);
+  // layout: header, each table followed by its out-of-line data
+  const offsets = {}; let size = 8;
+  const dataOf = value => (typeof value === 'string' ? text(value) : value instanceof Uint8Array ? value : null);
+  for (const [name, list] of tables) { offsets[name] = size; size += 2 + list.length * 12 + 4; for (const [, , value] of list) { const d = dataOf(value); if (d && d.length > 4) size += d.length + (d.length & 1); } }
+  const buf = new Uint8Array(size), view = new DataView(buf.buffer);
+  buf.set(text(little ? 'II' : 'MM')); view.setUint16(2, 42, little); view.setUint32(4, 8, little);
+  for (const [name, list] of tables) {
+    let at = offsets[name], data = at + 2 + list.length * 12 + 4;
+    view.setUint16(at, list.length, little);
+    list.forEach(([tag, type, value], i) => {
+      const e = at + 2 + i * 12, d = dataOf(value), width = { 2: 1, 3: 2, 4: 4, 5: 8 }[type];
+      view.setUint16(e, tag, little); view.setUint16(e + 2, type, little);
+      if (d) { view.setUint32(e + 4, d.length / width, little); if (d.length <= 4) buf.set(d, e + 8); else { view.setUint32(e + 8, data, little); buf.set(d, data); data += d.length + (d.length & 1); } }
+      else if (typeof value === 'string') view.setUint32(e + 8, offsets[value], little);
+      else { view.setUint32(e + 4, 1, little); if (type === 3) view.setUint16(e + 8, value, little); else view.setUint32(e + 8, value, little); }
+      if (offsets[value] !== undefined) { view.setUint32(e + 4, 1, little); view.setUint32(e + 8, offsets[value], little); }
+    });
+    view.setUint32(at + 2 + list.length * 12, name === 'ifd0' && thumbnail ? offsets.ifd1 : 0, little);
+  }
+  return buf;
+}
+const be16 = n => new Uint8Array([n >> 8, n & 255]), be32 = n => new Uint8Array([n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255]), le32 = n => new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255, n >>> 24]);
+const jpegSegment = (marker, payload) => bytesOf(new Uint8Array([0xff, marker]), be16(payload.length + 2), payload);
+/** An Exif APP1 segment to put after a JPEG's SOI. */
+export const exifSegment = options => jpegSegment(0xe1, bytesOf(text('Exif\0\0'), buildTiff(options)));
+export function buildJpeg(options) { return bytesOf(new Uint8Array([0xff, 0xd8]), exifSegment(options), jpegSegment(0xe1, text('http://ns.adobe.com/xap/1.0/\0<x/>')), jpegSegment(0xdb, new Uint8Array(65)), new Uint8Array([0xff, 0xda]), be16(8), new Uint8Array(6), new Uint8Array(32), new Uint8Array([0xff, 0xd9])); }
+export async function buildPng(options) {
+  const { crc32 } = await import(`${repo}/js/zip.js`);
+  const chunk = (type, data) => bytesOf(be32(data.length), text(type), data, be32(crc32(bytesOf(text(type), data))));
+  return bytesOf(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]), chunk('IHDR', new Uint8Array(13)), chunk('eXIf', buildTiff(options)), chunk('tEXt', text('Comment\0hello')), chunk('iCCP', text('x\0\0')), chunk('IDAT', new Uint8Array(20)), chunk('IEND', new Uint8Array(0)));
+}
+export function buildWebp(options) {
+  const chunk = (fourcc, data) => bytesOf(text(fourcc), le32(data.length), data, data.length & 1 ? new Uint8Array(1) : new Uint8Array(0));
+  const body = bytesOf(text('WEBP'), chunk('VP8X', new Uint8Array(10)), chunk('VP8L', new Uint8Array(21)), chunk('EXIF', buildTiff(options)), chunk('XMP ', text('<x/>')));
+  return bytesOf(text('RIFF'), le32(body.length), body);
+}
+
+/** Task 8: scanner detection, hostile files and 1,000 random mutations per format. Returns failures. */
+export async function checkMetadata() {
+  const m = await import(`${repo}/js/export/metadata.js`);
+  const failures = [], expect = (name, ok) => { if (!ok) failures.push(`metadata: ${name}`); };
+  const scan = bytes => m.scanMetadata(bytes, { strict: true });
+  const files = { jpeg: buildJpeg(), png: await buildPng(), webp: buildWebp() };
+  for (const [format, bytes] of Object.entries(files)) {
+    const r = scan(bytes);
+    expect(`${format}: gps, camera, date found, nothing malformed`, r.format === format && r.gps && r.camera && r.date && r.exif && !r.malformed);
+  }
+  expect('jpeg: XMP found', scan(files.jpeg).xmp); expect('png: text and ICC found', scan(files.png).text && scan(files.png).icc); expect('webp: XMP found', scan(files.webp).xmp);
+  const r = scan(buildJpeg({ little: false, gps: false, owner: true, thumbnail: true }));
+  expect('big-endian, no GPS, owner and thumbnail', !r.gps && r.camera && r.owner && r.thumbnail && !r.malformed);
+  const clean = scan(bytesOf(new Uint8Array([0xff, 0xd8]), jpegSegment(0xdb, new Uint8Array(65)), new Uint8Array([0xff, 0xda, 0, 8, 0, 0, 0, 0, 0, 0, 0xff, 0xd9])));
+  expect('a plain JPEG reports nothing private', m.privateKinds(clean).length === 0 && !clean.malformed);
+  // Hostile TIFFs: patch the built one.
+  const tiff = buildTiff(), le = new DataView(tiff.buffer);
+  const withTiff = t => bytesOf(new Uint8Array([0xff, 0xd8]), jpegSegment(0xe1, bytesOf(text('Exif\0\0'), t)), new Uint8Array([0xff, 0xd9]));
+  const patched = (fn) => { const t = tiff.slice(); fn(new DataView(t.buffer), t); return scan(withTiff(t)); };
+  expect('cyclic: IFD0 points to itself as its Exif IFD', patched((v, t) => { const n = v.getUint16(8, true); for (let i = 0; i < n; i++) if (v.getUint16(10 + i * 12, true) === 0x8769) v.setUint32(10 + i * 12 + 8, 8, true); }).malformed);
+  expect('huge entry count', patched(v => v.setUint16(8, 0xffff, true)).malformed);
+  expect('wrong byte order mark', patched((v, t) => { t[0] = 0x4d; t[1] = 0x4d; }).malformed);
+  expect('overflow value offset', patched(v => { v.setUint32(10 + 8, 0xfffffff0, true); v.setUint32(10 + 4, 0xffffffff, true); }).malformed);
+  expect('IFD0 offset past the end', patched(v => v.setUint32(4, 0x7fffffff, true)).malformed);
+  expect('truncated JPEG segment', scan(files.jpeg.subarray(0, 30)).malformed);
+  expect('a file\'s start (complete: false) is not malformed', !m.scanMetadata(files.jpeg.subarray(0, 30), { complete: false }).malformed);
+  const badCrc = files.png.slice(); badCrc[50] ^= 1;
+  expect('PNG metadata chunk with a bad CRC is malformed', scan(badCrc).malformed);
+  expect('not an image', scan(text('hello')).format === null);
+  // Fuzz: flips, truncations, insertions and 0xFF floods; no exception, quick.
+  let seed = 12345; const rand = n => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const t0 = performance.now(); let thrown = 0;
+  for (const bytes of Object.values(files)) for (let i = 0; i < 1000; i++) {
+    let f = bytes.slice();
+    const kind = rand(4);
+    if (kind === 0) for (let k = 0; k < 1 + rand(8); k++) f[rand(f.length)] = rand(256);
+    else if (kind === 1) f = f.subarray(0, rand(f.length));
+    else if (kind === 2) { const at = rand(f.length); f = bytesOf(f.subarray(0, at), new Uint8Array(rand(64)).map(() => rand(256)), f.subarray(at)); }
+    else { const at = rand(f.length); f.fill(0xff, at, Math.min(f.length, at + 4)); }
+    try { scan(f); } catch (error) { if (++thrown <= 3) failures.push(`metadata: fuzz threw ${error.message}`); }
+  }
+  const ms = performance.now() - t0;
+  expect(`3 × 1,000 mutations in < 1 s (${ms.toFixed(0)} ms, ${thrown} exceptions)`, ms < 1000 && !thrown);
+  return failures;
+}
+
 if (globalThis.process?.argv && import.meta.url === `file://${process.argv[1]}`) {
   const { createHash } = await import('node:crypto');
   const { adjustPixels } = await import(`${repo}/js/renderer.js`);
   const failures = await checkGolden(adjustPixels, data => createHash('sha256').update(data).digest('hex').slice(0, 16));
-  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()];
-  for (const failure of [...failures, ...sessionFailures, ...sizeFailures]) console.log('FAIL', failure);
+  const sessionFailures = await checkSession(), sizeFailures = [...await checkExportSize(), ...await checkTargetSize()], metaFailures = await checkMetadata();
+  for (const failure of [...failures, ...sessionFailures, ...sizeFailures, ...metaFailures]) console.log('FAIL', failure);
   const checks = Object.keys(fixtures).length * Object.keys(adjustmentSets).length, failed = failures.length;
   console.log(`${failed ? 'FAIL' : 'OK'}: ${checks} fixture × adjustment checks, ${failed} failed`);
   console.log(`${sessionFailures.length ? 'FAIL' : 'OK'}: session recovery checks, ${sessionFailures.length} failed`);
   console.log(`${sizeFailures.length ? 'FAIL' : 'OK'}: export size and target size checks, ${sizeFailures.length} failed`);
-  process.exit(failed || sessionFailures.length || sizeFailures.length ? 1 : 0);
+  console.log(`${metaFailures.length ? 'FAIL' : 'OK'}: metadata scanner checks, ${metaFailures.length} failed`);
+  process.exit(failed || sessionFailures.length || sizeFailures.length || metaFailures.length ? 1 : 0);
 }

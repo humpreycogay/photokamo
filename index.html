@@ -66,6 +66,7 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg>
           Create collage…
         </button>
+        <p class="file-menu-note file-menu-privacy" id="photoPrivacy" hidden></p>
         <div class="file-menu-collages" id="collageMenuSaved" hidden>
           <p class="file-menu-heading" id="collageMenuHeading">Collages (0)</p>
           <div id="collageMenuList" role="group" aria-labelledby="collageMenuHeading"></div>
@@ -725,6 +726,7 @@
         <input id="exportQuality" type="range" min="60" max="100" value="92">
       </div>
       <div class="target-size" id="exportTarget"></div>
+      <p class="export-privacy" id="exportPrivacy" role="status"></p>
       <div class="export-actions">
         <button class="button button-primary button-xl" id="shareButton" type="button" hidden>
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M5 12v7h14v-7"/></svg>

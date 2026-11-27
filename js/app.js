@@ -2,7 +2,7 @@
 import { openCamera } from './camera.js';
 import { collage, deleteSavedCollage, enterCollage, exitCollage, openExport, openSavedCollage, popoverOpen, redo, undo, updateButtons } from './collage-host.js';
 import { buildAdvancedPanel, cancelFullRender, removeSavedEngines, renderFullQuality, scheduleAdvancedRender, syncAdvancedPanel, syncControls, syncEngineStorage, syncRenderStatus } from './engine-host.js';
-import { buildBatch, downloadPhoto, freeExport, prepareTimer, preparedExport, schedulePrepare, sharePhoto, syncExportOptions } from './export.js';
+import { buildBatch, downloadPhoto, syncPhotoPrivacy, freeExport, prepareTimer, preparedExport, schedulePrepare, sharePhoto, syncExportOptions } from './export.js';
 import { beginSlider, change, commitSlider, endSlider } from './history.js';
 import { buildLooks, engineReady, filmFilterMatches, filmTileLooks, filterMatches, pickEngineFor, pickFilmLook, pickLook, syncDownloadBadges, syncLooks, toggleFavorite } from './looks.js';
 import { defaultOptics } from './optics/index.js';
@@ -113,6 +113,7 @@ elements.fileMenu.addEventListener('click', event => {
 });
 elements.fileMenu.addEventListener('toggle', event => {
   if (event.newState !== 'open') return;
+  syncPhotoPrivacy();
   const rect = elements.fileChip.getBoundingClientRect();
   elements.fileMenu.style.left = `${Math.max(8, rect.left)}px`;
   elements.fileMenu.style.top = `${rect.bottom + 6}px`;

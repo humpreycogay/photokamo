@@ -125,6 +125,9 @@ svg { flex:none; }
 .file-menu-delete:hover,.file-menu-delete:focus-visible { background:var(--control); color:var(--text); }
 .file-menu-session { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); max-width:300px; }
 .file-menu-note { margin:4px 12px 2px; color:var(--text-muted); font-size:var(--fs-sm); line-height:1.4; }
+.file-menu-privacy { max-width:280px; margin:6px 12px; }
+.export-privacy { margin:12px 0 0; font-size:var(--fs-sm); line-height:1.45; color:var(--text-2); }
+.export-privacy:empty { display:none; }
 .history-actions { display:flex; align-items:center; gap:6px; }
 .topbar-actions { display:flex; align-items:center; gap:10px; }
 body:not(.has-image) .editing-only { display:none!important; }

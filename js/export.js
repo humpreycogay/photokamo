@@ -16,6 +16,7 @@ import { plural, renderPhotoEdit, renderQueue, settingsOf } from './photos.js';
 import { frames } from './presets.js';
 import { adjustFull, croppedSize, opticsSource, renderEditOff } from './preview.js';
 import { CUSTOM_BY, renderEdgeFor, sanitizeCustom, targetSize } from './export/size.js';
+import { kindLabel, privateKinds, scanBlob } from './export/metadata.js';
 import { TARGET_LIMITS, TARGET_PRESETS, Q_MIN, formatBytes, formatTarget, sanitizeTarget, searchQuality, suggestEdge } from './export/target.js';
 import { capFramed, cropGeometry, fitToSize, frameCanvas, framedSize, isIdentityCrop } from './renderer.js';
 import { $, SHARE_WIDTH, app, currentPreset, editCount, effectiveAdjustments, elements, isFilm, state, toast } from './state.js';
@@ -226,6 +227,7 @@ function prepareExport() {
     // The browser may not encode the requested type (WebP in older Safari gives PNG): name the file after what it made.
     const actual = blob.type || type;
     job.file = new File([blob], `${state.filename}-photokamo.${extensionFor(actual)}`, { type: actual });
+    job.privacy = await scanBlob(job.file); // Task 8: what the browser's encoder wrote, checked, not assumed
     return job.file;
   })();
   job.promise.catch(() => {});
@@ -257,6 +259,7 @@ function schedulePrepare(delay = 250) {
   elements.exportStatus.textContent = '';
   // Nothing changed (a field losing focus): the file in hand stays, and the buttons stay usable.
   if (preparedExport?.file && preparedExport.key === exportKey()) return;
+  $('#exportPrivacy').textContent = '';
   const searching = Boolean(activeTarget());
   if (lossy(state.exportFormat)) $('#exportTargetReport').textContent = searching ? 'Finding the best quality…' : '';
   // A size search takes several encodes: Share and Download wait for it, so Share still runs inside the tap.
@@ -265,9 +268,30 @@ function schedulePrepare(delay = 250) {
     const promise = prepareExport();
     const job = preparedExport;
     if (!job.file) elements.exportStatus.textContent = 'Preparing your photo…';
-    promise.then(() => { if (preparedExport === job && job.report) $('#exportTargetReport').textContent = targetReport(job.report); }, () => {})
+    promise.then(() => { if (preparedExport !== job) return; if (job.report) $('#exportTargetReport').textContent = targetReport(job.report); syncExportPrivacy(job); }, () => {})
       .finally(() => { if (preparedExport === job) { elements.exportStatus.textContent = ''; setExportBusy(false); } });
   }, delay);
+}
+// ---------- Metadata (Task 8): presence only, values are never read out or kept ----------
+const listKinds = (kinds, joiner = 'and') => { const labels = kinds.filter(kind => kind !== 'exif' || kinds.length === 1).map(kindLabel); return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} ${joiner} ${labels.at(-1)}` : labels[0] || ''; };
+/** The source file's report, read once per photo from the start of its file. */
+async function photoPrivacy(photo) { return (photo.privacy ||= scanBlob(photo.file).catch(() => null)); }
+/** The photo menu line: what the open photo's file carries and that exports leave it out. */
+async function syncPhotoPrivacy() {
+  const line = $('#photoPrivacy'), photo = app.photos.find(item => item.id === app.activeId);
+  const report = photo && await photoPrivacy(photo), kinds = report ? privateKinds(report) : [];
+  line.hidden = !kinds.length && !report?.malformed;
+  line.textContent = kinds.length ? `This photo’s file contains ${listKinds(kinds)}. Exports leave ${kinds.length === 1 ? 'it' : 'them'} out.` : report?.malformed ? 'This photo’s metadata couldn’t be fully read. Exports don’t copy any of it.' : '';
+}
+/** The Save sheet line, from the exported file itself. */
+async function syncExportPrivacy(job) {
+  const line = $('#exportPrivacy'), out = job.privacy, photo = app.photos.find(item => item.id === app.activeId);
+  if (!out) { line.textContent = ''; return; }
+  const leaked = privateKinds(out);
+  if (leaked.length) { line.textContent = `This browser wrote ${listKinds(leaked)} into the file. Nothing from your photo’s own metadata is copied, but check before sharing.`; return; }
+  const source = photo && await photoPrivacy(photo), removed = source ? privateKinds(source) : [];
+  if (preparedExport !== job) return;
+  line.textContent = removed.length ? `Location and camera data removed: the file has no ${listKinds(removed, 'or')}.` : 'The file has no location or camera data.';
 }
 function setExportBusy(busy) {
   for (const button of [elements.shareButton, elements.downloadButton]) { button.disabled = busy; button.toggleAttribute('aria-busy', busy); }
@@ -361,7 +385,7 @@ async function renderBatch(photos, each = null) {
   batch.running = true; batch.cancel = false; syncBatch();
   const type = batch.format, quality = Number(elements.batchQuality.value), kb = activeTarget(type, sizePrefs.batchTarget);
   const used = new Set(), files = [], engineModules = new Set();
-  batch.overTarget = [];
+  batch.overTarget = []; batch.leaked = [];
   const progress = (index, value = 0) => {
     elements.batchProgressCount.textContent = `${Math.min(index + 1, photos.length)} of ${photos.length}`;
     elements.batchBar.style.width = `${Math.round((index + value) / photos.length * 100)}%`;
@@ -374,6 +398,7 @@ async function renderBatch(photos, each = null) {
       const { blob, report } = await encodeCanvas(canvas, type, kb, quality);
       canvas.width = canvas.height = 0; // free the full-size pixels now
       if (report && !report.fits) batch.overTarget.push(photo.name);
+      if (privateKinds(await scanBlob(blob)).length) batch.leaked.push(photo.name);
       const actual = blob.type || type; // what the browser encoded (WebP may fall back to PNG)
       const file = new File([blob], uniqueName(photo.filename, extensionFor(actual), used), { type: actual });
       files.push(file);
@@ -453,8 +478,10 @@ async function downloadBatch() {
 }
 /** Photos the max file size couldn't be met for (never resized silently): listed in the dialog, which stays open. */
 function reportOverTarget() {
-  const names = batch.overTarget || []; if (!names.length) return false;
-  elements.batchStatus.textContent = `Saved. ${plural(names.length, 'photo')} couldn’t get under ${formatTarget(sizePrefs.batchTarget)} even at the lowest quality, so ${names.length === 1 ? 'it is' : 'they are'} over: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` and ${names.length - 5} more` : ''}. Choose a smaller Custom size for ${names.length === 1 ? 'it' : 'them'}.`;
+  const leaked = batch.leaked || [], names = batch.overTarget || []; if (!names.length && !leaked.length) return false;
+  const note = leaked.length ? ` This browser wrote metadata into ${plural(leaked.length, 'file')} (${leaked.slice(0, 3).join(', ')}): check before sharing.` : '';
+  if (!names.length) { elements.batchStatus.textContent = `Saved.${note}`; return true; }
+  elements.batchStatus.textContent = `Saved. ${plural(names.length, 'photo')} couldn’t get under ${formatTarget(sizePrefs.batchTarget)} even at the lowest quality, so ${names.length === 1 ? 'it is' : 'they are'} over: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` and ${names.length - 5} more` : ''}. Choose a smaller Custom size for ${names.length === 1 ? 'it' : 'them'}.${note}`;
   return true;
 }
 // Share needs a fresh tap: the first tap renders the files, then sharing is one more tap.
@@ -496,4 +523,4 @@ function buildBatch() {
 const shareWidth = () => (PLATFORMS[state.crop.platform]?.w || SHARE_WIDTH);
 
 // ↓ shared with other editor modules (generated by the v3 split)
-export { batch, buildBatch, canShareFiles, downloadBlob, downloadPhoto, freeExport, isBatchExport, openSave, photoCroppedSize, prepareTimer, preparedExport, schedulePrepare, selectedPhotos, setFullRender, sharePhoto, syncExportOptions };
+export { batch, buildBatch, syncPhotoPrivacy, canShareFiles, downloadBlob, downloadPhoto, freeExport, isBatchExport, openSave, photoCroppedSize, prepareTimer, preparedExport, schedulePrepare, selectedPhotos, setFullRender, sharePhoto, syncExportOptions };
